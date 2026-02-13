@@ -4,7 +4,10 @@ Interactive web tool to visualize how Azure maps logical availability zones
 to physical zones across subscriptions in a given region.
 """
 
+import base64
+import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import click
@@ -33,9 +36,15 @@ AZURE_API_VERSION = "2022-12-01"
 AZURE_MGMT_URL = "https://management.azure.com"
 
 
-def _get_headers() -> dict[str, str]:
-    """Get authorization headers using DefaultAzureCredential."""
-    token = credential.get_token(f"{AZURE_MGMT_URL}/.default")
+def _get_headers(tenant_id: str | None = None) -> dict[str, str]:
+    """Get authorization headers using DefaultAzureCredential.
+
+    When *tenant_id* is provided, the token is scoped to that tenant.
+    """
+    kwargs: dict[str, str] = {}
+    if tenant_id:
+        kwargs["tenant_id"] = tenant_id
+    token = credential.get_token(f"{AZURE_MGMT_URL}/.default", **kwargs)
     return {
         "Authorization": f"Bearer {token.token}",
         "Content-Type": "application/json",
@@ -53,11 +62,84 @@ def index() -> str:
     return render_template("index.html")
 
 
+def _get_default_tenant_id() -> str | None:
+    """Extract the tenant ID from the current credential's token."""
+    try:
+        token = credential.get_token(f"{AZURE_MGMT_URL}/.default")
+        # JWT payload is the second dot-separated segment, base64url-encoded
+        payload = token.token.split(".")[1]
+        # Pad base64 to a multiple of 4
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        tid: str | None = claims.get("tid") or claims.get("tenant_id")
+        return tid
+    except Exception:
+        return None
+
+
+def _check_tenant_auth(tenant_id: str) -> bool:
+    """Return True if the credential can obtain a token for *tenant_id*."""
+    try:
+        credential.get_token(f"{AZURE_MGMT_URL}/.default", tenant_id=tenant_id)
+        return True
+    except Exception:
+        return False
+
+
+@app.route("/api/tenants")
+def list_tenants() -> Response | tuple[Response, int]:
+    """Return Azure AD tenants accessible by the current credential.
+
+    Each tenant includes an ``authenticated`` flag indicating whether the
+    current credential can obtain a valid token for that tenant.  The
+    response also carries a ``defaultTenantId`` for the current auth context.
+    """
+    try:
+        headers = _get_headers()
+        url = f"{AZURE_MGMT_URL}/tenants?api-version={AZURE_API_VERSION}"
+        all_tenants: list[dict] = []
+
+        while url:
+            resp = requests.get(url, headers=headers, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            all_tenants.extend(data.get("value", []))
+            url = data.get("nextLink")
+
+        tenant_ids = [t["tenantId"] for t in all_tenants]
+
+        # Probe auth for each tenant concurrently
+        with ThreadPoolExecutor(max_workers=min(len(tenant_ids), 8)) as pool:
+            auth_results = dict(
+                zip(tenant_ids, pool.map(_check_tenant_auth, tenant_ids), strict=True)
+            )
+
+        tenants = [
+            {
+                "id": t["tenantId"],
+                "name": t.get("displayName") or t["tenantId"],
+                "authenticated": auth_results.get(t["tenantId"], False),
+            }
+            for t in all_tenants
+        ]
+        default_tid = _get_default_tenant_id()
+        return jsonify(
+            {
+                "tenants": sorted(tenants, key=lambda x: x["name"].lower()),
+                "defaultTenantId": default_tid,
+            }
+        )
+    except Exception as exc:
+        logger.exception("Failed to list tenants")
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/subscriptions")
 def list_subscriptions() -> Response | tuple[Response, int]:
     """Return all enabled Azure subscriptions the caller has access to."""
+    tenant_id = flask_request.args.get("tenantId")
     try:
-        headers = _get_headers()
+        headers = _get_headers(tenant_id)
         url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
         all_subs: list[dict] = []
 
@@ -87,9 +169,10 @@ def list_regions() -> Response | tuple[Response, int]:
     is discovered automatically.
     """
     sub_id = flask_request.args.get("subscriptionId")
+    tenant_id = flask_request.args.get("tenantId")
 
     try:
-        headers = _get_headers()
+        headers = _get_headers(tenant_id)
 
         # Auto-discover a subscription when none specified
         if not sub_id:
@@ -129,13 +212,15 @@ def get_mappings() -> Response | tuple[Response, int]:
     sub_ids_raw = flask_request.args.get("subscriptions", "")
     sub_ids = [s.strip() for s in sub_ids_raw.split(",") if s.strip()]
 
+    tenant_id = flask_request.args.get("tenantId")
+
     if not region or not sub_ids:
         return (
             jsonify({"error": "Both 'region' and 'subscriptions' query parameters are required"}),
             400,
         )
 
-    headers = _get_headers()
+    headers = _get_headers(tenant_id)
     results: list[dict] = []
 
     for sub_id in sub_ids:

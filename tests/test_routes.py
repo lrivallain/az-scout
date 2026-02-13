@@ -17,6 +17,100 @@ class TestIndex:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/tenants
+# ---------------------------------------------------------------------------
+
+
+class TestListTenants:
+    """Tests for the /api/tenants endpoint."""
+
+    def test_returns_tenants_sorted_with_default_and_auth(self, client):
+        azure_response = {
+            "value": [
+                {"tenantId": "tid-2", "displayName": "Zulu Tenant"},
+                {"tenantId": "tid-1", "displayName": "Alpha Tenant"},
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with (
+            patch("az_mapping.app.requests.get", return_value=mock_resp),
+            patch("az_mapping.app._get_default_tenant_id", return_value="tid-1"),
+            patch("az_mapping.app._check_tenant_auth", return_value=True),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert len(data["tenants"]) == 2
+        assert data["tenants"][0]["name"] == "Alpha Tenant"
+        assert data["tenants"][0]["authenticated"] is True
+        assert data["tenants"][1]["id"] == "tid-2"
+        assert data["defaultTenantId"] == "tid-1"
+
+    def test_marks_unauthenticated_tenants(self, client):
+        azure_response = {
+            "value": [
+                {"tenantId": "tid-ok", "displayName": "Good Tenant"},
+                {"tenantId": "tid-fail", "displayName": "Bad Tenant"},
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        def _auth_side_effect(tid):
+            return tid == "tid-ok"
+
+        with (
+            patch("az_mapping.app.requests.get", return_value=mock_resp),
+            patch("az_mapping.app._get_default_tenant_id", return_value="tid-ok"),
+            patch("az_mapping.app._check_tenant_auth", side_effect=_auth_side_effect),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        by_id = {t["id"]: t for t in data["tenants"]}
+        assert by_id["tid-ok"]["authenticated"] is True
+        assert by_id["tid-fail"]["authenticated"] is False
+
+    def test_uses_tenant_id_as_fallback_name(self, client):
+        azure_response = {
+            "value": [{"tenantId": "tid-no-name"}],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with (
+            patch("az_mapping.app.requests.get", return_value=mock_resp),
+            patch("az_mapping.app._get_default_tenant_id", return_value=None),
+            patch("az_mapping.app._check_tenant_auth", return_value=True),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["tenants"][0]["name"] == "tid-no-name"
+
+    def test_returns_500_on_error(self, client):
+        with patch("az_mapping.app.requests.get", side_effect=Exception("Azure down")):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 500
+        assert "error" in resp.get_json()
+
+
+# ---------------------------------------------------------------------------
 # GET /api/subscriptions
 # ---------------------------------------------------------------------------
 

@@ -7,6 +7,19 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
+### Added
+
+- Dark mode with system preference detection, manual toggle (sun/moon button), and localStorage persistence.
+- Searchable region combobox with keyboard navigation, auto-select on single match, and click-outside-to-close.
+- Multi-tenant support with `/api/tenants` endpoint; default tenant auto-detected from JWT token (`tid` claim).
+- Concurrent auth probing per tenant – unauthenticated tenants are shown as disabled in the dropdown.
+- Tenant selection synced to URL query params (`?tenant=…`).
+- Entra ID icon for the tenant filter section.
+- Favicon (Azure-themed shield).
+- Pre-commit configuration (ruff, mypy, trailing-whitespace, end-of-file-fixer, check-yaml/toml).
+- 4 new tests for the tenant endpoint (15 total).
+
+
 ## [2026.2.0] - 2026-02-13
 
 ### Added
