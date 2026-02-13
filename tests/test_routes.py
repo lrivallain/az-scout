@@ -359,3 +359,154 @@ class TestGetMappings:
         # Second sub has an error
         assert "error" in data[1]
         assert data[1]["mappings"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /api/skus
+# ---------------------------------------------------------------------------
+
+
+class TestGetSkus:
+    """Tests for the /api/skus endpoint."""
+
+    def test_returns_400_without_required_params(self, client):
+        resp = client.get("/api/skus")
+        assert resp.status_code == 400
+
+        resp = client.get("/api/skus?region=eastus")
+        assert resp.status_code == 400
+
+        resp = client.get("/api/skus?subscriptionId=sub1")
+        assert resp.status_code == 400
+
+    def test_returns_filtered_skus_for_region(self, client):
+        azure_response = {
+            "value": [
+                {
+                    "name": "Standard_D2s_v3",
+                    "resourceType": "virtualMachines",
+                    "tier": "Standard",
+                    "size": "D2s_v3",
+                    "family": "standardDSv3Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [
+                        {
+                            "location": "eastus",
+                            "zones": ["1", "2", "3"],
+                            "zoneDetails": [],
+                        }
+                    ],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "2"},
+                        {"name": "MemoryGB", "value": "8"},
+                    ],
+                    "restrictions": [],
+                },
+                {
+                    "name": "Standard_E4s_v3",
+                    "resourceType": "virtualMachines",
+                    "tier": "Standard",
+                    "size": "E4s_v3",
+                    "family": "standardESv3Family",
+                    "locations": ["westus"],  # Different region
+                    "locationInfo": [{"location": "westus", "zones": ["1"]}],
+                    "capabilities": [{"name": "vCPUs", "value": "4"}],
+                    "restrictions": [],
+                },
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        # Only eastus SKU should be returned
+        assert len(data) == 1
+        assert data[0]["name"] == "Standard_D2s_v3"
+        assert data[0]["zones"] == ["1", "2", "3"]
+        assert data[0]["capabilities"]["vCPUs"] == "2"
+        assert data[0]["capabilities"]["MemoryGB"] == "8"
+
+    def test_filters_by_resource_type(self, client):
+        azure_response = {
+            "value": [
+                {
+                    "name": "Standard_D2s_v3",
+                    "resourceType": "virtualMachines",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1"]}],
+                    "capabilities": [],
+                    "restrictions": [],
+                },
+                {
+                    "name": "Premium_LRS",
+                    "resourceType": "disks",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1"]}],
+                    "capabilities": [],
+                    "restrictions": [],
+                },
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        # Only virtualMachines (default) should be returned
+        assert len(data) == 1
+        assert data[0]["name"] == "Standard_D2s_v3"
+
+    def test_includes_zone_restrictions(self, client):
+        azure_response = {
+            "value": [
+                {
+                    "name": "Standard_D2s_v3",
+                    "resourceType": "virtualMachines",
+                    "locations": ["eastus"],
+                    "locationInfo": [
+                        {"location": "eastus", "zones": ["1", "2", "3"]}
+                    ],
+                    "capabilities": [],
+                    "restrictions": [
+                        {
+                            "type": "Zone",
+                            "restrictionInfo": {"zones": ["3"]},
+                        }
+                    ],
+                }
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert len(data) == 1
+        assert data[0]["restrictions"] == ["3"]
+
+    def test_returns_500_on_error(self, client):
+        with patch("az_mapping.app.requests.get", side_effect=Exception("API error")):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        assert resp.status_code == 500
+        data = resp.get_json()
+        assert "error" in data

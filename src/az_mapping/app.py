@@ -263,6 +263,95 @@ def get_mappings() -> Response | tuple[Response, int]:
     return jsonify(results)
 
 
+@app.route("/api/skus")
+def get_skus() -> Response | tuple[Response, int]:
+    """Return resource SKUs with zone restrictions for a given region and subscription.
+
+    Uses the Azure Resource SKUs API to fetch VM sizes and other resource types,
+    filtering by region and extracting zone availability information.
+    """
+    region = flask_request.args.get("region")
+    sub_id = flask_request.args.get("subscriptionId")
+    tenant_id = flask_request.args.get("tenantId")
+    resource_type = flask_request.args.get("resourceType", "virtualMachines")
+
+    if not region or not sub_id:
+        return (
+            jsonify({"error": "Both 'region' and 'subscriptionId' query parameters are required"}),
+            400,
+        )
+
+    try:
+        headers = _get_headers(tenant_id)
+        # Use 2021-07-01 API version which has stable SKU details
+        url = (
+            f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/providers/"
+            f"Microsoft.Compute/skus?api-version=2021-07-01"
+        )
+
+        all_skus: list[dict] = []
+        while url:
+            resp = requests.get(url, headers=headers, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            all_skus.extend(data.get("value", []))
+            url = data.get("nextLink")
+
+        # Filter SKUs by region and resource type
+        filtered_skus = []
+        for sku in all_skus:
+            # Check if SKU is available in the requested region
+            if sku.get("resourceType") != resource_type:
+                continue
+
+            locations = [loc.lower() for loc in sku.get("locations", [])]
+            if region.lower() not in locations:
+                continue
+
+            # Extract zone information
+            location_info = sku.get("locationInfo", [])
+            zones_for_region = []
+            zone_details = []
+
+            for loc_info in location_info:
+                if loc_info.get("location", "").lower() == region.lower():
+                    zones_for_region = loc_info.get("zones", [])
+                    zone_details = loc_info.get("zoneDetails", [])
+                    break
+
+            # Extract restrictions
+            restrictions = []
+            for restriction in sku.get("restrictions", []):
+                if restriction.get("type") == "Zone":
+                    restrictions.extend(restriction.get("restrictionInfo", {}).get("zones", []))
+
+            # Extract capabilities
+            capabilities = {}
+            for cap in sku.get("capabilities", []):
+                name = cap.get("name", "")
+                value = cap.get("value", "")
+                if name in ["vCPUs", "MemoryGB", "MaxDataDiskCount", "PremiumIO"]:
+                    capabilities[name] = value
+
+            filtered_skus.append(
+                {
+                    "name": sku.get("name"),
+                    "tier": sku.get("tier"),
+                    "size": sku.get("size"),
+                    "family": sku.get("family"),
+                    "zones": zones_for_region,
+                    "zoneDetails": zone_details,
+                    "restrictions": restrictions,
+                    "capabilities": capabilities,
+                }
+            )
+
+        return jsonify(sorted(filtered_skus, key=lambda x: x.get("name", "")))
+    except Exception as exc:
+        logger.exception("Failed to fetch SKUs")
+        return jsonify({"error": str(exc)}), 500
+
+
 # ---------------------------------------------------------------------------
 # Entry-point
 # ---------------------------------------------------------------------------
