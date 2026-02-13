@@ -50,10 +50,13 @@ az-mapping
 - **Collapsible sidebar** – toggle the filter panel to maximize the results area.
 - **Graph view** – D3.js bipartite diagram (Logical Zone → Physical Zone), colour-coded per subscription with interactive hover highlighting.
 - **Table view** – comparison table with consistency indicators.
-- **SKU availability view** – explore VM SKUs available in each Availability Zone:
+- **SKU availability view** – explore VM SKUs available in each Physical Availability Zone:
   - Lists resource SKUs (VM sizes) with their capabilities (vCPUs, memory)
-  - Shows zone availability indicators (✓ available, — unavailable, ⚠ restricted)
+  - Shows zone availability per **physical** zone (e.g., eastus-az1, westus-az2)
+  - Zone indicators: ✓ available, — unavailable, ⚠ restricted
   - Filterable by SKU name for quick searches (e.g., "D2s", "E4")
+  - Scrollable table for large result sets
+  - Requires zone mappings to be loaded first to map logical to physical zones
   - Export SKU data as CSV
 - **Export** – download the graph as PNG or the tables as CSV.
 - **Shareable URLs** – filters are reflected in the URL; reload or share a link to restore the exact view.

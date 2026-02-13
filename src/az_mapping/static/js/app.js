@@ -1044,6 +1044,12 @@ async function loadSkus() {
         return;
     }
     
+    // Ensure zone mappings are loaded first to get physical zone names
+    if (!lastMappingData) {
+        showError("Please load zone mappings first by clicking 'Load Mappings' button.");
+        return;
+    }
+    
     const subscriptionId = [...selectedSubscriptions][0];
     const subscriptionName = getSubName(subscriptionId);
     
@@ -1094,8 +1100,22 @@ function renderSkuTable(skus, subscriptionName) {
         return;
     }
     
-    // Determine all zones in the region
-    const allZones = [...new Set(filteredSkus.flatMap(s => s.zones))].sort();
+    // Get physical zone mappings from lastMappingData for current subscription
+    let physicalZoneMap = {};
+    if (lastMappingData) {
+        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === [...selectedSubscriptions][0]);
+        if (currentSubMapping && currentSubMapping.mappings) {
+            currentSubMapping.mappings.forEach(m => {
+                physicalZoneMap[m.logicalZone] = m.physicalZone;
+            });
+        }
+    }
+    
+    // Determine all logical zones from SKUs
+    const allLogicalZones = [...new Set(filteredSkus.flatMap(s => s.zones))].sort();
+    
+    // Map to physical zones
+    const physicalZones = allLogicalZones.map(lz => physicalZoneMap[lz] || `Zone ${lz}`);
     
     // Build table with subscription context
     let html = `<div style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--azure-light); border-radius: 6px; font-size: 0.875rem;">
@@ -1108,8 +1128,8 @@ function renderSkuTable(skus, subscriptionName) {
     html += "<th>vCPUs</th>";
     html += "<th>Memory (GB)</th>";
     
-    allZones.forEach(zone => {
-        html += `<th>Logical Zone ${escapeHtml(zone)}</th>`;
+    physicalZones.forEach(pz => {
+        html += `<th>${escapeHtml(pz)}</th>`;
     });
     
     html += "</tr></thead><tbody>";
@@ -1121,9 +1141,9 @@ function renderSkuTable(skus, subscriptionName) {
         html += `<td>${escapeHtml(sku.capabilities.vCPUs || "—")}</td>`;
         html += `<td>${escapeHtml(sku.capabilities.MemoryGB || "—")}</td>`;
         
-        allZones.forEach(zone => {
-            const isAvailable = sku.zones.includes(zone);
-            const isRestricted = sku.restrictions.includes(zone);
+        allLogicalZones.forEach(logicalZone => {
+            const isAvailable = sku.zones.includes(logicalZone);
+            const isRestricted = sku.restrictions.includes(logicalZone);
             
             if (isRestricted) {
                 html += '<td class="zone-restricted" title="Restricted: SKU not available in this zone" aria-label="Restricted">⚠</td>';
@@ -1163,17 +1183,29 @@ function exportSkuCSV() {
         return;
     }
     
-    const allZones = [...new Set(lastSkuData.flatMap(s => s.zones))].sort();
+    // Get physical zone mappings from lastMappingData for current subscription
+    let physicalZoneMap = {};
+    if (lastMappingData) {
+        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === [...selectedSubscriptions][0]);
+        if (currentSubMapping && currentSubMapping.mappings) {
+            currentSubMapping.mappings.forEach(m => {
+                physicalZoneMap[m.logicalZone] = m.physicalZone;
+            });
+        }
+    }
+    
+    const allLogicalZones = [...new Set(lastSkuData.flatMap(s => s.zones))].sort();
+    const physicalZones = allLogicalZones.map(lz => physicalZoneMap[lz] || `Zone ${lz}`);
     
     // Header row
     const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)", 
-        ...allZones.map(z => `Zone ${z}`)];
+        ...physicalZones];
     
     // Data rows
     const rows = lastSkuData.map(sku => {
-        const zoneCols = allZones.map(zone => {
-            const isAvailable = sku.zones.includes(zone);
-            const isRestricted = sku.restrictions.includes(zone);
+        const zoneCols = allLogicalZones.map(logicalZone => {
+            const isAvailable = sku.zones.includes(logicalZone);
+            const isRestricted = sku.restrictions.includes(logicalZone);
             
             if (isRestricted) return "Restricted";
             if (isAvailable) return "Available";
