@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure AZ Mapping Viewer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+    <div class="header-content">
+        <svg class="header-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+        </svg>
+        <h1>Azure AZ Mapping Viewer</h1>
+    </div>
+    <p class="header-subtitle">Visualize logical-to-physical Availability Zone mappings across subscriptions</p>
+</header>
+
+<div class="app-container">
+    <!-- Filters sidebar -->
+    <aside class="filters-panel" id="filters-panel">
+        <button type="button" class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Collapse filters">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+        </button>
+        <div class="sidebar-content" id="sidebar-content">
+        <div class="filter-section">
+            <h3>
+                <img src="{{ url_for('static', filename='img/region-management.svg') }}" width="16" height="16" alt="">
+                Region
+            </h3>
+            <select id="region-select" disabled>
+                <option value="">Loading regions…</option>
+            </select>
+        </div>
+
+        <div class="filter-section">
+            <h3>
+                <img src="{{ url_for('static', filename='img/subscriptions.svg') }}" width="16" height="16" alt="">
+                Subscriptions
+            </h3>
+            <input type="search" id="sub-filter" placeholder="Filter subscriptions…"
+                   autocomplete="off" spellcheck="false">
+            <div class="checkbox-actions">
+                <button type="button" onclick="selectAllVisible()">Select visible</button>
+                <button type="button" onclick="deselectAll()">Clear all</button>
+            </div>
+            <div id="sub-list" class="checkbox-list">
+                <div class="loading-indicator" id="sub-loading">
+                    <div class="spinner"></div>
+                    <span>Loading subscriptions…</span>
+                </div>
+            </div>
+            <div id="sub-count" class="selection-count">0 selected</div>
+        </div>
+
+        <button type="button" id="load-btn" class="primary-btn" onclick="loadMappings()" disabled>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="1 4 1 10 7 10"/>
+                <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
+            </svg>
+            Load Mappings
+        </button>
+
+        <div id="error-panel" class="error-panel" style="display:none;"></div>
+        </div><!-- /.sidebar-content -->
+    </aside>
+
+    <!-- Results area -->
+    <main class="results-panel">
+        <div id="empty-state" class="empty-state">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+            </svg>
+            <p>Select a region and one or more subscriptions, then click <strong>Load Mappings</strong>.</p>
+        </div>
+
+        <div id="results-content" style="display:none;">
+            <!-- Graph section -->
+            <section class="result-card">
+                <div class="card-header">
+                    <h2>Zone Mapping Graph</h2>
+                    <button type="button" class="export-btn" onclick="exportGraphPNG()" title="Export as PNG">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        PNG
+                    </button>
+                </div>
+                <div id="graph-container"></div>
+                <div id="graph-legend" class="graph-legend"></div>
+            </section>
+
+            <!-- Table section -->
+            <section class="result-card">
+                <div class="card-header">
+                    <h2>Zone Mapping Table</h2>
+                    <button type="button" class="export-btn" onclick="exportTableCSV()" title="Export as CSV">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        CSV
+                    </button>
+                </div>
+                <div id="table-container" class="table-container"></div>
+            </section>
+        </div>
+
+        <div id="results-loading" class="loading-indicator" style="display:none;">
+            <div class="spinner"></div>
+            <span>Fetching zone mappings…</span>
+        </div>
+    </main>
+</div>
+
+<footer class="app-footer">
+    <div class="footer-content">
+        <a href="https://github.com/lrivallain/az-mapping" target="_blank" rel="noopener" class="footer-link">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            lrivallain/az-mapping
+        </a>
+        <span class="footer-sep">·</span>
+        <span class="footer-license">MIT License</span>
+    </div>
+</footer>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

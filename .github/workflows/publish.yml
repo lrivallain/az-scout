@@ -1,0 +1,87 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"   # triggers on tags like v2026.2.0
+
+permissions:
+  contents: write  # needed to create GitHub Release
+
+jobs:
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build distribution
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for hatch-vcs
+
+      - name: Validate tag matches CalVer
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          if ! echo "$TAG" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$'; then
+            echo "::error::Tag '$TAG' does not follow CalVer YYYY.MM.MICRO format"
+            exit 1
+          fi
+          echo "VERSION=$TAG" >> "$GITHUB_ENV"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify package version
+        run: |
+          PKG_VERSION=$(ls dist/*.whl | head -1 | sed 's/.*-\([0-9][^-]*\)-.*/\1/')
+          echo "Package version: $PKG_VERSION"
+          echo "Tag version:     $VERSION"
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "::error::Package version '$PKG_VERSION' does not match tag version '$VERSION'"
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/az-mapping
+    permissions:
+      id-token: write  # trusted publishing (OIDC)
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

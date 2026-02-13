@@ -1,0 +1,808 @@
+/* ===================================================================
+   Azure AZ Mapping Viewer – Frontend Logic
+   =================================================================== */
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let subscriptions = [];          // [{id, name}]
+let selectedSubscriptions = new Set();
+let regions = [];                // [{name, displayName}]
+let lastMappingData = null;      // cached result from /api/mappings
+
+// ---------------------------------------------------------------------------
+// Initialisation
+// ---------------------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", init);
+
+async function init() {
+    document.getElementById("sub-filter").addEventListener("input", onFilterSubs);
+    document.getElementById("region-select").addEventListener("change", onRegionChange);
+    // Load regions and subscriptions in parallel – independent of each other
+    await Promise.all([fetchRegions(), fetchSubscriptions()]);
+
+    // Restore state from URL parameters
+    const urlState = getUrlParams();
+    if (urlState.region) {
+        const select = document.getElementById("region-select");
+        if ([...select.options].some(o => o.value === urlState.region)) {
+            select.value = urlState.region;
+        }
+    }
+    if (urlState.subscriptions.length) {
+        urlState.subscriptions.forEach(id => {
+            if (subscriptions.some(s => s.id === id)) {
+                selectedSubscriptions.add(id);
+            }
+        });
+        renderSubscriptionList();
+    }
+    updateLoadButton();
+
+    // Auto-load mappings if both region and subscriptions are set
+    if (urlState.region && urlState.subscriptions.length && !document.getElementById("load-btn").disabled) {
+        await loadMappings();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar collapse / expand
+// ---------------------------------------------------------------------------
+function toggleSidebar() {
+    const panel = document.getElementById("filters-panel");
+    const btn = document.getElementById("sidebar-toggle");
+    const isCollapsed = panel.classList.toggle("collapsed");
+    btn.title = isCollapsed ? "Expand filters" : "Collapse filters";
+}
+
+// ---------------------------------------------------------------------------
+// URL parameter helpers
+// ---------------------------------------------------------------------------
+function getUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        region: params.get("region") || "",
+        subscriptions: params.get("subscriptions") ? params.get("subscriptions").split(",") : []
+    };
+}
+
+function syncUrlParams() {
+    const region = document.getElementById("region-select").value;
+    const subs = [...selectedSubscriptions];
+    const params = new URLSearchParams();
+    if (region) params.set("region", region);
+    if (subs.length) params.set("subscriptions", subs.join(","));
+    const qs = params.toString();
+    const newUrl = window.location.pathname + (qs ? "?" + qs : "");
+    window.history.replaceState(null, "", newUrl);
+}
+
+// ---------------------------------------------------------------------------
+// API helpers
+// ---------------------------------------------------------------------------
+async function apiFetch(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+}
+
+function showError(msg) {
+    const panel = document.getElementById("error-panel");
+    panel.textContent = msg;
+    panel.style.display = "block";
+}
+function hideError() {
+    document.getElementById("error-panel").style.display = "none";
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions
+// ---------------------------------------------------------------------------
+async function fetchSubscriptions() {
+    try {
+        subscriptions = await apiFetch("/api/subscriptions");
+        renderSubscriptionList();
+    } catch (err) {
+        showError("Failed to load subscriptions: " + err.message);
+        document.getElementById("sub-loading").innerHTML =
+            '<span style="color:var(--danger)">Error loading subscriptions</span>';
+    }
+}
+
+function renderSubscriptionList(filter) {
+    const container = document.getElementById("sub-list");
+    const list = filter
+        ? subscriptions.filter(s => s.name.toLowerCase().includes(filter.toLowerCase()))
+        : subscriptions;
+
+    if (!list.length && !filter) {
+        container.innerHTML = '<div class="loading-indicator"><span>No subscriptions found</span></div>';
+        return;
+    }
+
+    container.innerHTML = list.map(s => {
+        const checked = selectedSubscriptions.has(s.id) ? "checked" : "";
+        const escapedName = escapeHtml(s.name);
+        return `<label class="checkbox-item" title="${escapedName}">
+            <input type="checkbox" value="${s.id}" ${checked}
+                   onchange="toggleSubscription('${s.id}')">
+            <span class="sub-name">${escapedName}</span>
+        </label>`;
+    }).join("");
+
+    updateSubCount();
+}
+
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function onFilterSubs(e) {
+    renderSubscriptionList(e.target.value);
+}
+
+function toggleSubscription(id) {
+    if (selectedSubscriptions.has(id)) {
+        selectedSubscriptions.delete(id);
+    } else {
+        selectedSubscriptions.add(id);
+    }
+    updateSubCount();
+    updateLoadButton();
+    syncUrlParams();
+}
+
+function selectAllVisible() {
+    document.querySelectorAll("#sub-list input[type=checkbox]").forEach(cb => {
+        cb.checked = true;
+        selectedSubscriptions.add(cb.value);
+    });
+    updateSubCount();
+    updateLoadButton();
+    syncUrlParams();
+}
+
+function deselectAll() {
+    selectedSubscriptions.clear();
+    document.querySelectorAll("#sub-list input[type=checkbox]").forEach(cb => {
+        cb.checked = false;
+    });
+    updateSubCount();
+    updateLoadButton();
+    syncUrlParams();
+}
+
+function updateSubCount() {
+    document.getElementById("sub-count").textContent =
+        `${selectedSubscriptions.size} selected`;
+}
+
+// ---------------------------------------------------------------------------
+// Regions  (loaded once at startup, never reloaded)
+// ---------------------------------------------------------------------------
+async function fetchRegions() {
+    const select = document.getElementById("region-select");
+    select.innerHTML = '<option value="">Loading regions…</option>';
+    select.disabled = true;
+
+    try {
+        regions = await apiFetch("/api/regions");
+        select.innerHTML = '<option value="">Choose a region…</option>' +
+            regions.map(r => `<option value="${r.name}">${r.displayName} (${r.name})</option>`).join("");
+        select.disabled = false;
+    } catch (err) {
+        showError("Failed to load regions: " + err.message);
+        select.innerHTML = '<option value="">Error loading regions</option>';
+    }
+}
+
+function onRegionChange() {
+    updateLoadButton();
+    syncUrlParams();
+}
+
+function updateLoadButton() {
+    const btn = document.getElementById("load-btn");
+    const region = document.getElementById("region-select").value;
+    btn.disabled = !(selectedSubscriptions.size > 0 && region);
+}
+
+// ---------------------------------------------------------------------------
+// Load mappings
+// ---------------------------------------------------------------------------
+async function loadMappings() {
+    const region = document.getElementById("region-select").value;
+    if (!region || selectedSubscriptions.size === 0) return;
+
+    hideError();
+    document.getElementById("empty-state").style.display = "none";
+    document.getElementById("results-content").style.display = "none";
+    document.getElementById("results-loading").style.display = "flex";
+
+    try {
+        const subs = [...selectedSubscriptions].join(",");
+        lastMappingData = await apiFetch(`/api/mappings?region=${region}&subscriptions=${subs}`);
+
+        document.getElementById("results-loading").style.display = "none";
+        document.getElementById("results-content").style.display = "block";
+
+        renderGraph(lastMappingData);
+        renderTable(lastMappingData);
+    } catch (err) {
+        document.getElementById("results-loading").style.display = "none";
+        document.getElementById("empty-state").style.display = "flex";
+        showError("Failed to load mappings: " + err.message);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Utility: subscription name lookup
+// ---------------------------------------------------------------------------
+function getSubName(id) {
+    const s = subscriptions.find(s => s.id === id);
+    return s ? s.name : id.substring(0, 8) + "…";
+}
+
+// ---------------------------------------------------------------------------
+// Physical-zone colour helpers
+// ---------------------------------------------------------------------------
+function pzIndex(physicalZone) {
+    const m = physicalZone.match(/(\d+)$/);
+    return m ? parseInt(m[1], 10) : 0;
+}
+
+function pzClass(physicalZone) {
+    const idx = pzIndex(physicalZone);
+    return idx >= 1 && idx <= 6 ? `pz-${idx}` : "pz-1";
+}
+
+// ---------------------------------------------------------------------------
+// GRAPH RENDERING  (D3.js)
+// ---------------------------------------------------------------------------
+function renderGraph(data) {
+    const container = document.getElementById("graph-container");
+    const legendContainer = document.getElementById("graph-legend");
+    container.innerHTML = "";
+    legendContainer.innerHTML = "";
+
+    // Filter out entries with no mappings
+    const validData = data.filter(d => d.mappings && d.mappings.length > 0);
+    if (!validData.length) {
+        container.innerHTML = '<div class="empty-state"><p>No zone mappings available.</p></div>';
+        return;
+    }
+
+    // Collect unique zones
+    const logicalZones = [...new Set(validData.flatMap(d => d.mappings.map(m => m.logicalZone)))].sort();
+    const physicalZones = [...new Set(validData.flatMap(d => d.mappings.map(m => m.physicalZone)))].sort();
+
+    // Measure text widths to size nodes dynamically
+    const measurer = d3.select(container).append("svg").attr("class", "measurer").style("position", "absolute").style("visibility", "hidden");
+    const measureText = (txt, fontSize) => {
+        const t = measurer.append("text").attr("font-size", fontSize).attr("font-weight", 500).attr("font-family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif").text(txt);
+        const w = t.node().getComputedTextLength();
+        t.remove();
+        return w;
+    };
+    const lzLabels = logicalZones.map(z => `Zone ${z}`);
+    const pzLabels = physicalZones;
+    const subLabels = validData.map(d => truncate(getSubName(d.subscriptionId), 22));
+    const maxLZText = Math.max(100, ...lzLabels.map(l => measureText(l, 13)));
+    const maxPZText = Math.max(100, ...pzLabels.map(l => measureText(l, 13)));
+    const maxSubText = Math.max(100, ...subLabels.map(l => measureText(l, 12)));
+    measurer.remove();
+
+    // Layout constants – widths adapt to content
+    const nodePadX = 24;           // horizontal padding inside a node
+    const leftNodeW = Math.ceil(Math.max(maxLZText, maxSubText) + nodePadX);
+    const rightNodeW = Math.ceil(maxPZText + nodePadX);
+    const nodeH = 36;
+    const nodeGapY = 12;           // vertical gap between zone nodes inside a group
+    const groupGapY = 28;          // vertical gap between subscription groups
+    const groupPadTop = 36;        // space for subscription label inside group box
+    const groupPadX = 12;
+    const groupPadBot = 12;
+    const linkGap = 180;           // horizontal gap for links between left and right columns
+    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+
+    const colorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(validData.map(d => d.subscriptionId));
+
+    // Physical-zone palette for right-side nodes
+    const pzColors = ["#0078d4", "#107c10", "#d83b01", "#8764b8", "#008272", "#b4009e"];
+    function pzColor(pz) {
+        const m = pz.match(/(\d+)$/);
+        const idx = m ? parseInt(m[1], 10) : 1;
+        return pzColors[(idx - 1) % pzColors.length];
+    }
+
+    // ---- Compute left-side layout: subscription groups ----
+    const groups = [];   // { subIdx, subId, subName, y, h, nodes: [{zone, y}] }
+    let cursorY = 0;
+    validData.forEach((sub, subIdx) => {
+        const zones = sub.mappings.map(m => m.logicalZone)
+            .filter((v, i, a) => a.indexOf(v) === i).sort();
+        const contentH = zones.length * nodeH + (zones.length - 1) * nodeGapY;
+        const boxH = groupPadTop + contentH + groupPadBot;
+        const nodes = zones.map((z, zi) => ({
+            zone: z,
+            y: cursorY + groupPadTop + zi * (nodeH + nodeGapY) + nodeH / 2,
+        }));
+        groups.push({
+            subIdx,
+            subId: sub.subscriptionId,
+            subName: getSubName(sub.subscriptionId),
+            y: cursorY,
+            h: boxH,
+            nodes,
+        });
+        cursorY += boxH + groupGapY;
+    });
+    const leftTotalH = cursorY - groupGapY;
+
+    // ---- Compute right-side layout: physical zone nodes ----
+    const rightContentH = physicalZones.length * nodeH + (physicalZones.length - 1) * nodeGapY;
+    const rightBoxPadTop = 36;
+    const rightBoxPadBot = 14;
+    const rightBoxH = rightBoxPadTop + rightContentH + rightBoxPadBot;
+    // Vertically centre right column relative to left column
+    const rightBoxY = Math.max(0, (leftTotalH - rightBoxH) / 2);
+    const physicalNodes = physicalZones.map((pz, i) => ({
+        zone: pz,
+        y: rightBoxY + rightBoxPadTop + i * (nodeH + nodeGapY) + nodeH / 2,
+    }));
+
+    // ---- SVG dimensions ----
+    const groupBoxW = leftNodeW + groupPadX * 2;
+    const rightBoxW = rightNodeW + groupPadX * 2;
+    const totalW = margin.left + groupBoxW + linkGap + rightBoxW + margin.right;
+    const totalH = Math.max(leftTotalH, rightBoxY + rightBoxH) + margin.top + margin.bottom;
+
+    const leftX = margin.left;
+    const rightX = margin.left + groupBoxW + linkGap;
+
+    const svg = d3.select(container)
+        .append("svg")
+        .attr("viewBox", `0 0 ${totalW} ${totalH}`)
+        .attr("preserveAspectRatio", "xMidYMid meet");
+
+    const g = svg.append("g")
+        .attr("transform", `translate(0, ${margin.top})`);
+
+    // ---- Draw right-side group box (Physical Zones) ----
+    const rightGroup = g.append("g").attr("transform", `translate(${rightX}, ${rightBoxY})`);
+    rightGroup.append("rect")
+        .attr("x", 0).attr("y", 0)
+        .attr("width", rightBoxW).attr("height", rightBoxH)
+        .attr("rx", 10)
+        .attr("class", "group-box-right");
+    rightGroup.append("text")
+        .attr("x", rightBoxW / 2).attr("y", 22)
+        .attr("text-anchor", "middle")
+        .attr("class", "group-label-right")
+        .text("Physical Zones");
+
+    // ---- Draw physical zone nodes ----
+    physicalNodes.forEach(pn => {
+        const ng = g.append("g")
+            .attr("transform", `translate(${rightX + groupPadX}, ${pn.y})`)
+            .attr("class", "pz-node-group")
+            .attr("data-pz", pn.zone)
+            .style("cursor", "pointer");
+        ng.append("rect")
+            .attr("x", 0).attr("y", -nodeH / 2)
+            .attr("width", rightNodeW).attr("height", nodeH)
+            .attr("rx", 6)
+            .attr("class", "node-rect-right")
+            .attr("style", `fill: ${pzColor(pn.zone)}20; stroke: ${pzColor(pn.zone)};`);
+        ng.append("text")
+            .attr("x", rightNodeW / 2).attr("y", 5)
+            .attr("text-anchor", "middle")
+            .attr("class", "node-label")
+            .text(pn.zone);
+        ng.on("mouseenter", () => highlightByPZ(pn.zone));
+        ng.on("mouseleave", clearHighlight);
+    });
+
+    // ---- Draw left-side subscription groups ----
+    groups.forEach(grp => {
+        const gg = g.append("g")
+            .attr("transform", `translate(${leftX}, ${grp.y})`)
+            .attr("class", "sub-group")
+            .attr("data-sub", grp.subIdx)
+            .style("cursor", "pointer");
+        // Group box
+        gg.append("rect")
+            .attr("x", 0).attr("y", 0)
+            .attr("width", groupBoxW).attr("height", grp.h)
+            .attr("rx", 10)
+            .attr("class", "group-box-left")
+            .attr("style", `stroke: ${colorScale(grp.subId)};`);
+        // Subscription label
+        gg.append("text")
+            .attr("x", groupBoxW / 2).attr("y", 22)
+            .attr("text-anchor", "middle")
+            .attr("class", "group-label-left")
+            .attr("fill", colorScale(grp.subId))
+            .text(truncate(grp.subName, 22));
+        gg.append("title").text(grp.subName);
+        gg.on("mouseenter", () => highlightSub(grp.subIdx, validData.length, validData));
+        gg.on("mouseleave", clearHighlight);
+    });
+
+    // ---- Draw logical zone nodes inside each group ----
+    groups.forEach(grp => {
+        grp.nodes.forEach(ln => {
+            const ng = g.append("g")
+                .attr("transform", `translate(${leftX + groupPadX}, ${ln.y})`)
+                .attr("class", "lz-node-group")
+                .attr("data-sub", grp.subIdx)
+                .attr("data-lz", ln.zone)
+                .style("cursor", "pointer");
+            ng.append("rect")
+                .attr("x", 0).attr("y", -nodeH / 2)
+                .attr("width", leftNodeW).attr("height", nodeH)
+                .attr("rx", 6)
+                .attr("class", "node-rect-left")
+                .attr("style", `stroke: ${colorScale(grp.subId)};`);
+            ng.append("text")
+                .attr("x", leftNodeW / 2).attr("y", 5)
+                .attr("text-anchor", "middle")
+                .attr("class", "node-label")
+                .text(`Zone ${ln.zone}`);
+            ng.on("mouseenter", () => highlightByLZ(grp.subIdx, ln.zone, validData));
+            ng.on("mouseleave", clearHighlight);
+        });
+    });
+
+    // ---- Draw links ----
+    const linksGroup = g.append("g").attr("class", "links-group");
+    groups.forEach(grp => {
+        const sub = validData[grp.subIdx];
+        sub.mappings.forEach(m => {
+            const srcNode = grp.nodes.find(n => n.zone === m.logicalZone);
+            const tgtNode = physicalNodes.find(n => n.zone === m.physicalZone);
+            if (!srcNode || !tgtNode) return;
+
+            const sourceX = leftX + groupPadX + leftNodeW;
+            const sourceY = srcNode.y;
+            const targetX = rightX + groupPadX;
+            const targetY = tgtNode.y;
+
+            linksGroup.append("path")
+                .attr("d", d3.linkHorizontal()({ source: [sourceX, sourceY], target: [targetX, targetY] }))
+                .attr("stroke", colorScale(sub.subscriptionId))
+                .attr("stroke-width", 2.5)
+                .attr("fill", "none")
+                .attr("opacity", 0.55)
+                .attr("class", `link link-sub-${grp.subIdx}`)
+                .attr("data-sub", grp.subIdx)
+                .attr("data-lz", m.logicalZone)
+                .attr("data-pz", m.physicalZone)
+                .append("title")
+                .text(`${grp.subName}: Zone ${m.logicalZone} → ${m.physicalZone}`);
+        });
+    });
+
+    // ---- Legend (HTML) ----
+    validData.forEach((sub, i) => {
+        const item = document.createElement("div");
+        item.className = "legend-item";
+        item.dataset.subIdx = i;
+        item.innerHTML = `<span class="legend-swatch" style="background:${colorScale(sub.subscriptionId)}"></span>
+            <span>${escapeHtml(getSubName(sub.subscriptionId))}</span>`;
+        item.addEventListener("mouseenter", () => highlightSub(i, validData.length, validData));
+        item.addEventListener("mouseleave", () => clearHighlight());
+        legendContainer.appendChild(item);
+    });
+}
+
+function truncate(str, max) {
+    return str.length > max ? str.substring(0, max - 1) + "…" : str;
+}
+
+// ---------------------------------------------------------------------------
+// Highlight helpers
+// ---------------------------------------------------------------------------
+
+/** Highlight all links for a given subscription index. */
+function highlightSub(subIdx, total, validData) {
+    // Dim all links, highlight only this sub's links
+    d3.selectAll(".link").classed("dimmed", true).classed("highlighted", false);
+    d3.selectAll(`.link-sub-${subIdx}`).classed("dimmed", false).classed("highlighted", true);
+
+    // Dim other subscription groups
+    d3.selectAll(".sub-group").style("opacity", function() {
+        return +d3.select(this).attr("data-sub") === subIdx ? 1 : 0.25;
+    });
+    d3.selectAll(".lz-node-group").style("opacity", function() {
+        return +d3.select(this).attr("data-sub") === subIdx ? 1 : 0.25;
+    });
+
+    // Highlight the PZ nodes that this sub connects to
+    const targetPZs = new Set();
+    if (validData && validData[subIdx]) {
+        validData[subIdx].mappings.forEach(m => targetPZs.add(m.physicalZone));
+    }
+    d3.selectAll(".pz-node-group").style("opacity", function() {
+        return targetPZs.has(d3.select(this).attr("data-pz")) ? 1 : 0.25;
+    });
+}
+
+/** Highlight the link from a specific LZ in a specific sub, and the target PZ. */
+function highlightByLZ(subIdx, lz, validData) {
+    // Dim everything first
+    d3.selectAll(".link").classed("dimmed", true).classed("highlighted", false);
+    d3.selectAll(".sub-group").style("opacity", 0.25);
+    d3.selectAll(".lz-node-group").style("opacity", 0.25);
+    d3.selectAll(".pz-node-group").style("opacity", 0.25);
+
+    // Find the matching link(s) and highlight
+    d3.selectAll(".link").each(function() {
+        const el = d3.select(this);
+        if (+el.attr("data-sub") === subIdx && el.attr("data-lz") === lz) {
+            el.classed("dimmed", false).classed("highlighted", true);
+        }
+    });
+
+    // Highlight the source subscription group and LZ node
+    d3.selectAll(".sub-group").filter(function() {
+        return +d3.select(this).attr("data-sub") === subIdx;
+    }).style("opacity", 1);
+    d3.selectAll(".lz-node-group").filter(function() {
+        return +d3.select(this).attr("data-sub") === subIdx && d3.select(this).attr("data-lz") === lz;
+    }).style("opacity", 1);
+
+    // Highlight the target PZ node
+    const targetPZ = validData[subIdx]?.mappings.find(m => m.logicalZone === lz)?.physicalZone;
+    if (targetPZ) {
+        d3.selectAll(".pz-node-group").filter(function() {
+            return d3.select(this).attr("data-pz") === targetPZ;
+        }).style("opacity", 1);
+    }
+}
+
+/** Highlight all links pointing to a given physical zone, and their source LZ nodes. */
+function highlightByPZ(pz) {
+    // Dim everything first
+    d3.selectAll(".link").classed("dimmed", true).classed("highlighted", false);
+    d3.selectAll(".sub-group").style("opacity", 0.25);
+    d3.selectAll(".lz-node-group").style("opacity", 0.25);
+    d3.selectAll(".pz-node-group").style("opacity", 0.25);
+
+    // Highlight the hovered PZ node
+    d3.selectAll(".pz-node-group").filter(function() {
+        return d3.select(this).attr("data-pz") === pz;
+    }).style("opacity", 1);
+
+    // Find matching links and collect source sub+lz pairs
+    const matchedSubs = new Set();
+    const matchedLZKeys = new Set();
+    d3.selectAll(".link").each(function() {
+        const el = d3.select(this);
+        if (el.attr("data-pz") === pz) {
+            el.classed("dimmed", false).classed("highlighted", true);
+            matchedSubs.add(+el.attr("data-sub"));
+            matchedLZKeys.add(el.attr("data-sub") + "::" + el.attr("data-lz"));
+        }
+    });
+
+    // Highlight matching sub groups
+    d3.selectAll(".sub-group").filter(function() {
+        return matchedSubs.has(+d3.select(this).attr("data-sub"));
+    }).style("opacity", 1);
+
+    // Highlight matching LZ nodes
+    d3.selectAll(".lz-node-group").filter(function() {
+        const key = d3.select(this).attr("data-sub") + "::" + d3.select(this).attr("data-lz");
+        return matchedLZKeys.has(key);
+    }).style("opacity", 1);
+}
+
+/** Reset all highlight states. */
+function clearHighlight() {
+    d3.selectAll(".link").classed("dimmed", false).classed("highlighted", false);
+    d3.selectAll(".sub-group").style("opacity", 1);
+    d3.selectAll(".lz-node-group").style("opacity", 1);
+    d3.selectAll(".pz-node-group").style("opacity", 1);
+}
+
+// ---------------------------------------------------------------------------
+// TABLE RENDERING
+// ---------------------------------------------------------------------------
+function renderTable(data) {
+    const container = document.getElementById("table-container");
+    container.innerHTML = "";
+
+    const validData = data.filter(d => d.mappings && d.mappings.length > 0);
+    if (!validData.length) {
+        container.innerHTML = '<p class="empty-state">No zone mappings available.</p>';
+        return;
+    }
+
+    const logicalZones = [...new Set(validData.flatMap(d => d.mappings.map(m => m.logicalZone)))].sort();
+
+    // Build table
+    const table = document.createElement("table");
+    table.className = "mapping-table";
+
+    // Header
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    headerRow.insertCell().textContent = "Subscription";
+    headerRow.insertCell().textContent = "Subscription ID";
+    logicalZones.forEach(z => {
+        const th = document.createElement("th");
+        th.textContent = `Logical Zone ${z}`;
+        headerRow.appendChild(th);
+    });
+    // Replace td with th in header
+    headerRow.querySelectorAll("td").forEach(td => {
+        const th = document.createElement("th");
+        th.textContent = td.textContent;
+        td.replaceWith(th);
+    });
+
+    // Body
+    const tbody = table.createTBody();
+    validData.forEach(sub => {
+        const row = tbody.insertRow();
+        const nameCell = row.insertCell();
+        nameCell.textContent = getSubName(sub.subscriptionId);
+        nameCell.className = "sub-name-cell";
+        nameCell.title = getSubName(sub.subscriptionId);
+
+        const idCell = row.insertCell();
+        idCell.textContent = sub.subscriptionId;
+        idCell.style.fontSize = "0.78rem";
+        idCell.style.color = "var(--text-muted)";
+        idCell.style.fontFamily = "monospace";
+
+        logicalZones.forEach(z => {
+            const cell = row.insertCell();
+            const mapping = sub.mappings.find(m => m.logicalZone === z);
+            if (mapping) {
+                const badge = document.createElement("span");
+                badge.className = `zone-badge ${pzClass(mapping.physicalZone)}`;
+                badge.textContent = mapping.physicalZone;
+                cell.appendChild(badge);
+            } else {
+                cell.textContent = "—";
+                cell.style.color = "var(--text-muted)";
+            }
+        });
+    });
+
+    // Consistency footer row (only if >1 subscription)
+    if (validData.length > 1) {
+        const tfoot = table.createTFoot();
+        const footRow = tfoot.insertRow();
+        footRow.className = "consistency-row";
+        const label = footRow.insertCell();
+        label.colSpan = 2;
+        label.textContent = "Consistency";
+
+        logicalZones.forEach(z => {
+            const cell = footRow.insertCell();
+            const physicals = validData
+                .map(sub => sub.mappings.find(m => m.logicalZone === z))
+                .filter(Boolean)
+                .map(m => m.physicalZone);
+            const unique = [...new Set(physicals)];
+            if (unique.length <= 1) {
+                cell.textContent = "✓ Same";
+                cell.className = "same";
+            } else {
+                cell.textContent = `⚠ ${unique.length} different`;
+                cell.className = "different";
+            }
+        });
+    }
+
+    container.appendChild(table);
+}
+
+// ---------------------------------------------------------------------------
+// EXPORT: Graph → PNG
+// ---------------------------------------------------------------------------
+function exportGraphPNG() {
+    const svgEl = document.querySelector("#graph-container svg");
+    if (!svgEl) return;
+
+    // Serialize SVG with inline styles
+    const clone = svgEl.cloneNode(true);
+
+    // Collect all computed styles from the original and inline them on the clone
+    inlineStyles(svgEl, clone);
+
+    // Set explicit dimensions for the canvas
+    const box = svgEl.viewBox.baseVal;
+    const scale = 2; // retina-quality
+    const w = box.width * scale;
+    const h = box.height * scale;
+
+    clone.setAttribute("width", w);
+    clone.setAttribute("height", h);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+    const svgData = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const img = new Image();
+    img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+
+        const region = document.getElementById("region-select").value || "az-mapping";
+        const a = document.createElement("a");
+        a.download = `az-mapping-${region}.png`;
+        a.href = canvas.toDataURL("image/png");
+        a.click();
+    };
+    img.src = url;
+}
+
+/** Recursively copy computed styles from src elements onto dst (clone) elements. */
+function inlineStyles(src, dst) {
+    const computed = window.getComputedStyle(src);
+    const dominated = ["fill", "stroke", "stroke-width", "stroke-dasharray",
+        "opacity", "font-size", "font-weight", "font-family", "text-anchor",
+        "dominant-baseline", "letter-spacing"];
+    dominated.forEach(prop => {
+        const val = computed.getPropertyValue(prop);
+        if (val) dst.style.setProperty(prop, val);
+    });
+    for (let i = 0; i < src.children.length; i++) {
+        if (dst.children[i]) inlineStyles(src.children[i], dst.children[i]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EXPORT: Table → CSV
+// ---------------------------------------------------------------------------
+function exportTableCSV() {
+    if (!lastMappingData) return;
+
+    const validData = lastMappingData.filter(d => d.mappings && d.mappings.length > 0);
+    if (!validData.length) return;
+
+    const logicalZones = [...new Set(validData.flatMap(d => d.mappings.map(m => m.logicalZone)))].sort();
+
+    // Header row
+    const headers = ["Subscription", "Subscription ID",
+        ...logicalZones.map(z => `Logical Zone ${z}`)];
+
+    // Data rows
+    const rows = validData.map(sub => {
+        const name = getSubName(sub.subscriptionId);
+        const cols = logicalZones.map(z => {
+            const m = sub.mappings.find(m => m.logicalZone === z);
+            return m ? m.physicalZone : "";
+        });
+        return [name, sub.subscriptionId, ...cols];
+    });
+
+    // Build CSV string
+    const csvContent = [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+
+    const region = document.getElementById("region-select").value || "az-mapping";
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.download = `az-mapping-${region}.csv`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
