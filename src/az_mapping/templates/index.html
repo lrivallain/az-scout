@@ -4,20 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Azure AZ Mapping Viewer</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
 
 <header class="app-header">
-    <div class="header-content">
-        <svg class="header-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
-            <circle cx="12" cy="10" r="3"/>
-        </svg>
-        <h1>Azure AZ Mapping Viewer</h1>
+    <div class="header-left">
+        <div class="header-content">
+            <img class="header-icon" src="{{ url_for('static', filename='img/favicon.svg') }}" width="28" height="28" alt="">
+            <h1>Azure AZ Mapping Viewer</h1>
+        </div>
+        <p class="header-subtitle">Visualize logical-to-physical Availability Zone mappings across subscriptions</p>
     </div>
-    <p class="header-subtitle">Visualize logical-to-physical Availability Zone mappings across subscriptions</p>
+    <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+        <!-- Sun icon (shown in dark mode) -->
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <!-- Moon icon (shown in light mode) -->
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+        </svg>
+    </button>
 </header>
 
 <div class="app-container">
@@ -31,12 +45,25 @@
         <div class="sidebar-content" id="sidebar-content">
         <div class="filter-section">
             <h3>
+                <img class="filter-icon" src="{{ url_for('static', filename='img/entra-id.svg') }}" alt="Entra ID" width="16" height="16">
+                Tenant
+            </h3>
+            <select id="tenant-select">
+                <option value="">Loading tenants…</option>
+            </select>
+        </div>
+
+        <div class="filter-section">
+            <h3>
                 <img src="{{ url_for('static', filename='img/region-management.svg') }}" width="16" height="16" alt="">
                 Region
             </h3>
-            <select id="region-select" disabled>
-                <option value="">Loading regions…</option>
-            </select>
+            <div class="region-combobox" id="region-combobox">
+                <input type="search" id="region-search" placeholder="Loading regions…"
+                       autocomplete="off" spellcheck="false" disabled>
+                <input type="hidden" id="region-select" value="">
+                <ul class="region-dropdown" id="region-dropdown"></ul>
+            </div>
         </div>
 
         <div class="filter-section">

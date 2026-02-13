@@ -8,7 +8,45 @@
 let subscriptions = [];          // [{id, name}]
 let selectedSubscriptions = new Set();
 let regions = [];                // [{name, displayName}]
+let tenants = [];                // [{id, name}]
 let lastMappingData = null;      // cached result from /api/mappings
+
+// ---------------------------------------------------------------------------
+// Theme management
+// ---------------------------------------------------------------------------
+function getEffectiveTheme() {
+    const stored = localStorage.getItem("theme");
+    if (stored === "dark" || stored === "light") return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    // Toggle icon visibility
+    const sun = document.querySelector(".icon-sun");
+    const moon = document.querySelector(".icon-moon");
+    if (sun && moon) {
+        sun.style.display = theme === "dark" ? "block" : "none";
+        moon.style.display = theme === "dark" ? "none" : "block";
+    }
+}
+
+function toggleTheme() {
+    const current = getEffectiveTheme();
+    const next = current === "dark" ? "light" : "dark";
+    localStorage.setItem("theme", next);
+    applyTheme(next);
+}
+
+// Apply theme immediately (before DOMContentLoaded) to prevent flash
+applyTheme(getEffectiveTheme());
+
+// Listen for system preference changes
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (!localStorage.getItem("theme")) {
+        applyTheme(getEffectiveTheme());
+    }
+});
 
 // ---------------------------------------------------------------------------
 // Initialisation
@@ -17,16 +55,28 @@ document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
     document.getElementById("sub-filter").addEventListener("input", onFilterSubs);
-    document.getElementById("region-select").addEventListener("change", onRegionChange);
+    document.getElementById("tenant-select").addEventListener("change", onTenantChange);
+    initRegionCombobox();
+
+    // Load tenants first
+    await fetchTenants();
+
+    // Restore tenant from URL before loading regions/subs
+    const urlState = getUrlParams();
+    if (urlState.tenant) {
+        const select = document.getElementById("tenant-select");
+        if ([...select.options].some(o => o.value === urlState.tenant)) {
+            select.value = urlState.tenant;
+        }
+    }
+
     // Load regions and subscriptions in parallel – independent of each other
     await Promise.all([fetchRegions(), fetchSubscriptions()]);
 
     // Restore state from URL parameters
-    const urlState = getUrlParams();
     if (urlState.region) {
-        const select = document.getElementById("region-select");
-        if ([...select.options].some(o => o.value === urlState.region)) {
-            select.value = urlState.region;
+        if (regions.some(r => r.name === urlState.region)) {
+            selectRegion(urlState.region);
         }
     }
     if (urlState.subscriptions.length) {
@@ -61,15 +111,18 @@ function toggleSidebar() {
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
     return {
+        tenant: params.get("tenant") || "",
         region: params.get("region") || "",
         subscriptions: params.get("subscriptions") ? params.get("subscriptions").split(",") : []
     };
 }
 
 function syncUrlParams() {
+    const tenant = document.getElementById("tenant-select").value;
     const region = document.getElementById("region-select").value;
     const subs = [...selectedSubscriptions];
     const params = new URLSearchParams();
+    if (tenant) params.set("tenant", tenant);
     if (region) params.set("region", region);
     if (subs.length) params.set("subscriptions", subs.join(","));
     const qs = params.toString();
@@ -98,12 +151,19 @@ function hideError() {
     document.getElementById("error-panel").style.display = "none";
 }
 
+/** Return '&tenantId=xxx' or '' depending on current selection. */
+function tenantQS(prefix) {
+    const tid = document.getElementById("tenant-select").value;
+    if (!tid) return "";
+    return (prefix || "&") + "tenantId=" + encodeURIComponent(tid);
+}
+
 // ---------------------------------------------------------------------------
 // Subscriptions
 // ---------------------------------------------------------------------------
 async function fetchSubscriptions() {
     try {
-        subscriptions = await apiFetch("/api/subscriptions");
+        subscriptions = await apiFetch("/api/subscriptions" + tenantQS("?"));
         renderSubscriptionList();
     } catch (err) {
         showError("Failed to load subscriptions: " + err.message);
@@ -183,22 +243,163 @@ function updateSubCount() {
 }
 
 // ---------------------------------------------------------------------------
+// Tenants
+// ---------------------------------------------------------------------------
+async function fetchTenants() {
+    const select = document.getElementById("tenant-select");
+    select.innerHTML = '<option value="">Loading tenants…</option>';
+    try {
+        const result = await apiFetch("/api/tenants");
+        tenants = result.tenants || [];
+        const defaultTid = result.defaultTenantId || "";
+
+        // Filter to authenticated tenants for auto-hide logic
+        const authTenants = tenants.filter(t => t.authenticated);
+        if (authTenants.length <= 1) {
+            // Single reachable tenant – auto-select and hide the selector
+            select.closest(".filter-section").style.display = "none";
+            if (authTenants.length === 1) {
+                select.innerHTML = `<option value="${authTenants[0].id}">${escapeHtml(authTenants[0].name)}</option>`;
+                select.value = authTenants[0].id;
+            }
+            return;
+        }
+        select.innerHTML = tenants.map(t => {
+            const disabled = t.authenticated ? "" : "disabled";
+            const label = t.authenticated
+                ? `${escapeHtml(t.name)} (${t.id.slice(0, 8)}…)`
+                : `${escapeHtml(t.name)} — no valid auth`;
+            return `<option value="${t.id}" ${disabled}>${label}</option>`;
+        }).join("");
+        // Auto-select the tenant matching the current credential
+        if (defaultTid && tenants.some(t => t.id === defaultTid && t.authenticated)) {
+            select.value = defaultTid;
+        }
+    } catch (err) {
+        // Non-blocking: if tenants fail, just hide the selector
+        select.closest(".filter-section").style.display = "none";
+    }
+}
+
+async function onTenantChange() {
+    // Reset downstream state
+    selectedSubscriptions.clear();
+    document.getElementById("region-select").value = "";
+    document.getElementById("region-search").value = "";
+    document.getElementById("sub-filter").value = "";
+    document.getElementById("results-content").style.display = "none";
+    document.getElementById("empty-state").style.display = "flex";
+    hideError();
+    syncUrlParams();
+
+    // Reload regions and subscriptions for the new tenant
+    await Promise.all([fetchRegions(), fetchSubscriptions()]);
+    updateLoadButton();
+}
+
+// ---------------------------------------------------------------------------
 // Regions  (loaded once at startup, never reloaded)
 // ---------------------------------------------------------------------------
 async function fetchRegions() {
-    const select = document.getElementById("region-select");
-    select.innerHTML = '<option value="">Loading regions…</option>';
-    select.disabled = true;
+    const searchInput = document.getElementById("region-search");
+    searchInput.placeholder = "Loading regions…";
+    searchInput.disabled = true;
 
     try {
-        regions = await apiFetch("/api/regions");
-        select.innerHTML = '<option value="">Choose a region…</option>' +
-            regions.map(r => `<option value="${r.name}">${r.displayName} (${r.name})</option>`).join("");
-        select.disabled = false;
+        regions = await apiFetch("/api/regions" + tenantQS("?"));
+        searchInput.placeholder = "Type to search regions…";
+        searchInput.disabled = false;
+        renderRegionDropdown("");
     } catch (err) {
         showError("Failed to load regions: " + err.message);
-        select.innerHTML = '<option value="">Error loading regions</option>';
+        searchInput.placeholder = "Error loading regions";
     }
+}
+
+function renderRegionDropdown(filter) {
+    const dropdown = document.getElementById("region-dropdown");
+    const lc = filter.toLowerCase();
+    const matches = lc
+        ? regions.filter(r => r.displayName.toLowerCase().includes(lc) || r.name.toLowerCase().includes(lc))
+        : regions;
+    dropdown.innerHTML = matches.map(r =>
+        `<li data-value="${r.name}">${escapeHtml(r.displayName)} <span class="region-name">(${r.name})</span></li>`
+    ).join("");
+    // Attach click handlers
+    dropdown.querySelectorAll("li").forEach(li => {
+        li.addEventListener("click", () => selectRegion(li.dataset.value));
+    });
+}
+
+function selectRegion(name) {
+    const r = regions.find(r => r.name === name);
+    if (!r) return;
+    document.getElementById("region-select").value = name;
+    document.getElementById("region-search").value = `${r.displayName} (${r.name})`;
+    closeRegionDropdown();
+    onRegionChange();
+}
+
+function openRegionDropdown() {
+    document.getElementById("region-dropdown").classList.add("open");
+}
+function closeRegionDropdown() {
+    document.getElementById("region-dropdown").classList.remove("open");
+}
+
+function initRegionCombobox() {
+    const searchInput = document.getElementById("region-search");
+    const dropdown = document.getElementById("region-dropdown");
+
+    searchInput.addEventListener("focus", () => {
+        // If a region was selected, select the text so the user can type over it
+        searchInput.select();
+        renderRegionDropdown(searchInput.value.includes("(") ? "" : searchInput.value);
+        openRegionDropdown();
+    });
+    searchInput.addEventListener("input", () => {
+        // Clear the hidden select when user types
+        document.getElementById("region-select").value = "";
+        renderRegionDropdown(searchInput.value);
+        openRegionDropdown();
+        onRegionChange();
+    });
+    // Keyboard navigation
+    searchInput.addEventListener("keydown", (e) => {
+        const items = dropdown.querySelectorAll("li");
+        const active = dropdown.querySelector("li.active");
+        let idx = [...items].indexOf(active);
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (!dropdown.classList.contains("open")) openRegionDropdown();
+            if (active) active.classList.remove("active");
+            idx = (idx + 1) % items.length;
+            items[idx]?.classList.add("active");
+            items[idx]?.scrollIntoView({ block: "nearest" });
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (active) active.classList.remove("active");
+            idx = idx <= 0 ? items.length - 1 : idx - 1;
+            items[idx]?.classList.add("active");
+            items[idx]?.scrollIntoView({ block: "nearest" });
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (active) {
+                selectRegion(active.dataset.value);
+            } else if (items.length === 1) {
+                selectRegion(items[0].dataset.value);
+            }
+        } else if (e.key === "Escape") {
+            closeRegionDropdown();
+            searchInput.blur();
+        }
+    });
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest("#region-combobox")) {
+            closeRegionDropdown();
+        }
+    });
 }
 
 function onRegionChange() {
@@ -226,7 +427,7 @@ async function loadMappings() {
 
     try {
         const subs = [...selectedSubscriptions].join(",");
-        lastMappingData = await apiFetch(`/api/mappings?region=${region}&subscriptions=${subs}`);
+        lastMappingData = await apiFetch(`/api/mappings?region=${region}&subscriptions=${subs}${tenantQS()}`);
 
         document.getElementById("results-loading").style.display = "none";
         document.getElementById("results-content").style.display = "block";
@@ -739,7 +940,7 @@ function exportGraphPNG() {
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = getEffectiveTheme() === "dark" ? "#1e1e1e" : "#ffffff";
         ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
         URL.revokeObjectURL(url);

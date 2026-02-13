@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Location pin body -->
+  <path d="M16 2C10.48 2 6 6.48 6 12c0 7 10 18 10 18s10-11 10-18c0-5.52-4.48-10-10-10z" fill="#0078d4"/>
+  <!-- Links (drawn first, behind nodes) -->
+  <line x1="11" y1="9" x2="21" y2="13" stroke="#fff" stroke-width="1" opacity="0.6"/>
+  <line x1="11" y1="13" x2="21" y2="9" stroke="#fff" stroke-width="1" opacity="0.6"/>
+  <line x1="11" y1="17" x2="21" y2="17" stroke="#fff" stroke-width="1" opacity="0.6"/>
+  <!-- Bipartite graph: left nodes -->
+  <circle cx="11" cy="9" r="1.8" fill="#fff"/>
+  <circle cx="11" cy="13" r="1.8" fill="#fff"/>
+  <circle cx="11" cy="17" r="1.8" fill="#fff"/>
+  <!-- Bipartite graph: right nodes -->
+  <circle cx="21" cy="9" r="1.8" fill="#fff"/>
+  <circle cx="21" cy="13" r="1.8" fill="#fff"/>
+  <circle cx="21" cy="17" r="1.8" fill="#fff"/>
+</svg>
