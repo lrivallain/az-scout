@@ -1063,7 +1063,7 @@ async function loadSkus() {
     }
 }
 
-function renderSkuTable(skus) {
+function renderSkuTable(skus, subscriptionName) {
     const container = document.getElementById("sku-table-container");
     const filterInput = document.getElementById("sku-filter");
     
@@ -1088,8 +1088,11 @@ function renderSkuTable(skus) {
     // Determine all zones in the region
     const allZones = [...new Set(filteredSkus.flatMap(s => s.zones))].sort();
     
-    // Build table
-    let html = '<table class="sku-table">';
+    // Build table with subscription context
+    let html = `<div style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--azure-light); border-radius: 6px; font-size: 0.875rem;">
+        <strong>Subscription:</strong> ${escapeHtml(subscriptionName)}
+    </div>`;
+    html += '<table class="sku-table">';
     html += "<thead><tr>";
     html += "<th>SKU Name</th>";
     html += "<th>Family</th>";
@@ -1114,11 +1117,11 @@ function renderSkuTable(skus) {
             const isRestricted = sku.restrictions.includes(zone);
             
             if (isRestricted) {
-                html += '<td class="zone-restricted" title="Restricted: SKU not available in this zone">⚠</td>';
+                html += '<td class="zone-restricted" title="Restricted: SKU not available in this zone" aria-label="Restricted">⚠</td>';
             } else if (isAvailable) {
-                html += '<td class="zone-available">✓</td>';
+                html += '<td class="zone-available" title="Available" aria-label="Available">✓</td>';
             } else {
-                html += '<td class="zone-unavailable">—</td>';
+                html += '<td class="zone-unavailable" title="Not available" aria-label="Not available">—</td>';
             }
         });
         
