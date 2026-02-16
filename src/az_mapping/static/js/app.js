@@ -10,6 +10,7 @@ let selectedSubscriptions = new Set();
 let regions = [];                // [{name, displayName}]
 let tenants = [];                // [{id, name}]
 let lastMappingData = null;      // cached result from /api/mappings
+let selectedSkuSubscription = null; // subscription selected for SKU loading
 
 // ---------------------------------------------------------------------------
 // Theme management
@@ -56,6 +57,7 @@ document.addEventListener("DOMContentLoaded", init);
 async function init() {
     document.getElementById("sub-filter").addEventListener("input", onFilterSubs);
     document.getElementById("tenant-select").addEventListener("change", onTenantChange);
+    document.getElementById("sku-subscription-select").addEventListener("change", onSkuSubscriptionChange);
     initRegionCombobox();
 
     // Load tenants first
@@ -86,6 +88,7 @@ async function init() {
             }
         });
         renderSubscriptionList();
+        updateSkuSubscriptionSelector();
     }
     updateLoadButton();
 
@@ -215,6 +218,7 @@ function toggleSubscription(id) {
     updateSubCount();
     updateLoadButton();
     syncUrlParams();
+    updateSkuSubscriptionSelector();
 }
 
 function selectAllVisible() {
@@ -225,6 +229,7 @@ function selectAllVisible() {
     updateSubCount();
     updateLoadButton();
     syncUrlParams();
+    updateSkuSubscriptionSelector();
 }
 
 function deselectAll() {
@@ -235,11 +240,56 @@ function deselectAll() {
     updateSubCount();
     updateLoadButton();
     syncUrlParams();
+    updateSkuSubscriptionSelector();
 }
 
 function updateSubCount() {
     document.getElementById("sub-count").textContent =
         `${selectedSubscriptions.size} selected`;
+}
+
+function updateSkuSubscriptionSelector() {
+    const selector = document.getElementById("sku-subscription-select");
+    const selectedSubs = [...selectedSubscriptions];
+    
+    // Clear existing options
+    selector.innerHTML = '<option value="">Select subscription…</option>';
+    
+    // Show selector only if multiple subscriptions are selected
+    if (selectedSubs.length > 1) {
+        selector.style.display = "block";
+        
+        // Populate options with selected subscriptions
+        selectedSubs.forEach(subId => {
+            const sub = subscriptions.find(s => s.id === subId);
+            if (sub) {
+                const option = document.createElement("option");
+                option.value = subId;
+                option.textContent = sub.name;
+                selector.appendChild(option);
+            }
+        });
+        
+        // Set selected value if exists and is still in selection
+        if (selectedSkuSubscription && selectedSubs.includes(selectedSkuSubscription)) {
+            selector.value = selectedSkuSubscription;
+        } else {
+            // Default to first subscription
+            selectedSkuSubscription = selectedSubs[0];
+            selector.value = selectedSkuSubscription;
+        }
+    } else {
+        selector.style.display = "none";
+        // Set to single selected subscription or null
+        selectedSkuSubscription = selectedSubs.length === 1 ? selectedSubs[0] : null;
+    }
+}
+
+function onSkuSubscriptionChange() {
+    const selector = document.getElementById("sku-subscription-select");
+    selectedSkuSubscription = selector.value;
+    // Reset SKU data when subscription changes
+    resetSkuSection();
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +483,9 @@ async function loadMappings() {
     document.getElementById("empty-state").style.display = "none";
     document.getElementById("results-content").style.display = "none";
     document.getElementById("results-loading").style.display = "flex";
+    
+    // Reset SKU section when mappings are reloaded
+    resetSkuSection();
 
     try {
         const subs = [...selectedSubscriptions].join(",");
@@ -1037,8 +1090,7 @@ async function loadSkus() {
         return;
     }
     
-    // Use first selected subscription (SKU API is subscription-specific)
-    // Users can compare SKUs across subscriptions by loading multiple times
+    // Check if subscriptions are selected
     if (selectedSubscriptions.size === 0) {
         showError("Please select at least one subscription.");
         return;
@@ -1050,7 +1102,13 @@ async function loadSkus() {
         return;
     }
     
-    const subscriptionId = [...selectedSubscriptions][0];
+    // Use selected SKU subscription (or first if only one selected)
+    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+    if (!subscriptionId) {
+        showError("Please select a subscription for SKU loading.");
+        return;
+    }
+    
     const subscriptionName = getSubName(subscriptionId);
     
     document.getElementById("sku-loading").style.display = "flex";
@@ -1103,7 +1161,9 @@ function renderSkuTable(skus, subscriptionName) {
     // Get physical zone mappings from lastMappingData for current subscription
     let physicalZoneMap = {};
     if (lastMappingData) {
-        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === [...selectedSubscriptions][0]);
+        // Use selectedSkuSubscription if available, otherwise first selected
+        const currentSubId = selectedSkuSubscription || [...selectedSubscriptions][0];
+        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === currentSubId);
         if (currentSubMapping && currentSubMapping.mappings) {
             currentSubMapping.mappings.forEach(m => {
                 physicalZoneMap[m.logicalZone] = m.physicalZone;
@@ -1169,7 +1229,7 @@ document.addEventListener("DOMContentLoaded", () => {
         filterInput.addEventListener("input", () => {
             if (lastSkuData) {
                 // Re-render with the last used subscription name
-                const subscriptionId = [...selectedSubscriptions][0];
+                const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
                 const subscriptionName = subscriptionId ? getSubName(subscriptionId) : "Unknown";
                 renderSkuTable(lastSkuData, subscriptionName);
             }
@@ -1186,7 +1246,9 @@ function exportSkuCSV() {
     // Get physical zone mappings from lastMappingData for current subscription
     let physicalZoneMap = {};
     if (lastMappingData) {
-        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === [...selectedSubscriptions][0]);
+        // Use selectedSkuSubscription if available, otherwise first selected
+        const currentSubId = selectedSkuSubscription || [...selectedSubscriptions][0];
+        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === currentSubId);
         if (currentSubMapping && currentSubMapping.mappings) {
             currentSubMapping.mappings.forEach(m => {
                 physicalZoneMap[m.logicalZone] = m.physicalZone;

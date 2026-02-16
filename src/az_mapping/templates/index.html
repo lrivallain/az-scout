@@ -164,6 +164,9 @@
                 </div>
                 <div id="sku-content" class="sku-content">
                     <div class="sku-controls">
+                        <select id="sku-subscription-select" style="display:none;">
+                            <option value="">Select subscription…</option>
+                        </select>
                         <input type="search" id="sku-filter" placeholder="Filter SKU names (e.g., D2s, E4)…"
                                autocomplete="off" spellcheck="false">
                         <button type="button" class="secondary-btn" onclick="loadSkus()">
@@ -179,7 +182,7 @@
                         <span>Fetching SKU data…</span>
                     </div>
                     <div id="sku-empty" class="empty-state-small">
-                        <p>Click <strong>Load SKUs</strong> to see VM SKU availability per zone for the selected region and first subscription.</p>
+                        <p>Click <strong>Load SKUs</strong> to see VM SKU availability per zone for the selected region and subscription.</p>
                     </div>
                     <div id="sku-table-container" class="sku-table-container" style="display:none;"></div>
                 </div>
