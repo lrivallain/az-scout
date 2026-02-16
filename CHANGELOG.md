@@ -5,22 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
-## [Unreleased]
 
-### Added
-
-- Dark mode with system preference detection, manual toggle (sun/moon button), and localStorage persistence.
-- Searchable region combobox with keyboard navigation, auto-select on single match, and click-outside-to-close.
-- Multi-tenant support with `/api/tenants` endpoint; default tenant auto-detected from JWT token (`tid` claim).
-- Concurrent auth probing per tenant – unauthenticated tenants are shown as disabled in the dropdown.
-- Tenant selection synced to URL query params (`?tenant=…`).
-- Entra ID icon for the tenant filter section.
-- Favicon (Azure-themed shield).
-- Pre-commit configuration (ruff, mypy, trailing-whitespace, end-of-file-fixer, check-yaml/toml).
-- 4 new tests for the tenant endpoint (15 total).
-
-
-## [2026.2.2] - TBD
+## [2026.2.2] - 2026-02-16
 
 ### Added
 
@@ -38,6 +24,15 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 - Azure API timeout errors now retry automatically (3 attempts, up to 60s per call).
 
+## [2026.2.1] - 2026-02-14
+
+### Added
+
+- **Dark mode** with system preference detection, manual toggle (sun/moon button), and localStorage persistence.
+- **Searchable region combobox** with keyboard navigation, auto-select on single match, and click-outside-to-close.
+- **Multi-tenant support** with `/api/tenants` endpoint; default tenant auto-detected from JWT token (`tid` claim).
+- Favicon (Azure-themed shield).
+- Pre-commit configuration (ruff, mypy, trailing-whitespace, end-of-file-fixer, check-yaml/toml).
 
 ## [2026.2.0] - 2026-02-13
 

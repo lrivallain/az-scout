@@ -312,7 +312,7 @@ def get_skus() -> Response | tuple[Response, int]:
                 break  # Success, exit retry loop
             except requests.ReadTimeout:
                 if attempt < 2:  # Not the last attempt
-                    wait_time = 2 ** attempt  # 1s, 2s exponential backoff
+                    wait_time = 2**attempt  # 1s, 2s exponential backoff
                     logger.warning(
                         f"SKU API timeout, retrying in {wait_time}s (attempt {attempt + 1}/3)"
                     )

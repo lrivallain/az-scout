@@ -101,9 +101,7 @@ body {
     font-size: 1.35rem;
     font-weight: 600;
 }
-.header-icon {
-    filter: brightness(2);
-}
+
 .header-subtitle {
     margin-top: 0.25rem;
     font-size: 0.85rem;
