@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Azure AZ Mapping Viewer</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='img/favicon.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
@@ -13,7 +13,7 @@
 <header class="app-header">
     <div class="header-left">
         <div class="header-content">
-            <img class="header-icon" src="{{ url_for('static', filename='img/favicon.svg') }}" width="28" height="28" alt="">
+            <img class="header-icon" src="{{ url_for('static', path='img/favicon.svg') }}" width="28" height="28" alt="">
             <h1>Azure AZ Mapping Viewer</h1>
         </div>
         <p class="header-subtitle">Visualize logical-to-physical Availability Zone mappings across subscriptions</p>
@@ -45,7 +45,7 @@
         <div class="sidebar-content" id="sidebar-content">
         <div class="filter-section">
             <h3>
-                <img class="filter-icon" src="{{ url_for('static', filename='img/entra-id.svg') }}" alt="Entra ID" width="16" height="16">
+                <img class="filter-icon" src="{{ url_for('static', path='img/entra-id.svg') }}" alt="Entra ID" width="16" height="16">
                 Tenant
             </h3>
             <select id="tenant-select">
@@ -55,7 +55,7 @@
 
         <div class="filter-section">
             <h3>
-                <img src="{{ url_for('static', filename='img/region-management.svg') }}" width="16" height="16" alt="">
+                <img src="{{ url_for('static', path='img/region-management.svg') }}" width="16" height="16" alt="">
                 Region
             </h3>
             <div class="region-combobox" id="region-combobox">
@@ -68,7 +68,7 @@
 
         <div class="filter-section">
             <h3>
-                <img src="{{ url_for('static', filename='img/subscriptions.svg') }}" width="16" height="16" alt="">
+                <img src="{{ url_for('static', path='img/subscriptions.svg') }}" width="16" height="16" alt="">
                 Subscriptions
             </h3>
             <input type="search" id="sub-filter" placeholder="Filter subscriptions…"
@@ -102,7 +102,7 @@
     <main class="results-panel">
         <div id="empty-state" class="empty-state">
             <!-- Replace with favicon -->
-            <img src="{{ url_for('static', filename='img/favicon.svg') }}" width="48" height="48" alt="Main icon">
+            <img src="{{ url_for('static', path='img/favicon.svg') }}" width="48" height="48" alt="Main icon">
             <p>Select a region and one or more subscriptions, then click <strong>Load Mappings</strong>.</p>
         </div>
 
@@ -207,6 +207,6 @@
     </div>
 </footer>
 
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', path='js/app.js') }}"></script>
 </body>
 </html>

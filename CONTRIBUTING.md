@@ -26,9 +26,9 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Running the app locally
 
 ```bash
-uv run az-mapping --no-open
+uv run az-mapping web --no-open --reload --verbose
 # or
-uv run python -m az_mapping
+uv run python -m az_mapping web --no-open --reload --verbose
 ```
 
 You need valid Azure credentials (`az login` or any method supported by `DefaultAzureCredential`).
@@ -57,8 +57,7 @@ uv run pre-commit install
 ## Running tests
 
 ```bash
-uv run pytest                              # quick run
-uv run pytest --cov=az_mapping --cov-report=term-missing   # with coverage
+uv run pytest
 ```
 
 ## Submitting a pull request
@@ -84,16 +83,19 @@ Edit `CHANGELOG.md`: move items from **[Unreleased]** into a new version section
 ### Added
 - …
 
-[Unreleased]: https://github.com/lrivallain/az-mapping/compare/v2026.2.1...HEAD
-[2026.2.1]: https://github.com/lrivallain/az-mapping/compare/v2026.2.0...v2026.2.1
+### Changed
+- …
+
+### Fixed
+- …
 ```
 
 ### 2. Commit and tag
 
 ```bash
 git add CHANGELOG.md
-git commit -m "release: v2026.2.1"
-git tag v2026.2.1
+git commit -m "release: v20YY.M.PP"
+git tag v20YY.M.PP
 ```
 
 ### 3. Push the tag

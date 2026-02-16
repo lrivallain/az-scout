@@ -1,8 +1,6 @@
-"""Tests for the az-mapping Flask routes."""
+"""Tests for the az-mapping FastAPI routes."""
 
 from unittest.mock import MagicMock, patch
-
-import requests
 
 # ---------------------------------------------------------------------------
 # GET /
@@ -15,7 +13,7 @@ class TestIndex:
     def test_index_returns_html(self, client):
         resp = client.get("/")
         assert resp.status_code == 200
-        assert b"Azure AZ Mapping Viewer" in resp.data
+        assert b"Azure AZ Mapping Viewer" in resp.content
 
 
 # ---------------------------------------------------------------------------
@@ -40,14 +38,14 @@ class TestListTenants:
         mock_resp.raise_for_status.return_value = None
 
         with (
-            patch("az_mapping.app.requests.get", return_value=mock_resp),
-            patch("az_mapping.app._get_default_tenant_id", return_value="tid-1"),
-            patch("az_mapping.app._check_tenant_auth", return_value=True),
+            patch("az_mapping.azure_api.requests.get", return_value=mock_resp),
+            patch("az_mapping.azure_api._get_default_tenant_id", return_value="tid-1"),
+            patch("az_mapping.azure_api._check_tenant_auth", return_value=True),
         ):
             resp = client.get("/api/tenants")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data["tenants"]) == 2
         assert data["tenants"][0]["name"] == "Alpha Tenant"
         assert data["tenants"][0]["authenticated"] is True
@@ -71,14 +69,14 @@ class TestListTenants:
             return tid == "tid-ok"
 
         with (
-            patch("az_mapping.app.requests.get", return_value=mock_resp),
-            patch("az_mapping.app._get_default_tenant_id", return_value="tid-ok"),
-            patch("az_mapping.app._check_tenant_auth", side_effect=_auth_side_effect),
+            patch("az_mapping.azure_api.requests.get", return_value=mock_resp),
+            patch("az_mapping.azure_api._get_default_tenant_id", return_value="tid-ok"),
+            patch("az_mapping.azure_api._check_tenant_auth", side_effect=_auth_side_effect),
         ):
             resp = client.get("/api/tenants")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         by_id = {t["id"]: t for t in data["tenants"]}
         assert by_id["tid-ok"]["authenticated"] is True
         assert by_id["tid-fail"]["authenticated"] is False
@@ -94,22 +92,22 @@ class TestListTenants:
         mock_resp.raise_for_status.return_value = None
 
         with (
-            patch("az_mapping.app.requests.get", return_value=mock_resp),
-            patch("az_mapping.app._get_default_tenant_id", return_value=None),
-            patch("az_mapping.app._check_tenant_auth", return_value=True),
+            patch("az_mapping.azure_api.requests.get", return_value=mock_resp),
+            patch("az_mapping.azure_api._get_default_tenant_id", return_value=None),
+            patch("az_mapping.azure_api._check_tenant_auth", return_value=True),
         ):
             resp = client.get("/api/tenants")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert data["tenants"][0]["name"] == "tid-no-name"
 
     def test_returns_500_on_error(self, client):
-        with patch("az_mapping.app.requests.get", side_effect=Exception("Azure down")):
+        with patch("az_mapping.azure_api.requests.get", side_effect=Exception("Azure down")):
             resp = client.get("/api/tenants")
 
         assert resp.status_code == 500
-        assert "error" in resp.get_json()
+        assert "error" in resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +132,11 @@ class TestListSubscriptions:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/subscriptions")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 2
         # Sorted alphabetically – Alpha before Zeta
         assert data[0]["name"] == "Alpha Sub"
@@ -165,19 +163,19 @@ class TestListSubscriptions:
         mock_resp2.json.return_value = page2
         mock_resp2.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", side_effect=[mock_resp1, mock_resp2]):
+        with patch("az_mapping.azure_api.requests.get", side_effect=[mock_resp1, mock_resp2]):
             resp = client.get("/api/subscriptions")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 2
 
     def test_returns_500_on_azure_error(self, client):
-        with patch("az_mapping.app.requests.get", side_effect=Exception("Azure down")):
+        with patch("az_mapping.azure_api.requests.get", side_effect=Exception("Azure down")):
             resp = client.get("/api/subscriptions")
 
         assert resp.status_code == 500
-        assert "error" in resp.get_json()
+        assert "error" in resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -223,11 +221,11 @@ class TestListRegions:
         mock_resp.json.return_value = self._make_locations_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/regions?subscriptionId=sub-123")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 1
         assert data[0]["name"] == "eastus"
 
@@ -244,7 +242,7 @@ class TestListRegions:
         locations_resp.json.return_value = self._make_locations_response()
         locations_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", side_effect=[subs_resp, locations_resp]):
+        with patch("az_mapping.azure_api.requests.get", side_effect=[subs_resp, locations_resp]):
             resp = client.get("/api/regions")
 
         assert resp.status_code == 200
@@ -255,7 +253,7 @@ class TestListRegions:
         subs_resp.json.return_value = {"value": [{"subscriptionId": "x", "state": "Disabled"}]}
         subs_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=subs_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=subs_resp):
             resp = client.get("/api/regions")
 
         assert resp.status_code == 404
@@ -297,11 +295,11 @@ class TestGetMappings:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/mappings?region=eastus&subscriptions=sub1")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 1
         assert data[0]["subscriptionId"] == "sub1"
         # Sorted by logicalZone
@@ -324,11 +322,11 @@ class TestGetMappings:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/mappings?region=eastus&subscriptions=sub1,sub2")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 2
 
     def test_includes_error_for_failing_subscription(self, client):
@@ -350,11 +348,11 @@ class TestGetMappings:
         mock_fail = MagicMock()
         mock_fail.raise_for_status.side_effect = Exception("Forbidden")
 
-        with patch("az_mapping.app.requests.get", side_effect=[mock_ok, mock_fail]):
+        with patch("az_mapping.azure_api.requests.get", side_effect=[mock_ok, mock_fail]):
             resp = client.get("/api/mappings?region=eastus&subscriptions=sub1,sub2")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 2
         # First sub succeeded
         assert len(data[0]["mappings"]) == 1
@@ -413,11 +411,11 @@ class TestGetSkus:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 1
         assert data[0]["name"] == "Standard_D2s_v3"
         assert data[0]["zones"] == ["1", "2", "3"]
@@ -453,11 +451,11 @@ class TestGetSkus:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         # Only virtualMachines (default) should be returned
         assert len(data) == 1
         assert data[0]["name"] == "Standard_D2s_v3"
@@ -486,21 +484,148 @@ class TestGetSkus:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.app.requests.get", return_value=mock_resp):
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert len(data) == 1
         assert data[0]["restrictions"] == ["3"]
 
     def test_returns_500_on_error(self, client):
         with patch(
-            "az_mapping.app.requests.get",
-            side_effect=requests.RequestException("API error"),
+            "az_mapping.azure_api.requests.get",
+            side_effect=Exception("API error"),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 500
-        data = resp.get_json()
+        data = resp.json()
         assert "error" in data
+
+    # ---------- SKU filter tests ----------
+
+    def _make_multi_sku_response(self):
+        """ARM-like response with several SKUs for filter testing."""
+        return {
+            "value": [
+                {
+                    "name": "Standard_D2s_v3",
+                    "resourceType": "virtualMachines",
+                    "tier": "Standard",
+                    "size": "D2s_v3",
+                    "family": "standardDSv3Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1", "2", "3"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "2"},
+                        {"name": "MemoryGB", "value": "8"},
+                    ],
+                    "restrictions": [],
+                },
+                {
+                    "name": "Standard_D4s_v3",
+                    "resourceType": "virtualMachines",
+                    "tier": "Standard",
+                    "size": "D4s_v3",
+                    "family": "standardDSv3Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1", "2"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "4"},
+                        {"name": "MemoryGB", "value": "16"},
+                    ],
+                    "restrictions": [],
+                },
+                {
+                    "name": "Standard_E8s_v4",
+                    "resourceType": "virtualMachines",
+                    "tier": "Standard",
+                    "size": "E8s_v4",
+                    "family": "standardESv4Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1", "2", "3"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "8"},
+                        {"name": "MemoryGB", "value": "64"},
+                    ],
+                    "restrictions": [],
+                },
+            ],
+            "nextLink": None,
+        }
+
+    def test_filters_by_name(self, client):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self._make_multi_sku_response()
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&name=D2s")
+
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "Standard_D2s_v3"
+
+    def test_filters_by_family(self, client):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self._make_multi_sku_response()
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&family=ESv4")
+
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "Standard_E8s_v4"
+
+    def test_filters_by_vcpu_range(self, client):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self._make_multi_sku_response()
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&minVcpus=2&maxVcpus=4")
+
+        data = resp.json()
+        names = [s["name"] for s in data]
+        assert "Standard_D2s_v3" in names
+        assert "Standard_D4s_v3" in names
+        assert "Standard_E8s_v4" not in names
+
+    def test_filters_by_memory_range(self, client):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self._make_multi_sku_response()
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get(
+                "/api/skus?region=eastus&subscriptionId=sub1&minMemoryGB=10&maxMemoryGB=32"
+            )
+
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "Standard_D4s_v3"
+
+    def test_filters_combined(self, client):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self._make_multi_sku_response()
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&family=DSv3&minVcpus=4")
+
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "Standard_D4s_v3"
+
+    def test_no_filters_returns_all(self, client):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self._make_multi_sku_response()
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        data = resp.json()
+        assert len(data) == 3

@@ -1,5 +1,5 @@
 """Allow running the package directly: python -m az_mapping."""
 
-from az_mapping.app import main
+from az_mapping.cli import cli
 
-main(standalone_mode=True)
+cli(standalone_mode=True)

@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 
+## [Unreleased]
+
+## [2026.2.3] - 2026-02-16
+
+### Added
+
+- **MCP server** – expose zone mappings and SKU availability as MCP tools for AI agents.
+  - `list_tenants` – discover Azure AD tenants and auth status.
+  - `list_subscriptions` – list enabled subscriptions.
+  - `list_regions` – list AZ-enabled regions.
+  - `get_zone_mappings` – query logical-to-physical zone mappings.
+  - `get_sku_availability` – query VM SKU availability per zone with filtering
+    (by name, family, vCPU range, memory range).
+  - Supports stdio and SSE transports via `az-mapping mcp` subcommand.
+- New `azure_api` module – shared Azure ARM logic used by both the web app and MCP server.
+- **Colored logging** – reuses uvicorn's `DefaultFormatter` for consistent colored output.
+- **`--reload` CLI flag** – auto-reload on code changes for development (uses uvicorn's watcher).
+- OpenAPI documentation available at `/docs` (Swagger UI) and `/redoc`.
+
+### Changed
+
+- **Migrated from Flask to FastAPI** – async routes, built-in request validation,
+  automatic OpenAPI schema generation.
+- **Unified CLI** – `az-mapping web` and `az-mapping mcp` subcommands replace the
+  separate entry points. Running `az-mapping` without a subcommand defaults to
+  `web` for backward compatibility. `--verbose` is available on both subcommands;
+  `--reload` is specific to `web`.
+- Tenant authentication checks now suppress noisy Azure CLI subprocess stderr output
+  using an OS-level fd redirect (`_suppress_stderr` context manager).
+- Azure SDK logger silenced to `CRITICAL` during auth probes to avoid misleading
+  `AADSTS*` error messages for tenants the user is not authenticated to.
+
+### Fixed
+
+- Thread-safety issue where concurrent tenant auth checks could race on stderr
+  redirection – fd redirect is now applied once around the entire thread pool batch.
+
 ## [2026.2.2] - 2026-02-16
 
 ### Added
@@ -53,5 +90,8 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 - GitHub Actions CI workflow (ruff lint + pytest across Python 3.11–3.13).
 - Issue templates (bug report, feature request) and PR template.
 
-[Unreleased]: https://github.com/lrivallain/az-mapping/compare/v2026.2.0...HEAD
+[Unreleased]: https://github.com/lrivallain/az-mapping/compare/v2026.2.3...HEAD
+[2026.2.3]: https://github.com/lrivallain/az-mapping/compare/v2026.2.2...v2026.2.3
+[2026.2.2]: https://github.com/lrivallain/az-mapping/compare/v2026.2.1...v2026.2.2
+[2026.2.1]: https://github.com/lrivallain/az-mapping/compare/v2026.2.0...v2026.2.1
 [2026.2.0]: https://github.com/lrivallain/az-mapping/releases/tag/v2026.2.0
