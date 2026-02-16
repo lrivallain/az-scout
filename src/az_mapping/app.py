@@ -7,6 +7,7 @@ to physical zones across subscriptions in a given region.
 import base64
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -261,6 +262,109 @@ def get_mappings() -> Response | tuple[Response, int]:
             )
 
     return jsonify(results)
+
+
+@app.route("/api/skus")
+def get_skus() -> Response | tuple[Response, int]:
+    """Return resource SKUs with zone restrictions for a given region and subscription.
+
+    Uses the Azure Resource SKUs API to fetch VM sizes and other resource types,
+    filtering by region and extracting zone availability information.
+    """
+    region = flask_request.args.get("region")
+    sub_id = flask_request.args.get("subscriptionId")
+    tenant_id = flask_request.args.get("tenantId")
+    resource_type = flask_request.args.get("resourceType", "virtualMachines")
+
+    if not region or not sub_id:
+        return (
+            jsonify({"error": "Both 'region' and 'subscriptionId' query parameters are required"}),
+            400,
+        )
+
+    try:
+        headers = _get_headers(tenant_id)
+        # Use server-side filtering for region to reduce response size
+        url = (
+            f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/providers/"
+            f"Microsoft.Compute/skus?api-version={AZURE_API_VERSION}"
+            f"&$filter=location eq '{region}'"
+        )
+
+        all_skus: list[dict] = []
+
+        # Simple retry logic with exponential backoff (max 3 attempts)
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, headers=headers, timeout=60)
+                resp.raise_for_status()
+                data = resp.json()
+                all_skus.extend(data.get("value", []))
+                url = data.get("nextLink")
+
+                # Handle pagination
+                while url:
+                    resp = requests.get(url, headers=headers, timeout=60)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    all_skus.extend(data.get("value", []))
+                    url = data.get("nextLink")
+                break  # Success, exit retry loop
+            except requests.ReadTimeout:
+                if attempt < 2:  # Not the last attempt
+                    wait_time = 2**attempt  # 1s, 2s exponential backoff
+                    logger.warning(
+                        f"SKU API timeout, retrying in {wait_time}s (attempt {attempt + 1}/3)"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    raise  # Last attempt failed, re-raise
+
+        # Filter SKUs by resource type only (region already filtered by API)
+        filtered_skus = []
+        for sku in all_skus:
+            if sku.get("resourceType") != resource_type:
+                continue
+
+            # Extract zone information
+            location_info = sku.get("locationInfo", [])
+            zones_for_region = []
+
+            for loc_info in location_info:
+                if loc_info.get("location", "").lower() == region.lower():
+                    zones_for_region = loc_info.get("zones", [])
+                    break
+
+            # Extract restrictions
+            restrictions = []
+            for restriction in sku.get("restrictions", []):
+                if restriction.get("type") == "Zone":
+                    restrictions.extend(restriction.get("restrictionInfo", {}).get("zones", []))
+
+            # Extract capabilities
+            capabilities = {}
+            for cap in sku.get("capabilities", []):
+                name = cap.get("name", "")
+                value = cap.get("value", "")
+                if name in ["vCPUs", "MemoryGB", "MaxDataDiskCount", "PremiumIO"]:
+                    capabilities[name] = value
+
+            filtered_skus.append(
+                {
+                    "name": sku.get("name"),
+                    "tier": sku.get("tier"),
+                    "size": sku.get("size"),
+                    "family": sku.get("family"),
+                    "zones": zones_for_region,
+                    "restrictions": restrictions,
+                    "capabilities": capabilities,
+                }
+            )
+
+        return jsonify(sorted(filtered_skus, key=lambda x: x.get("name", "")))
+    except requests.RequestException as exc:
+        logger.exception("Failed to fetch SKUs")
+        return jsonify({"error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------

@@ -101,10 +101,8 @@
     <!-- Results area -->
     <main class="results-panel">
         <div id="empty-state" class="empty-state">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
-                <circle cx="12" cy="10" r="3"/>
-            </svg>
+            <!-- Replace with favicon -->
+            <img src="{{ url_for('static', filename='img/favicon.svg') }}" width="48" height="48" alt="Main icon">
             <p>Select a region and one or more subscriptions, then click <strong>Load Mappings</strong>.</p>
         </div>
 
@@ -140,6 +138,52 @@
                     </button>
                 </div>
                 <div id="table-container" class="table-container"></div>
+            </section>
+
+            <!-- SKU section -->
+            <section class="result-card sku-section">
+                <div class="card-header">
+                    <h2>
+                        <button type="button" class="section-toggle" onclick="toggleSkuSection()" id="sku-toggle" title="Show/hide SKU availability">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </button>
+                        SKU Availability per Physical Zone
+                    </h2>
+                    <button type="button" class="export-btn" onclick="exportSkuCSV()" title="Export as CSV">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        CSV
+                    </button>
+                </div>
+                <div id="sku-content" class="sku-content">
+                    <div class="sku-controls">
+                        <select id="sku-subscription-select" style="display:none;">
+                            <option value="">Select subscription…</option>
+                        </select>
+                        <input type="search" id="sku-filter" placeholder="Filter SKU names (e.g., D2s, E4)…"
+                               autocomplete="off" spellcheck="false">
+                        <button type="button" class="secondary-btn" onclick="loadSkus()">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="1 4 1 10 7 10"/>
+                                <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
+                            </svg>
+                            Load SKUs
+                        </button>
+                    </div>
+                    <div id="sku-loading" class="loading-indicator" style="display:none;">
+                        <div class="spinner"></div>
+                        <span>Fetching SKU data…</span>
+                    </div>
+                    <div id="sku-empty" class="empty-state-small">
+                        <p>Click <strong>Load SKUs</strong> to see VM SKU availability per zone for the selected region and subscription.</p>
+                    </div>
+                    <div id="sku-table-container" class="sku-table-container" style="display:none;"></div>
+                </div>
             </section>
         </div>
 

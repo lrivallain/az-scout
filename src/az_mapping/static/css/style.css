@@ -37,6 +37,8 @@
         --text: #d4d4d4;
         --text-muted: #9d9d9d;
         --border: #3e3e42;
+        --success: #4ec94e;
+        --warning: #ffd60a;
         --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
         --group-box-left-fill: #2d2d30;
@@ -55,6 +57,8 @@
     --text: #d4d4d4;
     --text-muted: #9d9d9d;
     --border: #3e3e42;
+    --success: #4ec94e;
+    --warning: #ffd60a;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
     --group-box-left-fill: #2d2d30;
@@ -97,9 +101,7 @@ body {
     font-size: 1.35rem;
     font-weight: 600;
 }
-.header-icon {
-    filter: brightness(2);
-}
+
 .header-subtitle {
     margin-top: 0.25rem;
     font-size: 0.85rem;
@@ -742,5 +744,178 @@ body {
     }
     .results-panel {
         max-height: none;
+    }
+}
+
+/* ---- SKU Section ---- */
+.sku-section .card-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.section-toggle {
+    background: none;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform var(--transition);
+}
+
+.section-toggle .toggle-icon {
+    transition: transform var(--transition);
+}
+
+.sku-section.collapsed .section-toggle .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.sku-content {
+    max-height: 800px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.sku-section.collapsed .sku-content {
+    max-height: 0;
+}
+
+.sku-controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.sku-controls select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 0.875rem;
+    min-width: 200px;
+    cursor: pointer;
+}
+
+.sku-controls select:focus {
+    outline: none;
+    border-color: var(--azure-blue);
+    box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+}
+
+.sku-controls input[type="search"] {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 0.875rem;
+}
+
+.sku-controls input[type="search"]:focus {
+    outline: none;
+    border-color: var(--azure-blue);
+    box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+}
+
+.secondary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    background: var(--card-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.secondary-btn:hover {
+    background: var(--azure-light);
+    border-color: var(--azure-blue);
+}
+
+.secondary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.empty-state-small {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.empty-state-small p {
+    margin: 0;
+}
+
+.sku-table-container {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.sku-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.sku-table th {
+    background: var(--azure-light);
+    color: var(--azure-dark);
+    font-weight: 600;
+    text-align: left;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 2px solid var(--azure-blue);
+    white-space: nowrap;
+}
+
+.sku-table td {
+    padding: 0.55rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.sku-table tr:hover td {
+    background: var(--table-hover);
+}
+
+.zone-available {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.zone-unavailable {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.zone-restricted {
+    color: var(--warning);
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+/* Dark mode: SKU table header */
+[data-theme="dark"] .sku-table th {
+    background: var(--azure-light);
+    color: #58a6ff;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .sku-table th {
+        background: var(--azure-light);
+        color: #58a6ff;
     }
 }

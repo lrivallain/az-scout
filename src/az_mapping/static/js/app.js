@@ -10,6 +10,8 @@ let selectedSubscriptions = new Set();
 let regions = [];                // [{name, displayName}]
 let tenants = [];                // [{id, name}]
 let lastMappingData = null;      // cached result from /api/mappings
+let selectedSkuSubscription = null; // subscription selected for SKU loading
+let lastSkuData = null;          // cached SKU data
 
 // ---------------------------------------------------------------------------
 // Theme management
@@ -56,6 +58,24 @@ document.addEventListener("DOMContentLoaded", init);
 async function init() {
     document.getElementById("sub-filter").addEventListener("input", onFilterSubs);
     document.getElementById("tenant-select").addEventListener("change", onTenantChange);
+    document.getElementById("sku-subscription-select").addEventListener("change", onSkuSubscriptionChange);
+    
+    // SKU filter with debounce (250ms)
+    let skuFilterTimeout;
+    const skuFilterInput = document.getElementById("sku-filter");
+    if (skuFilterInput) {
+        skuFilterInput.addEventListener("input", () => {
+            clearTimeout(skuFilterTimeout);
+            skuFilterTimeout = setTimeout(() => {
+                if (lastSkuData) {
+                    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+                    const subscriptionName = subscriptionId ? getSubName(subscriptionId) : "Unknown";
+                    renderSkuTable(lastSkuData, subscriptionName);
+                }
+            }, 250);
+        });
+    }
+    
     initRegionCombobox();
 
     // Load tenants first
@@ -86,6 +106,7 @@ async function init() {
             }
         });
         renderSubscriptionList();
+        updateSkuSubscriptionSelector();
     }
     updateLoadButton();
 
@@ -215,6 +236,7 @@ function toggleSubscription(id) {
     updateSubCount();
     updateLoadButton();
     syncUrlParams();
+    updateSkuSubscriptionSelector();
 }
 
 function selectAllVisible() {
@@ -225,6 +247,7 @@ function selectAllVisible() {
     updateSubCount();
     updateLoadButton();
     syncUrlParams();
+    updateSkuSubscriptionSelector();
 }
 
 function deselectAll() {
@@ -235,11 +258,56 @@ function deselectAll() {
     updateSubCount();
     updateLoadButton();
     syncUrlParams();
+    updateSkuSubscriptionSelector();
 }
 
 function updateSubCount() {
     document.getElementById("sub-count").textContent =
         `${selectedSubscriptions.size} selected`;
+}
+
+function updateSkuSubscriptionSelector() {
+    const selector = document.getElementById("sku-subscription-select");
+    const selectedSubs = [...selectedSubscriptions];
+    
+    // Clear existing options
+    selector.innerHTML = '<option value="">Select subscription…</option>';
+    
+    // Show selector only if multiple subscriptions are selected
+    if (selectedSubs.length > 1) {
+        selector.style.display = "block";
+        
+        // Populate options with selected subscriptions
+        selectedSubs.forEach(subId => {
+            const sub = subscriptions.find(s => s.id === subId);
+            if (sub) {
+                const option = document.createElement("option");
+                option.value = subId;
+                option.textContent = sub.name;
+                selector.appendChild(option);
+            }
+        });
+        
+        // Set selected value if exists and is still in selection
+        if (selectedSkuSubscription && selectedSubs.includes(selectedSkuSubscription)) {
+            selector.value = selectedSkuSubscription;
+        } else {
+            // Default to first subscription
+            selectedSkuSubscription = selectedSubs[0];
+            selector.value = selectedSkuSubscription;
+        }
+    } else {
+        selector.style.display = "none";
+        // Set to single selected subscription or null
+        selectedSkuSubscription = selectedSubs.length === 1 ? selectedSubs[0] : null;
+    }
+}
+
+function onSkuSubscriptionChange() {
+    const selector = document.getElementById("sku-subscription-select");
+    selectedSkuSubscription = selector.value;
+    // Reset SKU data when subscription changes
+    resetSkuSection();
 }
 
 // ---------------------------------------------------------------------------
@@ -405,6 +473,15 @@ function initRegionCombobox() {
 function onRegionChange() {
     updateLoadButton();
     syncUrlParams();
+    // Reset SKU data when region changes to avoid confusion
+    resetSkuSection();
+}
+
+function resetSkuSection() {
+    lastSkuData = null;
+    document.getElementById("sku-empty").style.display = "block";
+    document.getElementById("sku-table-container").style.display = "none";
+    document.getElementById("sku-loading").style.display = "none";
 }
 
 function updateLoadButton() {
@@ -424,6 +501,9 @@ async function loadMappings() {
     document.getElementById("empty-state").style.display = "none";
     document.getElementById("results-content").style.display = "none";
     document.getElementById("results-loading").style.display = "flex";
+    
+    // Reset SKU section when mappings are reloaded
+    resetSkuSection();
 
     try {
         const subs = [...selectedSubscriptions].join(",");
@@ -1003,6 +1083,218 @@ function exportTableCSV() {
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.download = `az-mapping-${region}.csv`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+// ---------------------------------------------------------------------------
+// SKU Section
+// ---------------------------------------------------------------------------
+
+function toggleSkuSection() {
+    const section = document.querySelector(".sku-section");
+    section.classList.toggle("collapsed");
+}
+
+function getPhysicalZoneMap(subscriptionId) {
+    const map = {};
+    if (!lastMappingData) return map;
+    const subMapping = lastMappingData.find(d => d.subscriptionId === subscriptionId);
+    if (subMapping && subMapping.mappings) {
+        subMapping.mappings.forEach(m => { map[m.logicalZone] = m.physicalZone; });
+    }
+    return map;
+}
+
+async function loadSkus() {
+    const region = document.getElementById("region-select").value;
+    const tenant = document.getElementById("tenant-select").value;
+    const loadBtn = document.querySelector('.sku-controls .secondary-btn');
+    
+    if (!region) {
+        showError("Please select a region first.");
+        return;
+    }
+    
+    // Check if subscriptions are selected
+    if (selectedSubscriptions.size === 0) {
+        showError("Please select at least one subscription.");
+        return;
+    }
+    
+    // Ensure zone mappings are loaded first to get physical zone names
+    if (!lastMappingData) {
+        showError("Please load zone mappings first by clicking 'Load Mappings' button.");
+        return;
+    }
+    
+    // Use selected SKU subscription (or first if only one selected)
+    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+    if (!subscriptionId) {
+        showError("Please select a subscription for SKU loading.");
+        return;
+    }
+    
+    const subscriptionName = getSubName(subscriptionId);
+    
+    // Disable button while loading
+    if (loadBtn) loadBtn.disabled = true;
+    
+    document.getElementById("sku-loading").style.display = "flex";
+    document.getElementById("sku-empty").style.display = "none";
+    document.getElementById("sku-table-container").style.display = "none";
+    
+    try {
+        const params = new URLSearchParams({ region, subscriptionId });
+        if (tenant) params.append("tenantId", tenant);
+        
+        const data = await apiFetch(`/api/skus?${params}`);
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        lastSkuData = data;
+        renderSkuTable(data, subscriptionName);
+        
+    } catch (err) {
+        showError(`Failed to fetch SKUs: ${err.message}`);
+        document.getElementById("sku-empty").style.display = "block";
+    } finally {
+        document.getElementById("sku-loading").style.display = "none";
+        if (loadBtn) loadBtn.disabled = false;
+    }
+}
+
+function renderSkuTable(skus, subscriptionName) {
+    const container = document.getElementById("sku-table-container");
+    const filterInput = document.getElementById("sku-filter");
+    
+    if (!skus || skus.length === 0) {
+        container.innerHTML = "<p class='empty-state-small'>No SKUs found for this region.</p>";
+        container.style.display = "block";
+        return;
+    }
+    
+    // Apply filter
+    const filterText = filterInput.value.toLowerCase();
+    const filteredSkus = skus.filter(sku => 
+        !filterText || sku.name.toLowerCase().includes(filterText)
+    );
+    
+    if (filteredSkus.length === 0) {
+        container.innerHTML = "<p class='empty-state-small'>No SKUs match the filter.</p>";
+        container.style.display = "block";
+        return;
+    }
+    
+    // Get physical zone mappings using helper function
+    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+    const physicalZoneMap = getPhysicalZoneMap(subscriptionId);
+    
+    // Determine all logical zones from SKUs
+    const allLogicalZones = [...new Set(filteredSkus.flatMap(s => s.zones))].sort();
+    
+    // Map to physical zones
+    const physicalZones = allLogicalZones.map(lz => physicalZoneMap[lz] || `Zone ${lz}`);
+    
+    // Build table with subscription context
+    let html = `<div style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--azure-light); border-radius: 6px; font-size: 0.875rem;">
+        <strong>Subscription:</strong> ${escapeHtml(subscriptionName)}
+    </div>`;
+    html += '<table class="sku-table">';
+    html += "<thead><tr>";
+    html += "<th>SKU Name</th>";
+    html += "<th>Family</th>";
+    html += "<th>vCPUs</th>";
+    html += "<th>Memory (GB)</th>";
+    
+    // Render headers with zone number and physical zone name (with line break)
+    allLogicalZones.forEach((lz, index) => {
+        const pz = physicalZones[index];
+        html += `<th>Zone ${escapeHtml(lz)}<br>${escapeHtml(pz)}</th>`;
+    });
+    
+    html += "</tr></thead><tbody>";
+    
+    filteredSkus.forEach(sku => {
+        html += "<tr>";
+        html += `<td><strong>${escapeHtml(sku.name)}</strong></td>`;
+        html += `<td>${escapeHtml(sku.family || "—")}</td>`;
+        html += `<td>${escapeHtml(sku.capabilities.vCPUs || "—")}</td>`;
+        html += `<td>${escapeHtml(sku.capabilities.MemoryGB || "—")}</td>`;
+        
+        allLogicalZones.forEach(logicalZone => {
+            const isAvailable = sku.zones.includes(logicalZone);
+            const isRestricted = sku.restrictions.includes(logicalZone);
+            
+            if (isRestricted) {
+                html += '<td class="zone-restricted" title="Restricted: SKU not available in this zone" aria-label="Restricted">⚠</td>';
+            } else if (isAvailable) {
+                html += '<td class="zone-available" title="Available" aria-label="Available">✓</td>';
+            } else {
+                html += '<td class="zone-unavailable" title="Not available" aria-label="Not available">—</td>';
+            }
+        });
+        
+        html += "</tr>";
+    });
+    
+    html += "</tbody></table>";
+    container.innerHTML = html;
+    container.style.display = "block";
+}
+
+function exportSkuCSV() {
+    if (!lastSkuData || lastSkuData.length === 0) {
+        showError("No SKU data to export.");
+        return;
+    }
+    
+    // Get physical zone mappings using helper function
+    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+    const physicalZoneMap = getPhysicalZoneMap(subscriptionId);
+    
+    const allLogicalZones = [...new Set(lastSkuData.flatMap(s => s.zones))].sort();
+    const physicalZones = allLogicalZones.map(lz => physicalZoneMap[lz] || `Zone ${lz}`);
+    
+    // Header row with zone number and physical zone information
+    const zoneHeaders = allLogicalZones.map((lz, index) => 
+        `Zone ${lz}\n${physicalZones[index]}`
+    );
+    const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)", 
+        ...zoneHeaders];
+    
+    // Data rows
+    const rows = lastSkuData.map(sku => {
+        const zoneCols = allLogicalZones.map(logicalZone => {
+            const isAvailable = sku.zones.includes(logicalZone);
+            const isRestricted = sku.restrictions.includes(logicalZone);
+            
+            if (isRestricted) return "Restricted";
+            if (isAvailable) return "Available";
+            return "Unavailable";
+        });
+        
+        return [
+            sku.name,
+            sku.family || "",
+            sku.capabilities.vCPUs || "",
+            sku.capabilities.MemoryGB || "",
+            ...zoneCols
+        ];
+    });
+    
+    // Build CSV string
+    const csvContent = [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+    
+    const region = document.getElementById("region-select").value || "skus";
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.download = `az-skus-${region}.csv`;
     a.href = URL.createObjectURL(blob);
     a.click();
     URL.revokeObjectURL(a.href);
