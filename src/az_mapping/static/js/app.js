@@ -11,6 +11,7 @@ let regions = [];                // [{name, displayName}]
 let tenants = [];                // [{id, name}]
 let lastMappingData = null;      // cached result from /api/mappings
 let selectedSkuSubscription = null; // subscription selected for SKU loading
+let lastSkuData = null;          // cached SKU data
 
 // ---------------------------------------------------------------------------
 // Theme management
@@ -58,6 +59,23 @@ async function init() {
     document.getElementById("sub-filter").addEventListener("input", onFilterSubs);
     document.getElementById("tenant-select").addEventListener("change", onTenantChange);
     document.getElementById("sku-subscription-select").addEventListener("change", onSkuSubscriptionChange);
+    
+    // SKU filter with debounce (250ms)
+    let skuFilterTimeout;
+    const skuFilterInput = document.getElementById("sku-filter");
+    if (skuFilterInput) {
+        skuFilterInput.addEventListener("input", () => {
+            clearTimeout(skuFilterTimeout);
+            skuFilterTimeout = setTimeout(() => {
+                if (lastSkuData) {
+                    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+                    const subscriptionName = subscriptionId ? getSubName(subscriptionId) : "Unknown";
+                    renderSkuTable(lastSkuData, subscriptionName);
+                }
+            }, 250);
+        });
+    }
+    
     initRegionCombobox();
 
     // Load tenants first
@@ -1074,16 +1092,25 @@ function exportTableCSV() {
 // SKU Section
 // ---------------------------------------------------------------------------
 
-let lastSkuData = null; // Cached SKU data
-
 function toggleSkuSection() {
     const section = document.querySelector(".sku-section");
     section.classList.toggle("collapsed");
 }
 
+function getPhysicalZoneMap(subscriptionId) {
+    const map = {};
+    if (!lastMappingData) return map;
+    const subMapping = lastMappingData.find(d => d.subscriptionId === subscriptionId);
+    if (subMapping && subMapping.mappings) {
+        subMapping.mappings.forEach(m => { map[m.logicalZone] = m.physicalZone; });
+    }
+    return map;
+}
+
 async function loadSkus() {
     const region = document.getElementById("region-select").value;
     const tenant = document.getElementById("tenant-select").value;
+    const loadBtn = document.querySelector('.sku-controls .secondary-btn');
     
     if (!region) {
         showError("Please select a region first.");
@@ -1111,6 +1138,9 @@ async function loadSkus() {
     
     const subscriptionName = getSubName(subscriptionId);
     
+    // Disable button while loading
+    if (loadBtn) loadBtn.disabled = true;
+    
     document.getElementById("sku-loading").style.display = "flex";
     document.getElementById("sku-empty").style.display = "none";
     document.getElementById("sku-table-container").style.display = "none";
@@ -1133,6 +1163,7 @@ async function loadSkus() {
         document.getElementById("sku-empty").style.display = "block";
     } finally {
         document.getElementById("sku-loading").style.display = "none";
+        if (loadBtn) loadBtn.disabled = false;
     }
 }
 
@@ -1141,7 +1172,7 @@ function renderSkuTable(skus, subscriptionName) {
     const filterInput = document.getElementById("sku-filter");
     
     if (!skus || skus.length === 0) {
-        container.innerHTML = "<p style='text-align:center; padding:2rem; color:var(--text-muted);'>No SKUs found for this region.</p>";
+        container.innerHTML = "<p class='empty-state-small'>No SKUs found for this region.</p>";
         container.style.display = "block";
         return;
     }
@@ -1153,23 +1184,14 @@ function renderSkuTable(skus, subscriptionName) {
     );
     
     if (filteredSkus.length === 0) {
-        container.innerHTML = "<p style='text-align:center; padding:2rem; color:var(--text-muted);'>No SKUs match the filter.</p>";
+        container.innerHTML = "<p class='empty-state-small'>No SKUs match the filter.</p>";
         container.style.display = "block";
         return;
     }
     
-    // Get physical zone mappings from lastMappingData for current subscription
-    let physicalZoneMap = {};
-    if (lastMappingData) {
-        // Use selectedSkuSubscription if available, otherwise first selected
-        const currentSubId = selectedSkuSubscription || [...selectedSubscriptions][0];
-        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === currentSubId);
-        if (currentSubMapping && currentSubMapping.mappings) {
-            currentSubMapping.mappings.forEach(m => {
-                physicalZoneMap[m.logicalZone] = m.physicalZone;
-            });
-        }
-    }
+    // Get physical zone mappings using helper function
+    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+    const physicalZoneMap = getPhysicalZoneMap(subscriptionId);
     
     // Determine all logical zones from SKUs
     const allLogicalZones = [...new Set(filteredSkus.flatMap(s => s.zones))].sort();
@@ -1224,39 +1246,15 @@ function renderSkuTable(skus, subscriptionName) {
     container.style.display = "block";
 }
 
-// Re-render SKU table when filter changes
-document.addEventListener("DOMContentLoaded", () => {
-    const filterInput = document.getElementById("sku-filter");
-    if (filterInput) {
-        filterInput.addEventListener("input", () => {
-            if (lastSkuData) {
-                // Re-render with the last used subscription name
-                const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
-                const subscriptionName = subscriptionId ? getSubName(subscriptionId) : "Unknown";
-                renderSkuTable(lastSkuData, subscriptionName);
-            }
-        });
-    }
-});
-
 function exportSkuCSV() {
     if (!lastSkuData || lastSkuData.length === 0) {
         showError("No SKU data to export.");
         return;
     }
     
-    // Get physical zone mappings from lastMappingData for current subscription
-    let physicalZoneMap = {};
-    if (lastMappingData) {
-        // Use selectedSkuSubscription if available, otherwise first selected
-        const currentSubId = selectedSkuSubscription || [...selectedSubscriptions][0];
-        const currentSubMapping = lastMappingData.find(d => d.subscriptionId === currentSubId);
-        if (currentSubMapping && currentSubMapping.mappings) {
-            currentSubMapping.mappings.forEach(m => {
-                physicalZoneMap[m.logicalZone] = m.physicalZone;
-            });
-        }
-    }
+    // Get physical zone mappings using helper function
+    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+    const physicalZoneMap = getPhysicalZoneMap(subscriptionId);
     
     const allLogicalZones = [...new Set(lastSkuData.flatMap(s => s.zones))].sort();
     const physicalZones = allLogicalZones.map(lz => physicalZoneMap[lz] || `Zone ${lz}`);

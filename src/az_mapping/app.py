@@ -7,6 +7,7 @@ to physical zones across subscriptions in a given region.
 import base64
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -15,8 +16,6 @@ import requests
 from azure.identity import DefaultAzureCredential
 from flask import Flask, Response, jsonify, render_template
 from flask import request as flask_request
-from requests.exceptions import ReadTimeout, RequestException
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 _PKG_DIR = Path(__file__).resolve().parent
 
@@ -51,22 +50,6 @@ def _get_headers(tenant_id: str | None = None) -> dict[str, str]:
         "Authorization": f"Bearer {token.token}",
         "Content-Type": "application/json",
     }
-
-
-@retry(
-    retry=retry_if_exception_type((ReadTimeout, RequestException)),
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=True,
-)
-def _make_request_with_retry(
-    url: str, headers: dict[str, str], timeout: int = 30
-) -> requests.Response:
-    """Make HTTP request with retry logic for transient failures.
-
-    Retries up to 3 times with exponential backoff on ReadTimeout and RequestException.
-    """
-    return requests.get(url, headers=headers, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +101,7 @@ def list_tenants() -> Response | tuple[Response, int]:
         all_tenants: list[dict] = []
 
         while url:
-            resp = _make_request_with_retry(url, headers)
+            resp = requests.get(url, headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
             all_tenants.extend(data.get("value", []))
@@ -162,7 +145,7 @@ def list_subscriptions() -> Response | tuple[Response, int]:
         all_subs: list[dict] = []
 
         while url:
-            resp = _make_request_with_retry(url, headers)
+            resp = requests.get(url, headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
             all_subs.extend(data.get("value", []))
@@ -195,7 +178,7 @@ def list_regions() -> Response | tuple[Response, int]:
         # Auto-discover a subscription when none specified
         if not sub_id:
             subs_url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
-            subs_resp = _make_request_with_retry(subs_url, headers)
+            subs_resp = requests.get(subs_url, headers=headers, timeout=30)
             subs_resp.raise_for_status()
             enabled = [
                 s["subscriptionId"]
@@ -207,7 +190,7 @@ def list_regions() -> Response | tuple[Response, int]:
             sub_id = enabled[0]
 
         url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
-        resp = _make_request_with_retry(url, headers)
+        resp = requests.get(url, headers=headers, timeout=30)
         resp.raise_for_status()
 
         locations = resp.json().get("value", [])
@@ -244,7 +227,7 @@ def get_mappings() -> Response | tuple[Response, int]:
     for sub_id in sub_ids:
         url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
         try:
-            resp = _make_request_with_retry(url, headers)
+            resp = requests.get(url, headers=headers, timeout=30)
             resp.raise_for_status()
             locations = resp.json().get("value", [])
 
@@ -301,40 +284,55 @@ def get_skus() -> Response | tuple[Response, int]:
 
     try:
         headers = _get_headers(tenant_id)
-        # Use 2021-07-01 API version which has stable SKU details
+        # Use server-side filtering for region to reduce response size
         url = (
             f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/providers/"
-            f"Microsoft.Compute/skus?api-version=2021-07-01"
+            f"Microsoft.Compute/skus?api-version={AZURE_API_VERSION}"
+            f"&$filter=location eq '{region}'"
         )
 
         all_skus: list[dict] = []
-        while url:
-            resp = _make_request_with_retry(url, headers)
-            resp.raise_for_status()
-            data = resp.json()
-            all_skus.extend(data.get("value", []))
-            url = data.get("nextLink")
 
-        # Filter SKUs by region and resource type
+        # Simple retry logic with exponential backoff (max 3 attempts)
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, headers=headers, timeout=60)
+                resp.raise_for_status()
+                data = resp.json()
+                all_skus.extend(data.get("value", []))
+                url = data.get("nextLink")
+
+                # Handle pagination
+                while url:
+                    resp = requests.get(url, headers=headers, timeout=60)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    all_skus.extend(data.get("value", []))
+                    url = data.get("nextLink")
+                break  # Success, exit retry loop
+            except requests.ReadTimeout:
+                if attempt < 2:  # Not the last attempt
+                    wait_time = 2 ** attempt  # 1s, 2s exponential backoff
+                    logger.warning(
+                        f"SKU API timeout, retrying in {wait_time}s (attempt {attempt + 1}/3)"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    raise  # Last attempt failed, re-raise
+
+        # Filter SKUs by resource type only (region already filtered by API)
         filtered_skus = []
         for sku in all_skus:
-            # Check if SKU is available in the requested region
             if sku.get("resourceType") != resource_type:
-                continue
-
-            locations = [loc.lower() for loc in sku.get("locations", [])]
-            if region.lower() not in locations:
                 continue
 
             # Extract zone information
             location_info = sku.get("locationInfo", [])
             zones_for_region = []
-            zone_details = []
 
             for loc_info in location_info:
                 if loc_info.get("location", "").lower() == region.lower():
                     zones_for_region = loc_info.get("zones", [])
-                    zone_details = loc_info.get("zoneDetails", [])
                     break
 
             # Extract restrictions
@@ -358,14 +356,13 @@ def get_skus() -> Response | tuple[Response, int]:
                     "size": sku.get("size"),
                     "family": sku.get("family"),
                     "zones": zones_for_region,
-                    "zoneDetails": zone_details,
                     "restrictions": restrictions,
                     "capabilities": capabilities,
                 }
             )
 
         return jsonify(sorted(filtered_skus, key=lambda x: x.get("name", "")))
-    except Exception as exc:
+    except requests.RequestException as exc:
         logger.exception("Failed to fetch SKUs")
         return jsonify({"error": str(exc)}), 500
 

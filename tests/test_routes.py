@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import requests
+
 # ---------------------------------------------------------------------------
 # GET /
 # ---------------------------------------------------------------------------
@@ -380,6 +382,7 @@ class TestGetSkus:
         assert resp.status_code == 400
 
     def test_returns_filtered_skus_for_region(self, client):
+        # With server-side filtering, API only returns SKUs for the requested region
         azure_response = {
             "value": [
                 {
@@ -402,17 +405,6 @@ class TestGetSkus:
                     ],
                     "restrictions": [],
                 },
-                {
-                    "name": "Standard_E4s_v3",
-                    "resourceType": "virtualMachines",
-                    "tier": "Standard",
-                    "size": "E4s_v3",
-                    "family": "standardESv3Family",
-                    "locations": ["westus"],  # Different region
-                    "locationInfo": [{"location": "westus", "zones": ["1"]}],
-                    "capabilities": [{"name": "vCPUs", "value": "4"}],
-                    "restrictions": [],
-                },
             ],
             "nextLink": None,
         }
@@ -426,12 +418,13 @@ class TestGetSkus:
 
         assert resp.status_code == 200
         data = resp.get_json()
-        # Only eastus SKU should be returned
         assert len(data) == 1
         assert data[0]["name"] == "Standard_D2s_v3"
         assert data[0]["zones"] == ["1", "2", "3"]
         assert data[0]["capabilities"]["vCPUs"] == "2"
         assert data[0]["capabilities"]["MemoryGB"] == "8"
+        # zoneDetails should not be in response
+        assert "zoneDetails" not in data[0]
 
     def test_filters_by_resource_type(self, client):
         azure_response = {
@@ -502,7 +495,10 @@ class TestGetSkus:
         assert data[0]["restrictions"] == ["3"]
 
     def test_returns_500_on_error(self, client):
-        with patch("az_mapping.app.requests.get", side_effect=Exception("API error")):
+        with patch(
+            "az_mapping.app.requests.get",
+            side_effect=requests.RequestException("API error"),
+        ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 500
