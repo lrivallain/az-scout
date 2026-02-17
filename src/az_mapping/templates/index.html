@@ -167,6 +167,21 @@
                         </select>
                         <input type="search" id="sku-filter" placeholder="Filter SKU names (e.g., D2s, E4)…"
                                autocomplete="off" spellcheck="false">
+                        <label class="checkbox-item sku-price-toggle" title="Fetch retail prices from Azure Retail Prices API">
+                            <input type="checkbox" id="sku-include-prices"> Prices
+                        </label>
+                        <select id="sku-currency" class="sku-currency-select" title="Currency for prices">
+                            <option value="USD" selected>USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                            <option value="JPY">JPY</option>
+                            <option value="AUD">AUD</option>
+                            <option value="CAD">CAD</option>
+                            <option value="CHF">CHF</option>
+                            <option value="SEK">SEK</option>
+                            <option value="BRL">BRL</option>
+                            <option value="INR">INR</option>
+                        </select>
                         <button type="button" class="secondary-btn" onclick="loadSkus()">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="1 4 1 10 7 10"/>
@@ -224,6 +239,37 @@
             <span>Fetching score…</span>
         </div>
         <div id="spot-modal-result" style="display:none;"></div>
+    </div>
+</div>
+
+<!-- SKU Pricing Detail Modal -->
+<div class="modal-overlay" id="pricing-modal" style="display:none;" onclick="closePricingModal(event)">
+    <div class="modal-dialog pricing-modal-dialog" onclick="event.stopPropagation()">
+        <div class="pricing-modal-header">
+            <h3>SKU Pricing Detail</h3>
+            <button type="button" class="modal-close-btn" onclick="closePricingModal()" title="Close">&times;</button>
+        </div>
+        <p class="modal-sku-name" id="pricing-modal-sku"></p>
+        <div class="pricing-modal-currency">
+            <label for="pricing-modal-currency-select">Currency:</label>
+            <select id="pricing-modal-currency-select" class="sku-currency-select" onchange="refreshPricingModal()">
+                <option value="USD" selected>USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="JPY">JPY</option>
+                <option value="AUD">AUD</option>
+                <option value="CAD">CAD</option>
+                <option value="CHF">CHF</option>
+                <option value="SEK">SEK</option>
+                <option value="BRL">BRL</option>
+                <option value="INR">INR</option>
+            </select>
+        </div>
+        <div id="pricing-modal-loading" class="loading-indicator" style="display:none;">
+            <div class="spinner"></div>
+            <span>Fetching prices…</span>
+        </div>
+        <div id="pricing-modal-content" style="display:none;"></div>
     </div>
 </div>
 

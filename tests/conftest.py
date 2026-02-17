@@ -43,3 +43,15 @@ def _clear_spot_cache():
     _spot_cache.clear()
     yield
     _spot_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_price_cache():
+    """Clear the retail prices cache between tests."""
+    from az_mapping.azure_api import _detail_price_cache, _price_cache
+
+    _price_cache.clear()
+    _detail_price_cache.clear()
+    yield
+    _price_cache.clear()
+    _detail_price_cache.clear()

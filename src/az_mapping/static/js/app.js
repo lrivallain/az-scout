@@ -1167,6 +1167,12 @@ async function loadSkus() {
     try {
         const params = new URLSearchParams({ region, subscriptionId });
         if (tenant) params.append("tenantId", tenant);
+        const includePrices = document.getElementById("sku-include-prices")?.checked;
+        if (includePrices) {
+            params.append("includePrices", "true");
+            const currency = document.getElementById("sku-currency")?.value || "USD";
+            params.append("currencyCode", currency);
+        }
         
         const data = await apiFetch(`/api/skus?${params}`);
         
@@ -1243,17 +1249,27 @@ async function confirmSpotScore() {
             lastSpotScores = { scores: {}, errors: [] };
         }
         if (result.scores) {
-            Object.assign(lastSpotScores.scores, result.scores);
+            for (const [sku, zoneScores] of Object.entries(result.scores)) {
+                lastSpotScores.scores[sku] = { ...(lastSpotScores.scores[sku] || {}), ...zoneScores };
+            }
         }
         if (result.errors && result.errors.length > 0) {
             lastSpotScores.errors.push(...result.errors);
         }
 
-        // Show result in modal
-        const score = result.scores?.[skuName] || "Unknown";
-        const cls = "spot-badge spot-" + score.toLowerCase();
+        // Show result in modal – per-zone scores
+        const zoneScores = result.scores?.[skuName] || {};
         const resultEl = document.getElementById("spot-modal-result");
-        resultEl.innerHTML = `Score: <span class="${cls}">${escapeHtml(score)}</span>`;
+        const zones = Object.keys(zoneScores).sort();
+        if (zones.length > 0) {
+            resultEl.innerHTML = '<div class="spot-modal-grid">' + zones.map(z => {
+                const s = zoneScores[z] || "Unknown";
+                const cls = "spot-badge spot-" + s.toLowerCase();
+                return `<span class="spot-modal-zone">Z${escapeHtml(z)}</span><span class="${cls}">${escapeHtml(s)}</span>`;
+            }).join("") + '</div>';
+        } else {
+            resultEl.innerHTML = `<span class="spot-badge spot-unknown">Unknown</span>`;
+        }
         resultEl.style.display = "block";
 
         // Re-render table to update the cell
@@ -1295,13 +1311,18 @@ function skuSortValue(sku, col) {
         case "qUsed":    { const q = sku.quota || {}; return q.used  != null ? q.used  : -1; }
         case "qRemain":  { const q = sku.quota || {}; return q.remaining != null ? q.remaining : -1; }
         case "spot":     {
-            const scores = lastSpotScores?.scores || {};
-            const s = (scores[sku.name] || "").toLowerCase();
-            if (s === "high") return 3;
-            if (s === "medium") return 2;
-            if (s === "low") return 1;
-            return 0;
+            const zoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
+            const vals = Object.values(zoneScores).map(s => {
+                const l = s.toLowerCase();
+                if (l === "high") return 3;
+                if (l === "medium") return 2;
+                if (l === "low") return 1;
+                return 0;
+            });
+            return vals.length > 0 ? Math.max(...vals) : 0;
         }
+        case "paygo":    { const p = sku.pricing || {}; return p.paygo != null ? p.paygo : Infinity; }
+        case "spotPrice":{ const p = sku.pricing || {}; return p.spot  != null ? p.spot  : Infinity; }
         default:         return 0;
     }
 }
@@ -1370,6 +1391,13 @@ function renderSkuTable(skus, subscriptionName) {
         ["qRemain", "Quota Remaining"],
         ["spot",    "Spot Score"],
     ];
+    // Conditionally add price columns when pricing data is present
+    const hasPricing = filteredSkus.some(s => s.pricing);
+    if (hasPricing) {
+        const currency = filteredSkus.find(s => s.pricing)?.pricing?.currency || "USD";
+        sortCols.push(["paygo", `PAYGO ${currency}/h`]);
+        sortCols.push(["spotPrice", `Spot ${currency}/h`]);
+    }
     sortCols.forEach(([col, label]) => {
         const active = skuSortColumn === col ? ' class="sort-active"' : '';
         html += `<th${active} style="cursor:pointer" onclick="onSkuSort('${col}','${escapedSubForAttr}')">${label}${skuSortIndicator(col)}</th>`;
@@ -1384,8 +1412,9 @@ function renderSkuTable(skus, subscriptionName) {
     html += "</tr></thead><tbody>";
     
     filteredSkus.forEach(sku => {
+        const escapedSku = sku.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         html += "<tr>";
-        html += `<td><strong>${escapeHtml(sku.name)}</strong></td>`;
+        html += `<td><button type="button" class="sku-name-btn" onclick="openPricingModal('${escapedSku}')">${escapeHtml(sku.name)}</button></td>`;
         html += `<td>${escapeHtml(sku.family || "—")}</td>`;
         html += `<td>${escapeHtml(sku.capabilities.vCPUs || "—")}</td>`;
         html += `<td>${escapeHtml(sku.capabilities.MemoryGB || "—")}</td>`;
@@ -1395,15 +1424,25 @@ function renderSkuTable(skus, subscriptionName) {
         html += `<td>${quota.used != null ? quota.used : "—"}</td>`;
         html += `<td>${quota.remaining != null ? quota.remaining : "—"}</td>`;
         
-        // Spot Placement Score – clickable
-        const spotScores = lastSpotScores?.scores || {};
-        const spotScore = spotScores[sku.name] || "";
-        const escapedSku = sku.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        if (spotScore) {
-            const cls = "spot-badge spot-" + spotScore.toLowerCase();
-            html += `<td><button type="button" class="spot-cell-btn has-score" onclick="openSpotModal('${escapedSku}')" title="Click to refresh score"><span class="${cls}">${escapeHtml(spotScore)}</span></button></td>`;
+        // Spot Placement Score – clickable, per-zone
+        const spotZoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
+        const spotZones = Object.keys(spotZoneScores).sort();
+        if (spotZones.length > 0) {
+            const badges = spotZones.map(z => {
+                const s = spotZoneScores[z] || "Unknown";
+                const cls = "spot-badge spot-" + s.toLowerCase();
+                return `<span class="spot-zone-label">Z${escapeHtml(z)}</span><span class="${cls}">${escapeHtml(s)}</span>`;
+            }).join(" ");
+            html += `<td><button type="button" class="spot-cell-btn has-score" onclick="openSpotModal('${escapedSku}')" title="Click to refresh score">${badges}</button></td>`;
         } else {
             html += `<td><button type="button" class="spot-cell-btn" onclick="openSpotModal('${escapedSku}')" title="Get Spot Placement Score">Score?</button></td>`;
+        }
+        
+        // Price columns (only if pricing data is present)
+        if (hasPricing) {
+            const pricing = sku.pricing || {};
+            html += `<td class="price-cell">${pricing.paygo != null ? pricing.paygo.toFixed(4) : '<span title="No price available">—</span>'}</td>`;
+            html += `<td class="price-cell">${pricing.spot != null ? pricing.spot.toFixed(4) : '<span title="No price available">—</span>'}</td>`;
         }
         
         allLogicalZones.forEach(logicalZone => {
@@ -1444,9 +1483,15 @@ function exportSkuCSV() {
     const zoneHeaders = allLogicalZones.map((lz, index) => 
         `Zone ${lz}\n${physicalZones[index]}`
     );
+    const hasPricing = lastSkuData.some(s => s.pricing);
+    const priceCurrency = lastSkuData.find(s => s.pricing)?.pricing?.currency || "USD";
+    const priceHeaders = hasPricing
+        ? [`PAYGO ${priceCurrency}/h`, `Spot ${priceCurrency}/h`]
+        : [];
     const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)",
         "Quota Limit", "Quota Used", "Quota Remaining",
         "Spot Score",
+        ...priceHeaders,
         ...zoneHeaders];
     
     // Data rows
@@ -1469,7 +1514,11 @@ function exportSkuCSV() {
             quota.limit != null ? quota.limit : "",
             quota.used != null ? quota.used : "",
             quota.remaining != null ? quota.remaining : "",
-            (lastSpotScores?.scores || {})[sku.name] || "",
+            Object.entries((lastSpotScores?.scores || {})[sku.name] || {}).sort(([a],[b]) => a.localeCompare(b)).map(([z, s]) => `Z${z}:${s}`).join(" ") || "",
+            ...(hasPricing ? [
+                sku.pricing?.paygo != null ? sku.pricing.paygo : "",
+                sku.pricing?.spot != null ? sku.pricing.spot : "",
+            ] : []),
             ...zoneCols
         ];
     });
@@ -1487,3 +1536,86 @@ function exportSkuCSV() {
     a.click();
     URL.revokeObjectURL(a.href);
 }
+
+// ---------------------------------------------------------------------------
+// SKU Pricing Detail Modal
+// ---------------------------------------------------------------------------
+let _pricingModalSku = null;
+
+function openPricingModal(skuName) {
+    _pricingModalSku = skuName;
+    document.getElementById("pricing-modal-sku").textContent = skuName;
+    document.getElementById("pricing-modal-loading").style.display = "none";
+    document.getElementById("pricing-modal-content").style.display = "none";
+    document.getElementById("pricing-modal").style.display = "flex";
+    fetchPricingDetail();
+}
+
+function closePricingModal(event) {
+    if (event && event.target !== document.getElementById("pricing-modal")) return;
+    document.getElementById("pricing-modal").style.display = "none";
+    _pricingModalSku = null;
+}
+
+function refreshPricingModal() {
+    if (_pricingModalSku) fetchPricingDetail();
+}
+
+async function fetchPricingDetail() {
+    const skuName = _pricingModalSku;
+    if (!skuName) return;
+
+    const region = document.getElementById("region-select").value;
+    const currency = document.getElementById("pricing-modal-currency-select").value;
+    if (!region) return;
+
+    document.getElementById("pricing-modal-loading").style.display = "flex";
+    document.getElementById("pricing-modal-content").style.display = "none";
+
+    try {
+        const params = new URLSearchParams({ region, skuName, currencyCode: currency });
+        const data = await apiFetch(`/api/sku-pricing?${params}`);
+        renderPricingDetail(data);
+    } catch (err) {
+        const content = document.getElementById("pricing-modal-content");
+        content.innerHTML = `<p style="color:var(--danger);font-size:0.85rem;">Failed to load pricing: ${escapeHtml(err.message)}</p>`;
+        content.style.display = "block";
+    } finally {
+        document.getElementById("pricing-modal-loading").style.display = "none";
+    }
+}
+
+function renderPricingDetail(data) {
+    const content = document.getElementById("pricing-modal-content");
+    const currency = data.currency || "USD";
+    const HOURS_PER_MONTH = 730;
+
+    const rows = [
+        { label: "Pay-As-You-Go",         hourly: data.paygo },
+        { label: "Spot",                   hourly: data.spot },
+        { label: "Reserved Instance 1Y",   hourly: data.ri_1y },
+        { label: "Reserved Instance 3Y",   hourly: data.ri_3y },
+        { label: "Savings Plan 1Y",        hourly: data.sp_1y },
+        { label: "Savings Plan 3Y",        hourly: data.sp_3y },
+    ];
+
+    let html = '<table class="pricing-detail-table">';
+    html += `<thead><tr><th>Type</th><th>${escapeHtml(currency)}/hour</th><th>${escapeHtml(currency)}/month</th></tr></thead>`;
+    html += "<tbody>";
+    rows.forEach(r => {
+        const hourStr = r.hourly != null ? r.hourly.toFixed(4) : "—";
+        const monthStr = r.hourly != null ? (r.hourly * HOURS_PER_MONTH).toFixed(2) : "—";
+        html += `<tr><td>${escapeHtml(r.label)}</td><td class="price-cell">${hourStr}</td><td class="price-cell">${monthStr}</td></tr>`;
+    });
+    html += "</tbody></table>";
+
+    content.innerHTML = html;
+    content.style.display = "block";
+}
+
+document.addEventListener("keydown", (e) => {
+    const modal = document.getElementById("pricing-modal");
+    if (modal && modal.style.display !== "none" && e.key === "Escape") {
+        closePricingModal();
+    }
+});

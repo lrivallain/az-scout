@@ -994,6 +994,55 @@ body {
     border: none;
     padding: 0;
 }
+.spot-zone-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-right: 0.15rem;
+    margin-left: 0.3rem;
+}
+.spot-zone-label:first-child {
+    margin-left: 0;
+}
+.spot-modal-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.3rem 0.5rem;
+    align-items: center;
+}
+.spot-modal-zone {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-align: right;
+}
+
+/* ---- SKU Pricing controls ---- */
+.sku-price-toggle {
+    white-space: nowrap;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin: 0;
+    padding: 0.4rem 0;
+}
+.sku-currency-select {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card-bg);
+    color: var(--text);
+    min-width: 4.5rem;
+}
+.sku-currency-select:focus {
+    outline: none;
+    border-color: var(--azure-blue);
+}
+.price-cell {
+    font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+    font-size: 0.82rem;
+    text-align: right;
+    white-space: nowrap;
+}
 
 /* ---- Modal ---- */
 .modal-overlay {
@@ -1047,6 +1096,83 @@ body {
     justify-content: center;
 }
 
+/* ---- Pricing Detail Modal ---- */
+.pricing-modal-dialog {
+    width: 480px;
+}
+.pricing-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.pricing-modal-header h3 {
+    margin: 0;
+}
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    transition: all var(--transition);
+}
+.modal-close-btn:hover {
+    background: var(--error-bg);
+    color: var(--danger);
+}
+.pricing-modal-currency {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+.pricing-modal-currency label {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.pricing-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.pricing-detail-table th {
+    background: var(--azure-light);
+    color: var(--azure-dark);
+    font-weight: 600;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--azure-blue);
+    white-space: nowrap;
+}
+.pricing-detail-table td {
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+.pricing-detail-table tr:hover td {
+    background: var(--table-hover);
+}
+
+/* SKU name clickable button in table */
+.sku-name-btn {
+    background: none;
+    border: none;
+    color: var(--azure-blue);
+    font-weight: 600;
+    font-size: inherit;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+.sku-name-btn:hover {
+    color: var(--azure-dark);
+    text-decoration-style: solid;
+}
+
 /* Dark mode: SKU table header */
 [data-theme="dark"] .sku-table th {
     background: var(--azure-light);
@@ -1056,6 +1182,10 @@ body {
 [data-theme="dark"] .modal-dialog h3 {
     color: #58a6ff;
 }
+[data-theme="dark"] .pricing-detail-table th {
+    background: var(--azure-light);
+    color: #58a6ff;
+}
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) .sku-table th {
@@ -1063,6 +1193,10 @@ body {
         color: #58a6ff;
     }
     :root:not([data-theme="light"]) .modal-dialog h3 {
+        color: #58a6ff;
+    }
+    :root:not([data-theme="light"]) .pricing-detail-table th {
+        background: var(--azure-light);
         color: #58a6ff;
     }
 }

@@ -125,6 +125,8 @@ def get_sku_availability(
     max_vcpus: int | None = None,
     min_memory_gb: float | None = None,
     max_memory_gb: float | None = None,
+    include_prices: bool = False,
+    currency_code: str = "USD",
 ) -> str:
     """Get VM SKU availability per zone for a region and subscription.
 
@@ -146,6 +148,11 @@ def get_sku_availability(
     - **remaining**: available vCPUs (limit − used)
     Values are ``null`` when the quota could not be resolved.
 
+    When ``include_prices`` is ``True``, each SKU gains a ``pricing`` object:
+    - **paygo**: pay-as-you-go price per hour (or ``null``)
+    - **spot**: Spot price per hour (or ``null``)
+    - **currency**: the currency code used
+
     Args:
         region: Azure region name (e.g. ``eastus``).
         subscription_id: Subscription ID to query.
@@ -160,6 +167,8 @@ def get_sku_availability(
         max_vcpus: Maximum number of vCPUs (inclusive).
         min_memory_gb: Minimum memory in GB (inclusive).
         max_memory_gb: Maximum memory in GB (inclusive).
+        include_prices: Include retail pricing info (default: ``False``).
+        currency_code: Currency for prices (default: ``"USD"``).
     """
     result = azure_api.get_skus(
         region,
@@ -174,6 +183,8 @@ def get_sku_availability(
         max_memory_gb=max_memory_gb,
     )
     azure_api.enrich_skus_with_quotas(result, region, subscription_id, tenant_id)
+    if include_prices:
+        azure_api.enrich_skus_with_prices(result, region, currency_code)
     return json.dumps(result, indent=2)
 
 

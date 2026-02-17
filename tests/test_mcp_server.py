@@ -254,6 +254,52 @@ class TestMcpGetSkuAvailability:
         assert data[0]["quota"]["used"] == 4
         assert data[0]["quota"]["remaining"] == 46
 
+    @pytest.mark.anyio()
+    async def test_includes_pricing_when_requested(self, _mock_credential):
+        """SKUs include pricing data when include_prices is True."""
+        mock_skus = [
+            {
+                "name": "Standard_D2s_v3",
+                "tier": "Standard",
+                "size": "D2s_v3",
+                "family": "standardDSv3Family",
+                "zones": ["1", "2", "3"],
+                "restrictions": [],
+                "capabilities": {"vCPUs": "2", "MemoryGB": "8"},
+            }
+        ]
+        with (
+            patch("az_mapping.azure_api.get_skus", return_value=mock_skus),
+            patch("az_mapping.azure_api.get_compute_usages", return_value=[]),
+            patch("az_mapping.azure_api.enrich_skus_with_prices") as mock_enrich,
+        ):
+            content, _ = await mcp.call_tool(
+                "get_sku_availability",
+                {
+                    "region": "eastus",
+                    "subscription_id": "sub-1",
+                    "include_prices": True,
+                    "currency_code": "EUR",
+                },
+            )
+
+        mock_enrich.assert_called_once_with(mock_skus, "eastus", "EUR")
+
+    @pytest.mark.anyio()
+    async def test_no_pricing_by_default(self, _mock_credential):
+        """Pricing enrichment is not called when include_prices is omitted."""
+        with (
+            patch("az_mapping.azure_api.get_skus", return_value=[]),
+            patch("az_mapping.azure_api.get_compute_usages", return_value=[]),
+            patch("az_mapping.azure_api.enrich_skus_with_prices") as mock_enrich,
+        ):
+            _, _ = await mcp.call_tool(
+                "get_sku_availability",
+                {"region": "eastus", "subscription_id": "sub-1"},
+            )
+
+        mock_enrich.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # get_spot_scores
@@ -267,8 +313,8 @@ class TestMcpGetSpotScores:
     async def test_returns_spot_scores_json(self, _mock_credential):
         mock_result = {
             "scores": {
-                "Standard_D2s_v3": "High",
-                "Standard_D4s_v3": "Medium",
+                "Standard_D2s_v3": {"1": "High", "2": "Medium"},
+                "Standard_D4s_v3": {"1": "Medium", "2": "Low"},
             },
             "errors": [],
         }
@@ -286,8 +332,8 @@ class TestMcpGetSpotScores:
             )
 
         data = json.loads(content[0].text)
-        assert data["scores"]["Standard_D2s_v3"] == "High"
-        assert data["scores"]["Standard_D4s_v3"] == "Medium"
+        assert data["scores"]["Standard_D2s_v3"] == {"1": "High", "2": "Medium"}
+        assert data["scores"]["Standard_D4s_v3"] == {"1": "Medium", "2": "Low"}
         assert data["errors"] == []
 
     @pytest.mark.anyio()

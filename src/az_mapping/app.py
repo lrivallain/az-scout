@@ -176,6 +176,12 @@ async def get_skus(
     maxMemoryGB: float | None = Query(  # noqa: N803
         None, description="Maximum memory in GB (inclusive).", ge=0
     ),
+    includePrices: bool = Query(  # noqa: N803
+        False, description="Fetch retail prices from the Azure Retail Prices API."
+    ),
+    currencyCode: str = Query(  # noqa: N803
+        "USD", description="ISO 4217 currency code for prices."
+    ),
 ) -> JSONResponse:
     """Return resource SKUs with zone availability, restrictions and capabilities.
 
@@ -202,6 +208,8 @@ async def get_skus(
             max_memory_gb=maxMemoryGB,
         )
         azure_api.enrich_skus_with_quotas(skus, region, subscriptionId, tenantId)
+        if includePrices:
+            azure_api.enrich_skus_with_prices(skus, region, currencyCode)
         return JSONResponse(skus)
     except Exception as exc:
         logger.exception("Failed to fetch SKUs")
@@ -247,6 +255,27 @@ async def get_spot_scores(body: SpotScoresRequest) -> JSONResponse:
         return JSONResponse(result)
     except Exception as exc:
         logger.exception("Failed to fetch spot placement scores")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/sku-pricing", tags=["SKUs"], summary="Get detailed pricing for a SKU")
+async def get_sku_pricing(
+    region: str = Query(..., description="Azure region name."),
+    skuName: str = Query(..., description="ARM SKU name (e.g. Standard_D2s_v3)."),  # noqa: N803
+    currencyCode: str = Query(  # noqa: N803
+        "USD", description="ISO 4217 currency code."
+    ),
+) -> JSONResponse:
+    """Return detailed Linux pricing for a single VM SKU.
+
+    Includes pay-as-you-go, Spot, Reserved Instance (1Y/3Y) and
+    Savings Plan (1Y/3Y) prices per hour.
+    """
+    try:
+        result = azure_api.get_sku_pricing_detail(region, skuName, currencyCode)
+        return JSONResponse(result)
+    except Exception as exc:
+        logger.exception("Failed to fetch SKU pricing detail")
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 # ---------------------------------------------------------------------------
@@ -790,9 +792,42 @@ class TestSpotScores:
         """Basic success: 3 SKUs → single batch POST returns scores."""
         spot_response = {
             "placementScores": [
-                {"sku": "Standard_D2s_v3", "score": "High", "region": "eastus"},
-                {"sku": "Standard_D4s_v3", "score": "Medium", "region": "eastus"},
-                {"sku": "Standard_E8s_v4", "score": "Low", "region": "eastus"},
+                {
+                    "sku": "Standard_D2s_v3",
+                    "score": "High",
+                    "region": "eastus",
+                    "availabilityZone": "1",
+                },
+                {
+                    "sku": "Standard_D2s_v3",
+                    "score": "Medium",
+                    "region": "eastus",
+                    "availabilityZone": "2",
+                },
+                {
+                    "sku": "Standard_D4s_v3",
+                    "score": "Medium",
+                    "region": "eastus",
+                    "availabilityZone": "1",
+                },
+                {
+                    "sku": "Standard_D4s_v3",
+                    "score": "Low",
+                    "region": "eastus",
+                    "availabilityZone": "2",
+                },
+                {
+                    "sku": "Standard_E8s_v4",
+                    "score": "Low",
+                    "region": "eastus",
+                    "availabilityZone": "1",
+                },
+                {
+                    "sku": "Standard_E8s_v4",
+                    "score": "High",
+                    "region": "eastus",
+                    "availabilityZone": "2",
+                },
             ]
         }
         mock_resp = MagicMock()
@@ -812,9 +847,9 @@ class TestSpotScores:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["scores"]["Standard_D2s_v3"] == "High"
-        assert data["scores"]["Standard_D4s_v3"] == "Medium"
-        assert data["scores"]["Standard_E8s_v4"] == "Low"
+        assert data["scores"]["Standard_D2s_v3"] == {"1": "High", "2": "Medium"}
+        assert data["scores"]["Standard_D4s_v3"] == {"1": "Medium", "2": "Low"}
+        assert data["scores"]["Standard_E8s_v4"] == {"1": "Low", "2": "High"}
         assert data["errors"] == []
 
     def test_400_on_missing_required_fields(self, client):
@@ -837,7 +872,13 @@ class TestSpotScores:
             resp.raise_for_status.return_value = None
             resp.json.return_value = {
                 "placementScores": [
-                    {"sku": s["sku"], "score": "High", "region": "eastus"} for s in desired_sizes
+                    {
+                        "sku": s["sku"],
+                        "score": "High",
+                        "region": "eastus",
+                        "availabilityZone": "1",
+                    }
+                    for s in desired_sizes
                 ]
             }
             return resp
@@ -875,7 +916,12 @@ class TestSpotScores:
                 resp.status_code = 200
                 resp.json.return_value = {
                     "placementScores": [
-                        {"sku": "Standard_D2s_v3", "score": "High", "region": "eastus"}
+                        {
+                            "sku": "Standard_D2s_v3",
+                            "score": "High",
+                            "region": "eastus",
+                            "availabilityZone": "1",
+                        }
                     ]
                 }
             return resp
@@ -895,7 +941,7 @@ class TestSpotScores:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["scores"]["Standard_D2s_v3"] == "High"
+        assert data["scores"]["Standard_D2s_v3"] == {"1": "High"}
         assert call_count["n"] == 2
 
     def test_403_returns_empty_scores(self, client):
@@ -945,7 +991,14 @@ class TestSpotScores:
     def test_cache_returns_cached_result(self, client):
         """Second call with same params hits cache."""
         spot_response = {
-            "placementScores": [{"sku": "Standard_D2s_v3", "score": "High", "region": "eastus"}]
+            "placementScores": [
+                {
+                    "sku": "Standard_D2s_v3",
+                    "score": "High",
+                    "region": "eastus",
+                    "availabilityZone": "1",
+                }
+            ]
         }
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -986,3 +1039,472 @@ class TestSpotScores:
 
         call_kwargs = mock_post.call_args
         assert call_kwargs.kwargs["json"]["desiredCount"] == 5
+
+
+# ---------------------------------------------------------------------------
+# GET /api/skus – pricing enrichment
+# ---------------------------------------------------------------------------
+
+
+class TestGetSkusPricing:
+    """Tests for pricing enrichment in the /api/skus endpoint."""
+
+    def _load_fixture(self, name: str) -> dict:
+        return json.loads((FIXTURES / name).read_text())
+
+    def _sku_response(self):
+        return {
+            "value": [
+                {
+                    "name": "Standard_D2s_v3",
+                    "resourceType": "virtualMachines",
+                    "family": "standardDSv3Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1", "2"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "2"},
+                        {"name": "MemoryGB", "value": "8"},
+                    ],
+                    "restrictions": [],
+                },
+                {
+                    "name": "Standard_D4s_v3",
+                    "resourceType": "virtualMachines",
+                    "family": "standardDSv3Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1", "2"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "4"},
+                        {"name": "MemoryGB", "value": "16"},
+                    ],
+                    "restrictions": [],
+                },
+            ],
+            "nextLink": None,
+        }
+
+    def _mock_dispatch(self, sku_resp, retail_resp):
+        """Return a side_effect callback routing by URL."""
+
+        def _dispatch(url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.status_code = 200
+            if "/Microsoft.Compute/skus" in url:
+                resp.json.return_value = sku_resp
+            elif "/usages" in url:
+                resp.json.return_value = {"value": []}
+            elif "prices.azure.com" in url:
+                resp.json.return_value = retail_resp
+            else:
+                resp.json.return_value = {"value": []}
+            return resp
+
+        return _dispatch
+
+    def test_skus_without_prices_by_default(self, client):
+        """SKUs returned without pricing key when includePrices is not set."""
+        sku_resp = self._sku_response()
+
+        def _dispatch(url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.status_code = 200
+            if "/Microsoft.Compute/skus" in url:
+                resp.json.return_value = sku_resp
+            else:
+                resp.json.return_value = {"value": []}
+            return resp
+
+        with patch("az_mapping.azure_api.requests.get", side_effect=_dispatch):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        for sku in data:
+            assert "pricing" not in sku
+
+    def test_includes_pricing_when_requested(self, client):
+        """includePrices=true adds pricing data to each SKU."""
+        sku_resp = self._sku_response()
+        retail_resp = self._load_fixture("retail_prices_sample.json")
+
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            side_effect=self._mock_dispatch(sku_resp, retail_resp),
+        ):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        by_name = {s["name"]: s for s in data}
+
+        d2s = by_name["Standard_D2s_v3"]
+        assert d2s["pricing"]["paygo"] == 0.096
+        assert d2s["pricing"]["spot"] == 0.019
+        assert d2s["pricing"]["currency"] == "USD"
+
+        d4s = by_name["Standard_D4s_v3"]
+        assert d4s["pricing"]["paygo"] == 0.192
+        assert d4s["pricing"]["spot"] == 0.038
+
+    def test_pricing_prefers_non_windows_line(self, client):
+        """Line selection picks non-Windows (Linux) over Windows price."""
+        sku_resp = self._sku_response()
+        retail_resp = self._load_fixture("retail_prices_sample.json")
+
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            side_effect=self._mock_dispatch(sku_resp, retail_resp),
+        ):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
+
+        data = resp.json()
+        by_name = {s["name"]: s for s in data}
+        # Linux (0.096) not Windows (0.144)
+        assert by_name["Standard_D2s_v3"]["pricing"]["paygo"] == 0.096
+
+    def test_pricing_with_custom_currency(self, client):
+        """currencyCode parameter is forwarded to the retail API."""
+        sku_resp = self._sku_response()
+        retail_resp = self._load_fixture("retail_prices_sample.json")
+
+        call_urls = []
+
+        def _dispatch(url, **kwargs):
+            call_urls.append(url)
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.status_code = 200
+            params = kwargs.get("params")
+            if "/Microsoft.Compute/skus" in url:
+                resp.json.return_value = sku_resp
+            elif "/usages" in url:
+                resp.json.return_value = {"value": []}
+            elif "prices.azure.com" in url:
+                assert params is not None
+                assert params["currencyCode"] == "EUR"
+                resp.json.return_value = retail_resp
+            else:
+                resp.json.return_value = {"value": []}
+            return resp
+
+        with patch("az_mapping.azure_api.requests.get", side_effect=_dispatch):
+            resp = client.get(
+                "/api/skus?region=eastus&subscriptionId=sub1&includePrices=true&currencyCode=EUR"
+            )
+
+        assert resp.status_code == 200
+        prices_calls = [u for u in call_urls if "prices.azure.com" in u]
+        assert len(prices_calls) >= 1
+
+    def test_pricing_cache_reused(self, client):
+        """Second request with same region+currency uses cached prices."""
+        sku_resp = self._sku_response()
+        retail_resp = self._load_fixture("retail_prices_sample.json")
+
+        call_count = {"prices": 0}
+
+        def _dispatch(url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.status_code = 200
+            if "/Microsoft.Compute/skus" in url:
+                resp.json.return_value = sku_resp
+            elif "/usages" in url:
+                resp.json.return_value = {"value": []}
+            elif "prices.azure.com" in url:
+                call_count["prices"] += 1
+                resp.json.return_value = retail_resp
+            else:
+                resp.json.return_value = {"value": []}
+            return resp
+
+        with patch("az_mapping.azure_api.requests.get", side_effect=_dispatch):
+            resp1 = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
+            resp2 = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
+
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+        assert call_count["prices"] == 1
+
+    def test_pricing_null_when_sku_not_in_retail_api(self, client):
+        """SKU with no matching retail price gets null paygo/spot."""
+        sku_resp = {
+            "value": [
+                {
+                    "name": "Standard_Exotic_v99",
+                    "resourceType": "virtualMachines",
+                    "family": "exoticFamily",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "2"},
+                        {"name": "MemoryGB", "value": "8"},
+                    ],
+                    "restrictions": [],
+                },
+            ],
+            "nextLink": None,
+        }
+        retail_resp = self._load_fixture("retail_prices_sample.json")
+
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            side_effect=self._mock_dispatch(sku_resp, retail_resp),
+        ):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0]["pricing"]["paygo"] is None
+        assert data[0]["pricing"]["spot"] is None
+        assert data[0]["pricing"]["currency"] == "USD"
+
+    def test_pricing_excludes_low_priority_items(self, client):
+        """Low Priority pricing lines are excluded from paygo/spot."""
+        sku_resp = {
+            "value": [
+                {
+                    "name": "Standard_HB176rs_v4",
+                    "resourceType": "virtualMachines",
+                    "family": "standardHBv4Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "176"},
+                        {"name": "MemoryGB", "value": "768"},
+                    ],
+                    "restrictions": [],
+                },
+            ],
+            "nextLink": None,
+        }
+        retail_resp = {
+            "Items": [
+                {
+                    "armSkuName": "Standard_HB176rs_v4",
+                    "skuName": "HB176rs v4",
+                    "meterName": "HB176rs v4",
+                    "retailPrice": 7.2,
+                    "currencyCode": "USD",
+                    "productName": "Virtual Machines HBv4 Series",
+                    "serviceName": "Virtual Machines",
+                    "type": "Consumption",
+                },
+                {
+                    "armSkuName": "Standard_HB176rs_v4",
+                    "skuName": "HB176rs v4 Low Priority",
+                    "meterName": "HB176rs v4 Low Priority",
+                    "retailPrice": 1.44,
+                    "currencyCode": "USD",
+                    "productName": "Virtual Machines HBv4 Series",
+                    "serviceName": "Virtual Machines",
+                    "type": "Consumption",
+                },
+                {
+                    "armSkuName": "Standard_HB176rs_v4",
+                    "skuName": "HB176rs v4 Spot",
+                    "meterName": "HB176rs v4 Spot",
+                    "retailPrice": 1.44,
+                    "currencyCode": "USD",
+                    "productName": "Virtual Machines HBv4 Series",
+                    "serviceName": "Virtual Machines",
+                    "type": "Consumption",
+                },
+            ],
+            "NextPageLink": None,
+            "Count": 3,
+        }
+
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            side_effect=self._mock_dispatch(sku_resp, retail_resp),
+        ):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        pricing = data[0]["pricing"]
+        # PAYGO should be the regular price, not the Low Priority one
+        assert pricing["paygo"] == 7.2
+        assert pricing["spot"] == 1.44
+
+
+class TestGetSkuPricingDetail:
+    """Tests for GET /api/sku-pricing endpoint."""
+
+    @staticmethod
+    def _retail_response(items):
+        """Create a mock retail prices response."""
+        mock = MagicMock()
+        mock.status_code = 200
+        mock.json.return_value = {"Items": items, "NextPageLink": None, "Count": len(items)}
+        return mock
+
+    def test_basic_pricing_detail(self, client):
+        """Return PayGo, Spot, RI and SP prices for a single SKU."""
+        items = [
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3",
+                "retailPrice": 0.096,
+                "type": "Consumption",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+                "savingsPlan": [
+                    {"term": "1 Year", "retailPrice": 0.062},
+                    {"term": "3 Years", "retailPrice": 0.039},
+                ],
+            },
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3 Spot",
+                "retailPrice": 0.019,
+                "type": "Consumption",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+            },
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3",
+                "retailPrice": 0.055,
+                "type": "Reservation",
+                "reservationTerm": "1 Year",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+            },
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3",
+                "retailPrice": 0.035,
+                "type": "Reservation",
+                "reservationTerm": "3 Years",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+            },
+        ]
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            return_value=self._retail_response(items),
+        ):
+            resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["skuName"] == "Standard_D2s_v3"
+        assert data["currency"] == "USD"
+        assert data["paygo"] == 0.096
+        assert data["spot"] == 0.019
+        assert data["ri_1y"] == pytest.approx(0.055 / 8760)
+        assert data["ri_3y"] == pytest.approx(0.035 / 26280)
+        assert data["sp_1y"] == 0.062
+        assert data["sp_3y"] == 0.039
+
+    def test_filters_windows(self, client):
+        """Windows items should be filtered out, only Linux returned."""
+        items = [
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3",
+                "retailPrice": 0.096,
+                "type": "Consumption",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+            },
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3",
+                "retailPrice": 0.188,
+                "type": "Consumption",
+                "productName": "Virtual Machines DSv3 Series Windows",
+                "serviceName": "Virtual Machines",
+            },
+        ]
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            return_value=self._retail_response(items),
+        ):
+            resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3")
+
+        data = resp.json()
+        assert data["paygo"] == 0.096  # Linux price, not Windows
+
+    def test_excludes_low_priority(self, client):
+        """Low Priority items should be excluded entirely."""
+        items = [
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3",
+                "retailPrice": 0.096,
+                "type": "Consumption",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+            },
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3 Low Priority",
+                "retailPrice": 0.019,
+                "type": "Consumption",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+            },
+        ]
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            return_value=self._retail_response(items),
+        ):
+            resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3")
+
+        data = resp.json()
+        assert data["paygo"] == 0.096
+        assert data["spot"] is None  # Low Priority is not Spot
+
+    def test_currency_forwarded(self, client):
+        """The currencyCode parameter should be passed through."""
+        items = [
+            {
+                "armSkuName": "Standard_D2s_v3",
+                "skuName": "D2s v3",
+                "retailPrice": 0.088,
+                "type": "Consumption",
+                "productName": "Virtual Machines DSv3 Series",
+                "serviceName": "Virtual Machines",
+            },
+        ]
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            return_value=self._retail_response(items),
+        ):
+            resp = client.get(
+                "/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3&currencyCode=EUR"
+            )
+
+        data = resp.json()
+        assert data["currency"] == "EUR"
+        assert data["paygo"] == 0.088
+
+    def test_missing_sku_returns_nulls(self, client):
+        """When SKU has no price items, all prices are null."""
+        with patch(
+            "az_mapping.azure_api.requests.get",
+            return_value=self._retail_response([]),
+        ):
+            resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_NONEXIST")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["paygo"] is None
+        assert data["spot"] is None
+        assert data["ri_1y"] is None
+        assert data["ri_3y"] is None
+        assert data["sp_1y"] is None
+        assert data["sp_3y"] is None
+
+    def test_missing_required_params(self, client):
+        """Missing region or skuName should return 422."""
+        resp = client.get("/api/sku-pricing?region=eastus")
+        assert resp.status_code == 422
+
+        resp = client.get("/api/sku-pricing?skuName=Standard_D2s_v3")
+        assert resp.status_code == 422
