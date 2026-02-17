@@ -1099,6 +1099,8 @@ body {
 /* ---- Pricing Detail Modal ---- */
 .pricing-modal-dialog {
     width: 580px;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 .pricing-modal-header {
     display: flex;
