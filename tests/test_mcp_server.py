@@ -360,3 +360,57 @@ class TestMcpGetSpotScores:
             10,
             "tid-x",
         )
+
+
+# ---------------------------------------------------------------------------
+# get_sku_pricing_detail
+# ---------------------------------------------------------------------------
+
+
+class TestMcpGetSkuPricingDetail:
+    """Tests for the get_sku_pricing_detail MCP tool."""
+
+    @pytest.mark.anyio()
+    async def test_returns_pricing_detail_json(self, _mock_credential):
+        mock_result = {
+            "skuName": "Standard_D2s_v5",
+            "region": "swedencentral",
+            "currency": "USD",
+            "paygo": 0.102,
+            "spot": 0.019,
+            "ri_1y": 0.0602,
+            "ri_3y": 0.0377,
+            "sp_1y": 0.077,
+            "sp_3y": 0.053,
+        }
+        with patch(
+            "az_mapping.azure_api.get_sku_pricing_detail",
+            return_value=mock_result,
+        ):
+            content, _ = await mcp.call_tool(
+                "get_sku_pricing_detail",
+                {"region": "swedencentral", "sku_name": "Standard_D2s_v5"},
+            )
+
+        data = json.loads(content[0].text)
+        assert data["skuName"] == "Standard_D2s_v5"
+        assert data["paygo"] == 0.102
+        assert data["ri_1y"] == 0.0602
+        assert data["sp_3y"] == 0.053
+
+    @pytest.mark.anyio()
+    async def test_passes_currency_code(self, _mock_credential):
+        with patch(
+            "az_mapping.azure_api.get_sku_pricing_detail",
+            return_value={},
+        ) as mock_fn:
+            _, _ = await mcp.call_tool(
+                "get_sku_pricing_detail",
+                {
+                    "region": "eastus",
+                    "sku_name": "Standard_D4s_v3",
+                    "currency_code": "EUR",
+                },
+            )
+
+        mock_fn.assert_called_once_with("eastus", "Standard_D4s_v3", "EUR")

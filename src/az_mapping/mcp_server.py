@@ -217,3 +217,25 @@ def get_spot_scores(
         tenant_id,
     )
     return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_sku_pricing_detail(
+    region: str,
+    sku_name: str,
+    currency_code: str = "USD",
+) -> str:
+    """Get detailed Linux pricing for a single VM SKU.
+
+    Returns per-hour prices for every pricing model: pay-as-you-go, Spot,
+    Reserved Instance (1 Year / 3 Years) and Savings Plan (1 Year / 3 Years).
+
+    All prices are **per hour, Linux only**.
+
+    Args:
+        region: Azure region name (e.g. ``swedencentral``).
+        sku_name: ARM SKU name (e.g. ``Standard_D2s_v5``).
+        currency_code: ISO 4217 currency code (default: ``"USD"``).
+    """
+    result = azure_api.get_sku_pricing_detail(region, sku_name, currency_code)
+    return json.dumps(result, indent=2)
