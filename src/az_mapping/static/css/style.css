@@ -73,14 +73,20 @@
 /* ---- Reset ---- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+    height: 100%;
+    overflow: hidden;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.5;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 /* ---- Header ---- */
@@ -91,6 +97,7 @@ body {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+    flex-shrink: 0;
 }
 .header-content {
     display: flex;
@@ -121,6 +128,8 @@ body {
     display: flex;
     flex: 1;
     gap: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* ---- Filters panel ---- */
@@ -134,7 +143,6 @@ body {
     flex-direction: column;
     gap: 1.25rem;
     overflow-y: auto;
-    max-height: calc(100vh - 130px);
     transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease;
     position: relative;
 }
@@ -363,8 +371,119 @@ body {
 .results-panel {
     flex: 1;
     padding: 1.5rem 2rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ---- Page navigation tabs ---- */
+.page-nav {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 1.5rem;
+    flex-shrink: 0;
+}
+.page-nav-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.25rem;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color var(--transition), border-color var(--transition), background var(--transition);
+    margin-bottom: -2px;
+}
+.page-nav-tab:hover {
+    color: var(--azure-blue);
+    background: var(--azure-light);
+}
+.page-nav-tab.active {
+    color: var(--azure-blue);
+    border-bottom-color: var(--azure-blue);
+}
+.page-nav-tab svg {
+    flex-shrink: 0;
+}
+
+/* ---- Page content containers ---- */
+.page-content {
+    flex: 1;
+    min-height: 0;
+}
+#page-topology {
     overflow-y: auto;
-    max-height: calc(100vh - 130px);
+}
+#page-planner {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#planner-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* ---- Proceed to Planner bar ---- */
+.proceed-bar {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 0;
+}
+.proceed-btn {
+    width: auto;
+    padding: 0.65rem 1.5rem;
+}
+
+/* ---- Region Health Summary ---- */
+.health-summary-card {
+    margin-bottom: 1.5rem;
+    flex-shrink: 0;
+}
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+.health-stat {
+    text-align: center;
+    padding: 0.5rem;
+}
+.health-stat-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.2rem;
+}
+.health-stat-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.health-badge {
+    display: inline-block;
+    padding: 0.2rem 0.65rem;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.health-good {
+    background: #dff6dd;
+    color: #1a7f37;
+}
+.health-warn {
+    background: #fff8c5;
+    color: #9a6700;
 }
 
 .empty-state {
@@ -603,6 +722,7 @@ body {
     color: var(--text-muted);
     background: var(--card-bg);
     border-top: 1px solid var(--border);
+    flex-shrink: 0;
 }
 .app-footer::before {
     content: "";
@@ -731,11 +851,11 @@ body {
 @media (max-width: 900px) {
     .app-container {
         flex-direction: column;
+        overflow-y: auto;
     }
     .filters-panel {
         width: 100%;
         min-width: 100%;
-        max-height: none;
         border-right: none;
         border-bottom: 1px solid var(--border);
     }
@@ -750,12 +870,22 @@ body {
     .filters-panel .sidebar-toggle svg {
         /* Point down on mobile when expanded */
     }
-    .results-panel {
-        max-height: none;
+    .health-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
 /* ---- SKU Section ---- */
+.sku-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-bottom: 0;
+}
+.sku-section .card-header {
+    flex-shrink: 0;
+}
 .sku-section .card-header h2 {
     display: flex;
     align-items: center;
@@ -783,13 +913,14 @@ body {
 }
 
 .sku-content {
-    max-height: 800px;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .sku-section.collapsed .sku-content {
-    max-height: 0;
+    display: none;
 }
 
 .sku-controls {
@@ -797,6 +928,7 @@ body {
     gap: 0.75rem;
     margin-bottom: 1rem;
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
 .sku-controls select {
@@ -870,8 +1002,9 @@ body {
 }
 
 .sku-table-container {
-    max-height: 600px;
-    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 
 .sku-table {
@@ -1371,6 +1504,10 @@ body {
     background: var(--azure-light);
     color: #58a6ff;
 }
+[data-theme="dark"] .health-good { background: #1a3d1f; color: #3fb950; }
+[data-theme="dark"] .health-warn { background: #3d3012; color: #d29922; }
+[data-theme="dark"] .page-nav-tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+[data-theme="dark"] .page-nav-tab:hover { color: #58a6ff; }
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) .confidence-high     { background: #1a3d1f; color: #3fb950; }
@@ -1382,4 +1519,8 @@ body {
         background: var(--azure-light);
         color: #58a6ff;
     }
+    :root:not([data-theme="light"]) .health-good { background: #1a3d1f; color: #3fb950; }
+    :root:not([data-theme="light"]) .health-warn { background: #3d3012; color: #d29922; }
+    :root:not([data-theme="light"]) .page-nav-tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+    :root:not([data-theme="light"]) .page-nav-tab:hover { color: #58a6ff; }
 }
