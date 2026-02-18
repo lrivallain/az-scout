@@ -222,7 +222,7 @@ function navigateTo(page) {
     if (page === 'planner') {
         if (lastMappingData && lastMappingData.length > 0) {
             document.getElementById('planner-empty').style.display = 'none';
-            document.getElementById('planner-content').style.display = 'block';
+            document.getElementById('planner-content').style.display = '';
             renderRegionHealthSummary();
         } else {
             document.getElementById('planner-empty').style.display = 'flex';
@@ -700,7 +700,7 @@ async function loadMappings() {
         // If currently on planner, refresh planner content
         if (currentPage === 'planner') {
             document.getElementById('planner-empty').style.display = 'none';
-            document.getElementById('planner-content').style.display = 'block';
+            document.getElementById('planner-content').style.display = '';
             renderRegionHealthSummary();
         }
     } catch (err) {

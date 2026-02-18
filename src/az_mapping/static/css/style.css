@@ -73,14 +73,20 @@
 /* ---- Reset ---- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+    height: 100%;
+    overflow: hidden;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.5;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 /* ---- Header ---- */
@@ -91,6 +97,7 @@ body {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+    flex-shrink: 0;
 }
 .header-content {
     display: flex;
@@ -121,6 +128,8 @@ body {
     display: flex;
     flex: 1;
     gap: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* ---- Filters panel ---- */
@@ -134,7 +143,6 @@ body {
     flex-direction: column;
     gap: 1.25rem;
     overflow-y: auto;
-    max-height: calc(100vh - 130px);
     transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease;
     position: relative;
 }
@@ -363,8 +371,10 @@ body {
 .results-panel {
     flex: 1;
     padding: 1.5rem 2rem;
-    overflow-y: auto;
-    max-height: calc(100vh - 130px);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* ---- Page navigation tabs ---- */
@@ -373,6 +383,7 @@ body {
     gap: 0;
     border-bottom: 2px solid var(--border);
     margin-bottom: 1.5rem;
+    flex-shrink: 0;
 }
 .page-nav-tab {
     display: inline-flex;
@@ -403,7 +414,22 @@ body {
 
 /* ---- Page content containers ---- */
 .page-content {
-    /* Just a container for page sections */
+    flex: 1;
+    min-height: 0;
+}
+#page-topology {
+    overflow-y: auto;
+}
+#page-planner {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#planner-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 /* ---- Proceed to Planner bar ---- */
@@ -420,6 +446,7 @@ body {
 /* ---- Region Health Summary ---- */
 .health-summary-card {
     margin-bottom: 1.5rem;
+    flex-shrink: 0;
 }
 .health-grid {
     display: grid;
@@ -695,6 +722,7 @@ body {
     color: var(--text-muted);
     background: var(--card-bg);
     border-top: 1px solid var(--border);
+    flex-shrink: 0;
 }
 .app-footer::before {
     content: "";
@@ -823,11 +851,11 @@ body {
 @media (max-width: 900px) {
     .app-container {
         flex-direction: column;
+        overflow-y: auto;
     }
     .filters-panel {
         width: 100%;
         min-width: 100%;
-        max-height: none;
         border-right: none;
         border-bottom: 1px solid var(--border);
     }
@@ -842,15 +870,22 @@ body {
     .filters-panel .sidebar-toggle svg {
         /* Point down on mobile when expanded */
     }
-    .results-panel {
-        max-height: none;
-    }
     .health-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 }
 
 /* ---- SKU Section ---- */
+.sku-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-bottom: 0;
+}
+.sku-section .card-header {
+    flex-shrink: 0;
+}
 .sku-section .card-header h2 {
     display: flex;
     align-items: center;
@@ -878,13 +913,14 @@ body {
 }
 
 .sku-content {
-    max-height: 800px;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .sku-section.collapsed .sku-content {
-    max-height: 0;
+    display: none;
 }
 
 .sku-controls {
@@ -892,6 +928,7 @@ body {
     gap: 0.75rem;
     margin-bottom: 1rem;
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
 .sku-controls select {
@@ -965,8 +1002,9 @@ body {
 }
 
 .sku-table-container {
-    max-height: 600px;
-    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 
 .sku-table {
