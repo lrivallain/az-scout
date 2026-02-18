@@ -1036,7 +1036,8 @@ async function loadSkus() {
         for (const sku of lastSkuData) recomputeConfidence(sku);
 
         showPanel("planner", "results");
-        renderSkuTable(lastSkuData);
+        try { renderRegionSummary(lastSkuData); } catch (e) { console.error("renderRegionSummary failed:", e); }
+        try { renderSkuTable(lastSkuData); } catch (e) { console.error("renderSkuTable failed:", e); }
     } catch (err) {
         showPanel("planner", "empty");
         showError("planner-error", `Failed to fetch SKUs: ${err.message}`);
@@ -1121,6 +1122,7 @@ async function confirmSpotScore() {
         // Recompute confidence and re-render
         if (lastSkuData) {
             for (const sku of lastSkuData) recomputeConfidence(sku);
+            renderRegionSummary(lastSkuData);
             renderSkuTable(lastSkuData);
         }
 
@@ -1338,6 +1340,112 @@ function renderConfidenceBreakdown(conf) {
 // ---------------------------------------------------------------------------
 // Render SKU table  (powered by Simple-DataTables)
 // ---------------------------------------------------------------------------
+function _computeRegionScores(skus) {
+    // Region Readiness: average confidence score
+    const confScores = skus.map(s => s.confidence?.score).filter(s => s != null);
+    const readiness = confScores.length > 0
+        ? Math.round(confScores.reduce((a, b) => a + b, 0) / confScores.length)
+        : null;
+
+    // Zone Consistency: how uniformly SKUs are distributed across zones
+    const allLogicalZones = [...new Set(skus.flatMap(s => s.zones || []))].sort();
+    let consistency = null;
+    if (allLogicalZones.length > 1) {
+        const zoneCounts = allLogicalZones.map(lz =>
+            skus.filter(s => (s.zones || []).includes(lz) && !(s.restrictions || []).includes(lz)).length
+        );
+        const minCount = Math.min(...zoneCounts);
+        const maxCount = Math.max(...zoneCounts);
+        consistency = minCount === maxCount ? 100 : Math.round((minCount / maxCount) * 100);
+    } else if (allLogicalZones.length === 1) {
+        consistency = 100;
+    }
+
+    // Zone breakdown for detail
+    const zoneBreakdown = allLogicalZones.map(lz => {
+        const available = skus.filter(s => (s.zones || []).includes(lz) && !(s.restrictions || []).includes(lz)).length;
+        const restricted = skus.filter(s => (s.restrictions || []).includes(lz)).length;
+        return { zone: lz, available, restricted };
+    });
+
+    return { readiness, consistency, total: skus.length, zones: allLogicalZones.length, zoneBreakdown };
+}
+
+function _scoreLabel(score) {
+    for (const [th, lbl] of _CONF_LABELS) {
+        if (score >= th) return lbl;
+    }
+    return "Very Low";
+}
+
+function renderRegionSummary(skus) {
+    const el = document.getElementById("region-summary");
+    if (!el) return;
+    if (!skus || skus.length === 0) { el.classList.add("d-none"); return; }
+
+    const scores = _computeRegionScores(skus);
+    const regionSelect = document.getElementById("region-select");
+    let regionName = "Region";
+    if (regionSelect) {
+        const idx = regionSelect.selectedIndex;
+        if (idx >= 0 && regionSelect.options[idx]) {
+            regionName = regionSelect.options[idx].text || regionSelect.value || "Region";
+        } else {
+            regionName = regionSelect.value || "Region";
+        }
+    }
+
+    const readinessLbl = scores.readiness != null ? _scoreLabel(scores.readiness).toLowerCase().replace(/\s+/g, "-") : null;
+    const consistencyLbl = scores.consistency != null ? _scoreLabel(scores.consistency).toLowerCase().replace(/\s+/g, "-") : null;
+
+    const icons = { high: "bi-shield-fill-check", medium: "bi-shield-fill-exclamation", low: "bi-shield-fill-x", "very-low": "bi-shield-fill-x" };
+    const consistencyIcons = { high: "bi-symmetry-vertical", medium: "bi-distribute-horizontal", low: "bi-exclude", "very-low": "bi-exclude" };
+
+    let html = '<div class="region-summary-bar">';
+    html += `<div class="region-summary-title"><i class="bi bi-geo-alt-fill"></i> ${escapeHtml(regionName)}</div>`;
+    html += '<div class="region-summary-scores">';
+
+    // Region Readiness card
+    if (scores.readiness != null) {
+        html += `<div class="region-score-card">`;
+        html += `<div class="region-score-label">Region Readiness</div>`;
+        html += `<div class="region-score-value"><span class="confidence-badge confidence-${readinessLbl}" data-bs-toggle="tooltip" data-bs-title="Average deployment confidence across ${scores.total} SKUs. Reflects quota, spot availability, zone coverage, restrictions and pricing."><i class="bi ${icons[readinessLbl] || 'bi-shield'}"></i> ${scores.readiness}</span></div>`;
+        html += `</div>`;
+    }
+
+    // Zone Consistency card
+    if (scores.consistency != null) {
+        const detail = scores.zoneBreakdown.map(z => `Zone ${z.zone}: ${z.available} avail${z.restricted ? ', ' + z.restricted + ' restricted' : ''}`).join(' | ');
+        html += `<div class="region-score-card">`;
+        html += `<div class="region-score-label">Zone Consistency</div>`;
+        html += `<div class="region-score-value"><span class="confidence-badge confidence-${consistencyLbl}" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="${escapeHtml(detail)}"><i class="bi ${consistencyIcons[consistencyLbl] || 'bi-symmetry-vertical'}"></i> ${scores.consistency}</span></div>`;
+        html += `</div>`;
+    }
+
+    // SKU count & zone count
+    html += `<div class="region-score-card">`;
+    html += `<div class="region-score-label">SKUs</div>`;
+    html += `<div class="region-score-value"><span class="region-stat">${scores.total}</span></div>`;
+    html += `</div>`;
+
+    html += `<div class="region-score-card">`;
+    html += `<div class="region-score-label">Zones</div>`;
+    html += `<div class="region-score-value"><span class="region-stat">${scores.zones}</span></div>`;
+    html += `</div>`;
+
+    html += '</div></div>';
+    el.innerHTML = html;
+    el.classList.remove("d-none");
+
+    // Init tooltips
+    el.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(t => {
+        new bootstrap.Tooltip(t, { delay: { show: 0, hide: 100 }, placement: t.dataset.bsPlacement || "top", whiteSpace: "pre-line" });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// SKU DataTable
+// ---------------------------------------------------------------------------
 function renderSkuTable(skus) {
     const container = document.getElementById("sku-table-container");
 
@@ -1402,9 +1510,11 @@ function renderSkuTable(skus) {
         const conf = sku.confidence || {};
         if (conf.score != null) {
             const lbl = (conf.label || "").toLowerCase().replace(/\s+/g, "-");
-            html += `<td><span class="confidence-badge confidence-${lbl}" title="Deployment confidence: ${conf.score}/100">${conf.score} <small>${escapeHtml(conf.label || "")}</small></span></td>`;
+            const confIcons = { high: "bi-check-circle-fill", medium: "bi-dash-circle-fill", low: "bi-exclamation-triangle-fill", "very-low": "bi-x-circle-fill" };
+            const icon = confIcons[lbl] || "bi-question-circle";
+            html += `<td data-sort="${conf.score}"><span class="confidence-badge confidence-${lbl}" data-bs-toggle="tooltip" data-bs-title="Deployment confidence: ${conf.score}/100 (${escapeHtml(conf.label || '')})"><i class="bi ${icon}"></i> ${conf.score}</span></td>`;
         } else {
-            html += '<td>\u2014</td>';
+            html += '<td data-sort="-1">\u2014</td>';
         }
 
         // Prices
@@ -1430,7 +1540,7 @@ function renderSkuTable(skus) {
     // Column type configuration for proper numeric sorting
     const colConfig = [
         { select: [2, 3, 4, 5, 6], type: "number" },   // vCPUs, Memory, Quota
-        { select: 8, type: "number" },                   // Confidence (textContent starts with number)
+        { select: 8, type: "number" },                   // Confidence (uses data-sort attr)
     ];
     let nextCol = 9;
     if (hasPricing) {
@@ -1463,10 +1573,18 @@ function renderSkuTable(skus) {
     // Build per-column filter row in thead
     _buildColumnFilters(tableEl, filterableCols);
 
-    // Init Bootstrap tooltips on zone cells
-    tableEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-        new bootstrap.Tooltip(el, { delay: { show: 0, hide: 100 }, placement: "top" });
-    });
+    // Init Bootstrap tooltips on zone & confidence cells
+    function _initSkuTooltips() {
+        tableEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+            if (!bootstrap.Tooltip.getInstance(el)) {
+                new bootstrap.Tooltip(el, { delay: { show: 0, hide: 100 }, placement: "top" });
+            }
+        });
+    }
+    _initSkuTooltips();
+
+    // Re-init tooltips after sort re-renders the table
+    _skuDataTable.on("datatable.sort", () => _initSkuTooltips());
 }
 
 /**
