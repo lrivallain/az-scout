@@ -1,321 +1,313 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Azure AZ Mapping Viewer</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='img/favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/style.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
-<body>
+<body class="d-flex flex-column min-vh-100">
 
-<header class="app-header">
-    <div class="header-left">
-        <div class="header-content">
-            <img class="header-icon" src="{{ url_for('static', path='img/favicon.svg') }}" width="28" height="28" alt="">
-            <h1>Azure AZ Mapping Viewer</h1>
-        </div>
-        <p class="header-subtitle">Visualize logical-to-physical Availability Zone mappings across subscriptions</p>
-    </div>
-    <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
-        <!-- Sun icon (shown in dark mode) -->
-        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
-            <line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/>
-            <line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-        </svg>
-        <!-- Moon icon (shown in light mode) -->
-        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-        </svg>
-    </button>
-</header>
-
-<div class="app-container">
-    <!-- Filters sidebar -->
-    <aside class="filters-panel" id="filters-panel">
-        <button type="button" class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Collapse filters">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"/>
-            </svg>
-        </button>
-        <div class="sidebar-content" id="sidebar-content">
-        <div class="filter-section">
-            <h3>
-                <img class="filter-icon" src="{{ url_for('static', path='img/entra-id.svg') }}" alt="Entra ID" width="16" height="16">
-                Tenant
-            </h3>
-            <select id="tenant-select">
-                <option value="">Loading tenants…</option>
-            </select>
-        </div>
-
-        <div class="filter-section">
-            <h3>
-                <img src="{{ url_for('static', path='img/region-management.svg') }}" width="16" height="16" alt="">
-                Region
-            </h3>
-            <div class="region-combobox" id="region-combobox">
-                <input type="search" id="region-search" placeholder="Loading regions…"
-                       autocomplete="off" spellcheck="false" disabled>
-                <input type="hidden" id="region-select" value="">
-                <ul class="region-dropdown" id="region-dropdown"></ul>
-            </div>
-        </div>
-
-        <div class="filter-section">
-            <h3>
-                <img src="{{ url_for('static', path='img/subscriptions.svg') }}" width="16" height="16" alt="">
-                Subscriptions
-            </h3>
-            <input type="search" id="sub-filter" placeholder="Filter subscriptions…"
-                   autocomplete="off" spellcheck="false">
-            <div class="checkbox-actions">
-                <button type="button" onclick="selectAllVisible()">Select visible</button>
-                <button type="button" onclick="deselectAll()">Clear all</button>
-            </div>
-            <div id="sub-list" class="checkbox-list">
-                <div class="loading-indicator" id="sub-loading">
-                    <div class="spinner"></div>
-                    <span>Loading subscriptions…</span>
-                </div>
-            </div>
-            <div id="sub-count" class="selection-count">0 selected</div>
-        </div>
-
-        <button type="button" id="load-btn" class="primary-btn" onclick="loadMappings()" disabled>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="1 4 1 10 7 10"/>
-                <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
-            </svg>
-            Load Mappings
-        </button>
-
-        <div id="error-panel" class="error-panel" style="display:none;"></div>
-        </div><!-- /.sidebar-content -->
-    </aside>
-
-    <!-- Results area -->
-    <main class="results-panel">
-        <!-- Page navigation tabs -->
-        <nav class="page-nav" id="page-nav">
-            <button type="button" class="page-nav-tab active" data-page="topology" onclick="navigateTo('topology')">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="6" height="5" rx="1"/><rect x="16" y="3" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/><line x1="8" y1="5.5" x2="16" y2="5.5"/><path d="M12 5.5V18.5H16"/></svg>
-                AZ Topology
-            </button>
-            <button type="button" class="page-nav-tab" data-page="planner" onclick="navigateTo('planner')">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-                Deployment Planner
-            </button>
-        </nav>
-
-        <!-- ====== Topology Page ====== -->
-        <div id="page-topology" class="page-content">
-            <div id="topology-empty" class="empty-state">
-                <img src="{{ url_for('static', path='img/favicon.svg') }}" width="48" height="48" alt="Main icon">
-                <p>Select a region and one or more subscriptions, then click <strong>Load Mappings</strong>.</p>
-            </div>
-
-            <div id="topology-content" style="display:none;">
-            <!-- Graph section -->
-            <section class="result-card">
-                <div class="card-header">
-                    <h2>Zone Mapping Graph</h2>
-                    <button type="button" class="export-btn" onclick="exportGraphPNG()" title="Export as PNG">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        PNG
-                    </button>
-                </div>
-                <div id="graph-container"></div>
-                <div id="graph-legend" class="graph-legend"></div>
-            </section>
-
-            <!-- Table section -->
-            <section class="result-card">
-                <div class="card-header">
-                    <h2>Zone Mapping Table</h2>
-                    <button type="button" class="export-btn" onclick="exportTableCSV()" title="Export as CSV">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        CSV
-                    </button>
-                </div>
-                <div id="table-container" class="table-container"></div>
-            </section>
-
-            <!-- Proceed to Planner -->
-            <div class="proceed-bar">
-                <button type="button" class="primary-btn proceed-btn" onclick="navigateTo('planner')">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="5" y1="12" x2="19" y2="12"/>
-                        <polyline points="12 5 19 12 12 19"/>
-                    </svg>
-                    Proceed to Deployment Planner
-                </button>
-            </div>
-            </div><!-- /topology-content -->
-
-            <div id="topology-loading" class="loading-indicator" style="display:none;">
-                <div class="spinner"></div>
-                <span>Fetching zone mappings…</span>
-            </div>
-        </div><!-- /page-topology -->
-
-        <!-- ====== Planner Page ====== -->
-        <div id="page-planner" class="page-content" style="display:none;">
-            <div id="planner-empty" class="empty-state">
-                <img src="{{ url_for('static', path='img/favicon.svg') }}" width="48" height="48" alt="Main icon">
-                <p>Load zone mappings from the <strong>AZ Topology</strong> tab first, then come back here to plan deployments.</p>
-            </div>
-
-            <div id="planner-loading" class="loading-indicator" style="display:none;">
-                <div class="spinner"></div>
-                <span>Fetching zone mappings…</span>
-            </div>
-
-            <div id="planner-content" style="display:none;">
-                <div id="region-health-summary"></div>
-
-            <!-- SKU section -->
-            <section class="result-card sku-section">
-                <div class="card-header">
-                    <h2>
-                        <button type="button" class="section-toggle" onclick="toggleSkuSection()" id="sku-toggle" title="Show/hide SKU availability">
-                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6 9 12 15 18 9"/>
-                            </svg>
-                        </button>
-                        SKU Availability per Physical Zone
-                    </h2>
-                    <button type="button" class="export-btn" onclick="exportSkuCSV()" title="Export as CSV">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        CSV
-                    </button>
-                </div>
-                <div id="sku-content" class="sku-content">
-                    <div class="sku-controls">
-                        <select id="sku-subscription-select" style="display:none;">
-                            <option value="">Select subscription…</option>
-                        </select>
-                        <input type="search" id="sku-filter" placeholder="Filter SKU names (e.g., D2s, E4)…"
-                               autocomplete="off" spellcheck="false">
-                        <label class="checkbox-item sku-price-toggle" title="Fetch retail prices from Azure Retail Prices API">
-                            <input type="checkbox" id="sku-include-prices"> Prices
-                        </label>
-                        <select id="sku-currency" class="sku-currency-select" title="Currency for prices">
-                            <option value="USD" selected>USD</option>
-                            <option value="EUR">EUR</option>
-                            <option value="GBP">GBP</option>
-                            <option value="JPY">JPY</option>
-                            <option value="AUD">AUD</option>
-                            <option value="CAD">CAD</option>
-                            <option value="CHF">CHF</option>
-                            <option value="SEK">SEK</option>
-                            <option value="BRL">BRL</option>
-                            <option value="INR">INR</option>
-                        </select>
-                        <button type="button" class="secondary-btn" onclick="loadSkus()">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="1 4 1 10 7 10"/>
-                                <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
-                            </svg>
-                            Load SKUs
-                        </button>
-
-                    </div>
-                    <div id="sku-loading" class="loading-indicator" style="display:none;">
-                        <div class="spinner"></div>
-                        <span>Fetching SKU data…</span>
-                    </div>
-                    <div id="sku-empty" class="empty-state-small">
-                        <p>Click <strong>Load SKUs</strong> to see VM SKU availability per zone for the selected region and subscription.</p>
-                    </div>
-                    <div id="sku-table-container" class="sku-table-container" style="display:none;"></div>
-                </div>
-            </section>
-            </div><!-- /planner-content -->
-        </div><!-- /page-planner -->
-    </main>
-</div>
-
-<footer class="app-footer">
-    <div class="footer-content">
-        <a href="https://github.com/lrivallain/az-mapping" target="_blank" rel="noopener" class="footer-link">
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-            </svg>
-            lrivallain/az-mapping
+<!-- ===== Navbar ===== -->
+<nav class="navbar navbar-expand-sm bg-body-tertiary border-bottom">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+            <img src="{{ url_for('static', path='img/favicon.svg') }}" width="26" height="26" alt="">
+            <span>Azure AZ Mapping</span>
         </a>
-        <span class="footer-sep">·</span>
-        <span class="footer-license">MIT License</span>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+                <i class="bi bi-moon-fill" id="icon-dark"></i>
+                <i class="bi bi-sun-fill d-none" id="icon-light"></i>
+            </button>
+            <a href="https://github.com/lrivallain/az-mapping" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="GitHub">
+                <i class="bi bi-github"></i>
+            </a>
+        </div>
     </div>
-    <p class="footer-disclaimer">Independent Azure analysis tool. Not affiliated with Microsoft. Data is based on public Azure APIs and provided for informational purposes only. Microsoft does not guarantee availability, pricing, or deployment success.</p>
+</nav>
+
+<!-- ===== Main content ===== -->
+<div class="container-fluid mt-3 flex-grow-1 overflow-auto pb-4">
+
+    <!-- Shared selectors: Tenant + Region -->
+    <div class="row mb-2 g-2 align-items-center" id="selector-bar">
+        <div class="col-auto" id="tenant-section">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-shield-lock"></i> Tenant</span>
+                <select class="form-select form-select-sm" id="tenant-select" style="max-width:320px;">
+                    <option value="">Loading tenants…</option>
+                </select>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="position-relative" id="region-combobox">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-geo-alt"></i> Region</span>
+                    <input type="search" class="form-control form-control-sm" id="region-search"
+                           placeholder="Loading regions…" autocomplete="off" spellcheck="false" disabled
+                           style="min-width:240px;">
+                </div>
+                <input type="hidden" id="region-select" value="">
+                <ul class="dropdown-menu w-100" id="region-dropdown"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="topology-tab" data-bs-toggle="tab" data-bs-target="#tab-topology"
+                    type="button" role="tab" aria-controls="tab-topology" aria-selected="true">
+                <i class="bi bi-diagram-3"></i> AZ Topology
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="planner-tab" data-bs-toggle="tab" data-bs-target="#tab-planner"
+                    type="button" role="tab" aria-controls="tab-planner" aria-selected="false">
+                <i class="bi bi-grid-3x3-gap"></i> Deployment Planner
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="mainTabContent">
+
+        <!-- ====== AZ Topology Tab ====== -->
+        <div class="tab-pane fade show active" id="tab-topology" role="tabpanel" aria-labelledby="topology-tab">
+            <div class="card border-top-0 rounded-top-0">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <!-- Left sidebar: subscriptions -->
+                        <div class="col-md-3 col-xl-2">
+                            <div class="topo-sidebar">
+                                <label class="form-label form-label-sm mb-1">
+                                    <i class="bi bi-collection"></i> Subscriptions
+                                </label>
+                                <div class="input-group input-group-sm mb-1">
+                                    <input type="search" class="form-control" id="topo-sub-filter"
+                                           placeholder="Filter…" autocomplete="off" spellcheck="false">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="topoSelectAllVisible()" title="Select visible">
+                                        <i class="bi bi-check-all"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="topoDeselectAll()" title="Clear all">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                                <div id="topo-sub-list" class="subscription-checklist"></div>
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <small class="text-body-secondary" id="topo-sub-count">0 selected</small>
+                                    <button type="button" class="btn btn-primary btn-sm" id="topo-load-btn" onclick="loadMappings()" disabled>
+                                        <i class="bi bi-arrow-repeat"></i> Load
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right content: results -->
+                        <div class="col-md-9 col-xl-10">
+                            <!-- Error -->
+                            <div id="topo-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
+
+                            <!-- Empty state -->
+                            <div id="topo-empty" class="text-center text-body-secondary py-5">
+                                <i class="bi bi-diagram-3 fs-1 d-block mb-2"></i>
+                                <p>Select subscriptions and click <strong>Load</strong>.</p>
+                            </div>
+
+                            <!-- Loading -->
+                            <div id="topo-loading" class="text-center py-5 d-none">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <p class="mt-2 text-body-secondary">Fetching zone mappings…</p>
+                            </div>
+
+                            <!-- Results -->
+                            <div id="topo-results" class="d-none">
+                                <!-- Graph -->
+                                <div class="card mb-3">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-diagram-3"></i> Zone Mapping Graph</span>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportGraphPNG()" title="Export as PNG">
+                                            <i class="bi bi-download"></i> PNG
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="graph-container" class="graph-container mx-auto"></div>
+                                        <div id="graph-legend" class="d-flex flex-wrap gap-3 mt-2 justify-content-center"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Table -->
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-table"></i> Zone Mapping Table</span>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportTableCSV()" title="Export as CSV">
+                                            <i class="bi bi-download"></i> CSV
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="table-container" class="table-responsive"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== Deployment Planner Tab ====== -->
+        <div class="tab-pane fade" id="tab-planner" role="tabpanel" aria-labelledby="planner-tab">
+            <div class="card border-top-0 rounded-top-0">
+                <div class="card-body">
+                    <!-- Controls row -->
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-md-3 col-lg-3">
+                            <label for="planner-sub-search" class="form-label form-label-sm mb-1">
+                                <i class="bi bi-collection"></i> Subscription
+                            </label>
+                            <div class="position-relative" id="planner-sub-combobox">
+                                <input type="search" class="form-control form-control-sm" id="planner-sub-search"
+                                       placeholder="Loading subscriptions…" autocomplete="off" spellcheck="false" disabled>
+                                <input type="hidden" id="planner-sub-select" value="">
+                                <ul class="dropdown-menu w-100" id="planner-sub-dropdown"></ul>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <div class="form-check form-switch mt-1">
+                                <input class="form-check-input" type="checkbox" id="planner-include-prices">
+                                <label class="form-check-label small" for="planner-include-prices">Prices</label>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <select class="form-select form-select-sm" id="planner-currency" title="Currency" style="width:80px;">
+                                <option value="USD" selected>USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                                <option value="JPY">JPY</option>
+                                <option value="AUD">AUD</option>
+                                <option value="CAD">CAD</option>
+                                <option value="CHF">CHF</option>
+                                <option value="SEK">SEK</option>
+                                <option value="BRL">BRL</option>
+                                <option value="INR">INR</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-primary btn-sm" id="planner-load-btn" onclick="loadSkus()" disabled>
+                                <i class="bi bi-arrow-repeat"></i> Load SKUs
+                            </button>
+                        </div>
+                        <div class="col d-none" id="planner-csv-btn">
+                            <div class="d-flex justify-content-end">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportSkuCSV()" title="Export as CSV">
+                                    <i class="bi bi-download"></i> CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error -->
+                    <div id="planner-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
+
+                    <!-- Empty state -->
+                    <div id="planner-empty" class="text-center text-body-secondary py-5">
+                        <i class="bi bi-grid-3x3-gap fs-1 d-block mb-2"></i>
+                        <p>Select a subscription, then click <strong>Load SKUs</strong>.</p>
+                    </div>
+
+                    <!-- Loading -->
+                    <div id="planner-loading" class="text-center py-5 d-none">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-body-secondary">Fetching SKU data…</p>
+                    </div>
+
+                    <!-- SKU results -->
+                    <div id="planner-results" class="d-none">
+                        <div id="sku-table-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /tab-content -->
+</div><!-- /container -->
+
+<!-- ===== Footer ===== -->
+<footer class="border-top py-2 text-center small text-body-secondary mt-auto">
+    <span>MIT License</span> ·
+    <span>Independent Azure analysis tool — not affiliated with Microsoft.</span>
 </footer>
 
-<!-- Spot Score Modal -->
-<div class="modal-overlay" id="spot-modal" style="display:none;" onclick="closeSpotModal(event)">
-    <div class="modal-dialog" onclick="event.stopPropagation()">
-        <h3>Spot Placement Score</h3>
-        <p class="modal-sku-name" id="spot-modal-sku"></p>
-        <label for="spot-modal-instances">Number of instances:</label>
-        <input type="number" id="spot-modal-instances" value="1" min="1" max="1000" class="spot-instance-input">
-        <div class="modal-actions">
-            <button type="button" class="primary-btn" onclick="confirmSpotScore()">Get Score</button>
-            <button type="button" class="secondary-btn" onclick="closeSpotModal()">Cancel</button>
+<!-- ===== Spot Score Modal ===== -->
+<div class="modal fade" id="spotModal" tabindex="-1" aria-labelledby="spotModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="spotModalLabel">Spot Placement Score</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="fw-semibold mb-2" id="spot-modal-sku"></p>
+                <label for="spot-modal-instances" class="form-label small">Number of instances:</label>
+                <input type="number" class="form-control form-control-sm mb-3" id="spot-modal-instances" value="1" min="1" max="1000">
+                <div id="spot-modal-loading" class="text-center d-none">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 small">Fetching score…</span>
+                </div>
+                <div id="spot-modal-result" class="d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="confirmSpotScore()">Get Score</button>
+            </div>
         </div>
-        <div id="spot-modal-loading" class="loading-indicator" style="display:none;">
-            <div class="spinner"></div>
-            <span>Fetching score…</span>
-        </div>
-        <div id="spot-modal-result" style="display:none;"></div>
     </div>
 </div>
 
-<!-- SKU Pricing Detail Modal -->
-<div class="modal-overlay" id="pricing-modal" style="display:none;" onclick="closePricingModal(event)">
-    <div class="modal-dialog pricing-modal-dialog" onclick="event.stopPropagation()">
-        <div class="pricing-modal-header">
-            <h3>SKU Pricing Detail</h3>
-            <button type="button" class="modal-close-btn" onclick="closePricingModal()" title="Close">&times;</button>
+<!-- ===== Pricing Detail Modal ===== -->
+<div class="modal fade" id="pricingModal" tabindex="-1" aria-labelledby="pricingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pricingModalLabel">SKU Pricing Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="fw-semibold" id="pricing-modal-sku"></p>
+                <div class="mb-3">
+                    <label for="pricing-modal-currency-select" class="form-label small">Currency:</label>
+                    <select class="form-select form-select-sm" id="pricing-modal-currency-select" onchange="refreshPricingModal()" style="width:100px;">
+                        <option value="USD" selected>USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
+                        <option value="JPY">JPY</option>
+                        <option value="AUD">AUD</option>
+                        <option value="CAD">CAD</option>
+                        <option value="CHF">CHF</option>
+                        <option value="SEK">SEK</option>
+                        <option value="BRL">BRL</option>
+                        <option value="INR">INR</option>
+                    </select>
+                </div>
+                <div id="pricing-modal-loading" class="text-center d-none">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 small">Fetching prices…</span>
+                </div>
+                <div id="pricing-modal-content" class="d-none"></div>
+            </div>
         </div>
-        <p class="modal-sku-name" id="pricing-modal-sku"></p>
-        <div class="pricing-modal-currency">
-            <label for="pricing-modal-currency-select">Currency:</label>
-            <select id="pricing-modal-currency-select" class="sku-currency-select" onchange="refreshPricingModal()">
-                <option value="USD" selected>USD</option>
-                <option value="EUR">EUR</option>
-                <option value="GBP">GBP</option>
-                <option value="JPY">JPY</option>
-                <option value="AUD">AUD</option>
-                <option value="CAD">CAD</option>
-                <option value="CHF">CHF</option>
-                <option value="SEK">SEK</option>
-                <option value="BRL">BRL</option>
-                <option value="INR">INR</option>
-            </select>
-        </div>
-        <div id="pricing-modal-loading" class="loading-indicator" style="display:none;">
-            <div class="spinner"></div>
-            <span>Fetching prices…</span>
-        </div>
-        <div id="pricing-modal-content" style="display:none;"></div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
 </body>
 </html>
