@@ -1,0 +1,67 @@
+{
+  "value": [
+    {
+      "name": "Standard_D2s_v3",
+      "resourceType": "virtualMachines",
+      "tier": "Standard",
+      "size": "D2s_v3",
+      "family": "standardDSv3Family",
+      "locations": ["francecentral"],
+      "locationInfo": [
+        {
+          "location": "francecentral",
+          "zones": ["1", "2", "3"]
+        }
+      ],
+      "capabilities": [
+        {"name": "vCPUs", "value": "2"},
+        {"name": "MemoryGB", "value": "8"},
+        {"name": "MaxDataDiskCount", "value": "4"},
+        {"name": "PremiumIO", "value": "True"}
+      ],
+      "restrictions": []
+    },
+    {
+      "name": "Standard_E8s_v4",
+      "resourceType": "virtualMachines",
+      "tier": "Standard",
+      "size": "E8s_v4",
+      "family": "standardESv4Family",
+      "locations": ["francecentral"],
+      "locationInfo": [
+        {
+          "location": "francecentral",
+          "zones": ["1", "2", "3"]
+        }
+      ],
+      "capabilities": [
+        {"name": "vCPUs", "value": "8"},
+        {"name": "MemoryGB", "value": "64"},
+        {"name": "MaxDataDiskCount", "value": "32"},
+        {"name": "PremiumIO", "value": "True"}
+      ],
+      "restrictions": []
+    },
+    {
+      "name": "Standard_F2s_v2",
+      "resourceType": "virtualMachines",
+      "tier": "Standard",
+      "size": "F2s_v2",
+      "family": "standardFSv2Family",
+      "locations": ["francecentral"],
+      "locationInfo": [
+        {
+          "location": "francecentral",
+          "zones": ["1", "2"]
+        }
+      ],
+      "capabilities": [
+        {"name": "vCPUs", "value": "2"},
+        {"name": "MemoryGB", "value": "4"},
+        {"name": "MaxDataDiskCount", "value": "4"},
+        {"name": "PremiumIO", "value": "True"}
+      ],
+      "restrictions": []
+    }
+  ]
+}

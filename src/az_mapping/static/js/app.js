@@ -12,6 +12,81 @@ let tenants = [];                // [{id, name}]
 let lastMappingData = null;      // cached result from /api/mappings
 let selectedSkuSubscription = null; // subscription selected for SKU loading
 let lastSkuData = null;          // cached SKU data
+let skuSortColumn = null;        // current SKU table sort column
+let skuSortAsc = true;           // sort direction
+let lastSpotScores = null;       // cached spot placement scores {scores: {sku: score}, errors: []}
+
+// ---------------------------------------------------------------------------
+// Deployment Confidence Score – client-side recomputation
+// ---------------------------------------------------------------------------
+const _CONF_WEIGHTS = { quota: 0.25, spot: 0.35, zones: 0.15, restrictions: 0.15, pricePressure: 0.10 };
+const _CONF_LABELS = [[80, "High"], [60, "Medium"], [40, "Low"], [0, "Very Low"]];
+
+function _bestSpotLabel(zoneScores) {
+    const order = { high: 3, medium: 2, low: 1 };
+    let best = null;
+    for (const s of Object.values(zoneScores)) {
+        const rank = order[s.toLowerCase()] || 0;
+        if (rank > (order[(best || "").toLowerCase()] || 0)) best = s;
+    }
+    return best || null;
+}
+
+function recomputeConfidence(sku) {
+    const caps = sku.capabilities || {};
+    const quota = sku.quota || {};
+    const pricing = sku.pricing || {};
+    const vcpus = parseInt(caps.vCPUs, 10) || 0;
+    const remaining = quota.remaining;
+    const zones = sku.zones || [];
+    const restrictions = sku.restrictions || [];
+    const zoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
+    const spotLabel = _bestSpotLabel(zoneScores);
+
+    const signals = {};
+    // quota
+    if (remaining != null) {
+        if (remaining <= 0) signals.quota = 0;
+        else signals.quota = Math.min((remaining / Math.max(vcpus, 1)) / 10, 1) * 100;
+    }
+    // spot
+    const spotMap = { high: 100, medium: 60, low: 25 };
+    if (spotLabel && spotMap[spotLabel.toLowerCase()] != null) {
+        signals.spot = spotMap[spotLabel.toLowerCase()];
+    }
+    // zones
+    signals.zones = Math.min(zones.length / 3, 1) * 100;
+    // restrictions
+    signals.restrictions = restrictions.length > 0 ? 0 : 100;
+    // pricePressure
+    if (pricing.paygo != null && pricing.spot != null && pricing.paygo > 0) {
+        const ratio = pricing.spot / pricing.paygo;
+        signals.pricePressure = Math.max(0, Math.min(1, (0.8 - ratio) / 0.6)) * 100;
+    }
+
+    const breakdown = [];
+    const missing = [];
+    let totalWeight = 0;
+    for (const [k, w] of Object.entries(_CONF_WEIGHTS)) {
+        if (signals[k] != null) totalWeight += w;
+        else missing.push(k);
+    }
+    let weightedSum = 0;
+    for (const [k, w] of Object.entries(_CONF_WEIGHTS)) {
+        if (signals[k] == null) continue;
+        const ew = totalWeight > 0 ? w / totalWeight : 0;
+        const contrib = signals[k] * ew;
+        weightedSum += contrib;
+        breakdown.push({ signal: k, score: Math.round(signals[k] * 10) / 10, weight: Math.round(ew * 1000) / 1000, contribution: Math.round(contrib * 10) / 10 });
+    }
+
+    const score = totalWeight > 0 ? Math.round(weightedSum) : 0;
+    let label = "Very Low";
+    for (const [th, lbl] of _CONF_LABELS) {
+        if (score >= th) { label = lbl; break; }
+    }
+    sku.confidence = { score, label, breakdown, missing };
+}
 
 // ---------------------------------------------------------------------------
 // Theme management
@@ -159,6 +234,19 @@ async function apiFetch(url) {
     if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+}
+
+async function apiPost(url, body) {
+    const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${resp.status}`);
     }
     return resp.json();
 }
@@ -479,6 +567,9 @@ function onRegionChange() {
 
 function resetSkuSection() {
     lastSkuData = null;
+    lastSpotScores = null;
+    skuSortColumn = null;
+    skuSortAsc = true;
     document.getElementById("sku-empty").style.display = "block";
     document.getElementById("sku-table-container").style.display = "none";
     document.getElementById("sku-loading").style.display = "none";
@@ -1148,6 +1239,12 @@ async function loadSkus() {
     try {
         const params = new URLSearchParams({ region, subscriptionId });
         if (tenant) params.append("tenantId", tenant);
+        const includePrices = document.getElementById("sku-include-prices")?.checked;
+        if (includePrices) {
+            params.append("includePrices", "true");
+            const currency = document.getElementById("sku-currency")?.value || "USD";
+            params.append("currencyCode", currency);
+        }
         
         const data = await apiFetch(`/api/skus?${params}`);
         
@@ -1167,6 +1264,147 @@ async function loadSkus() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Spot Score Modal – per-SKU on-demand lookup with caching
+// ---------------------------------------------------------------------------
+let _spotModalSku = null;
+
+function openSpotModal(skuName) {
+    _spotModalSku = skuName;
+    document.getElementById("spot-modal-sku").textContent = skuName;
+    document.getElementById("spot-modal-instances").value = "1";
+    document.getElementById("spot-modal-loading").style.display = "none";
+    document.getElementById("spot-modal-result").style.display = "none";
+    document.getElementById("spot-modal").style.display = "flex";
+    const input = document.getElementById("spot-modal-instances");
+    input.focus();
+    input.select();
+}
+
+function closeSpotModal(event) {
+    // If called from overlay click, only close if clicking the overlay itself
+    if (event && event.target !== document.getElementById("spot-modal")) return;
+    document.getElementById("spot-modal").style.display = "none";
+    _spotModalSku = null;
+}
+
+function _onSpotModalKeydown(e) {
+    const modal = document.getElementById("spot-modal");
+    if (modal.style.display === "none") return;
+    if (e.key === "Escape") { closeSpotModal(); }
+    else if (e.key === "Enter") { e.preventDefault(); confirmSpotScore(); }
+}
+document.addEventListener("keydown", _onSpotModalKeydown);
+
+async function confirmSpotScore() {
+    const skuName = _spotModalSku;
+    if (!skuName) return;
+
+    const region = document.getElementById("region-select").value;
+    const tenant = document.getElementById("tenant-select").value;
+    const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
+    if (!subscriptionId || !region) return;
+
+    const instanceCount = parseInt(document.getElementById("spot-modal-instances").value, 10) || 1;
+
+    document.getElementById("spot-modal-loading").style.display = "flex";
+    document.getElementById("spot-modal-result").style.display = "none";
+
+    try {
+        const payload = { region, subscriptionId, skus: [skuName], instanceCount };
+        if (tenant) payload.tenantId = tenant;
+
+        const result = await apiPost("/api/spot-scores", payload);
+
+        // Accumulate into cache
+        if (!lastSpotScores) {
+            lastSpotScores = { scores: {}, errors: [] };
+        }
+        if (result.scores) {
+            for (const [sku, zoneScores] of Object.entries(result.scores)) {
+                lastSpotScores.scores[sku] = { ...(lastSpotScores.scores[sku] || {}), ...zoneScores };
+            }
+        }
+        if (result.errors && result.errors.length > 0) {
+            lastSpotScores.errors.push(...result.errors);
+        }
+
+        // Show result in modal – per-zone scores
+        const zoneScores = result.scores?.[skuName] || {};
+        const resultEl = document.getElementById("spot-modal-result");
+        const zones = Object.keys(zoneScores).sort();
+        if (zones.length > 0) {
+            resultEl.innerHTML = '<div class="spot-modal-grid">' + zones.map(z => {
+                const s = zoneScores[z] || "Unknown";
+                const cls = "spot-badge spot-" + s.toLowerCase();
+                return `<span class="spot-modal-zone">Z${escapeHtml(z)}</span><span class="${cls}">${escapeHtml(s)}</span>`;
+            }).join("") + '</div>';
+        } else {
+            resultEl.innerHTML = `<span class="spot-badge spot-unknown">Unknown</span>`;
+        }
+        resultEl.style.display = "block";
+
+        // Recompute confidence scores with spot data
+        if (lastSkuData) {
+            for (const sku of lastSkuData) recomputeConfidence(sku);
+        }
+
+        // Re-render table to update the cell
+        const subscriptionName = getSubName(subscriptionId);
+        renderSkuTable(lastSkuData, subscriptionName);
+
+        if (result.errors && result.errors.length > 0) {
+            showError("Spot score error: " + result.errors.join("; "));
+        }
+    } catch (err) {
+        showError("Failed to fetch Spot Score: " + err.message);
+    } finally {
+        document.getElementById("spot-modal-loading").style.display = "none";
+    }
+}
+
+function skuSortIndicator(col) {
+    if (skuSortColumn !== col) return "";
+    return skuSortAsc ? " ▲" : " ▼";
+}
+
+function onSkuSort(col, subscriptionName) {
+    if (skuSortColumn === col) {
+        skuSortAsc = !skuSortAsc;
+    } else {
+        skuSortColumn = col;
+        skuSortAsc = true;
+    }
+    renderSkuTable(lastSkuData, subscriptionName);
+}
+
+function skuSortValue(sku, col) {
+    switch (col) {
+        case "name":     return (sku.name || "").toLowerCase();
+        case "family":   return (sku.family || "").toLowerCase();
+        case "vCPUs":    return parseFloat(sku.capabilities.vCPUs || "0") || 0;
+        case "memory":   return parseFloat(sku.capabilities.MemoryGB || "0") || 0;
+        case "qLimit":   { const q = sku.quota || {}; return q.limit != null ? q.limit : -1; }
+        case "qUsed":    { const q = sku.quota || {}; return q.used  != null ? q.used  : -1; }
+        case "qRemain":  { const q = sku.quota || {}; return q.remaining != null ? q.remaining : -1; }
+        case "spot":     {
+            const zoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
+            const vals = Object.values(zoneScores).map(s => {
+                const l = s.toLowerCase();
+                if (l === "high") return 3;
+                if (l === "medium") return 2;
+                if (l === "low") return 1;
+                return 0;
+            });
+            return vals.length > 0 ? Math.max(...vals) : 0;
+        }
+        case "paygo":    { const p = sku.pricing || {}; return p.paygo != null ? p.paygo : Infinity; }
+        case "spotPrice":{ const p = sku.pricing || {}; return p.spot  != null ? p.spot  : Infinity; }
+        case "confidence": { const c = sku.confidence || {}; return c.score != null ? c.score : -1; }
+        default:         return 0;
+    }
+}
+
 function renderSkuTable(skus, subscriptionName) {
     const container = document.getElementById("sku-table-container");
     const filterInput = document.getElementById("sku-filter");
@@ -1179,7 +1417,7 @@ function renderSkuTable(skus, subscriptionName) {
     
     // Apply filter
     const filterText = filterInput.value.toLowerCase();
-    const filteredSkus = skus.filter(sku => 
+    let filteredSkus = skus.filter(sku => 
         !filterText || sku.name.toLowerCase().includes(filterText)
     );
     
@@ -1189,15 +1427,30 @@ function renderSkuTable(skus, subscriptionName) {
         return;
     }
     
+    // Apply sorting
+    if (skuSortColumn) {
+        filteredSkus = [...filteredSkus].sort((a, b) => {
+            const va = skuSortValue(a, skuSortColumn);
+            const vb = skuSortValue(b, skuSortColumn);
+            let cmp = 0;
+            if (typeof va === "string") cmp = va.localeCompare(vb);
+            else cmp = va - vb;
+            return skuSortAsc ? cmp : -cmp;
+        });
+    }
+    
     // Get physical zone mappings using helper function
     const subscriptionId = selectedSkuSubscription || [...selectedSubscriptions][0];
     const physicalZoneMap = getPhysicalZoneMap(subscriptionId);
     
     // Determine all logical zones from SKUs
-    const allLogicalZones = [...new Set(filteredSkus.flatMap(s => s.zones))].sort();
+    const allLogicalZones = [...new Set(skus.flatMap(s => s.zones))].sort();
     
     // Map to physical zones
     const physicalZones = allLogicalZones.map(lz => physicalZoneMap[lz] || `Zone ${lz}`);
+    
+    // Escaped subscription name for onclick attribute
+    const escapedSubForAttr = subscriptionName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     
     // Build table with subscription context
     let html = `<div style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--azure-light); border-radius: 6px; font-size: 0.875rem;">
@@ -1205,10 +1458,29 @@ function renderSkuTable(skus, subscriptionName) {
     </div>`;
     html += '<table class="sku-table">';
     html += "<thead><tr>";
-    html += "<th>SKU Name</th>";
-    html += "<th>Family</th>";
-    html += "<th>vCPUs</th>";
-    html += "<th>Memory (GB)</th>";
+    
+    const sortCols = [
+        ["name",    "SKU Name"],
+        ["family",  "Family"],
+        ["vCPUs",   "vCPUs"],
+        ["memory",  "Memory (GB)"],
+        ["qLimit",  "Quota Limit"],
+        ["qUsed",   "Quota Used"],
+        ["qRemain", "Quota Remaining"],
+        ["spot",    "Spot Score"],
+        ["confidence", "Confidence"],
+    ];
+    // Conditionally add price columns when pricing data is present
+    const hasPricing = filteredSkus.some(s => s.pricing);
+    if (hasPricing) {
+        const currency = filteredSkus.find(s => s.pricing)?.pricing?.currency || "USD";
+        sortCols.push(["paygo", `PAYGO ${currency}/h`]);
+        sortCols.push(["spotPrice", `Spot ${currency}/h`]);
+    }
+    sortCols.forEach(([col, label]) => {
+        const active = skuSortColumn === col ? ' class="sort-active"' : '';
+        html += `<th${active} style="cursor:pointer" onclick="onSkuSort('${col}','${escapedSubForAttr}')">${label}${skuSortIndicator(col)}</th>`;
+    });
     
     // Render headers with zone number and physical zone name (with line break)
     allLogicalZones.forEach((lz, index) => {
@@ -1219,11 +1491,47 @@ function renderSkuTable(skus, subscriptionName) {
     html += "</tr></thead><tbody>";
     
     filteredSkus.forEach(sku => {
+        const escapedSku = sku.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         html += "<tr>";
-        html += `<td><strong>${escapeHtml(sku.name)}</strong></td>`;
+        html += `<td><button type="button" class="sku-name-btn" onclick="openPricingModal('${escapedSku}')">${escapeHtml(sku.name)}</button></td>`;
         html += `<td>${escapeHtml(sku.family || "—")}</td>`;
         html += `<td>${escapeHtml(sku.capabilities.vCPUs || "—")}</td>`;
         html += `<td>${escapeHtml(sku.capabilities.MemoryGB || "—")}</td>`;
+        
+        const quota = sku.quota || {};
+        html += `<td>${quota.limit != null ? quota.limit : "—"}</td>`;
+        html += `<td>${quota.used != null ? quota.used : "—"}</td>`;
+        html += `<td>${quota.remaining != null ? quota.remaining : "—"}</td>`;
+        
+        // Spot Placement Score – clickable, per-zone
+        const spotZoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
+        const spotZones = Object.keys(spotZoneScores).sort();
+        if (spotZones.length > 0) {
+            const badges = spotZones.map(z => {
+                const s = spotZoneScores[z] || "Unknown";
+                const cls = "spot-badge spot-" + s.toLowerCase();
+                return `<span class="spot-zone-label">Z${escapeHtml(z)}</span><span class="${cls}">${escapeHtml(s)}</span>`;
+            }).join(" ");
+            html += `<td><button type="button" class="spot-cell-btn has-score" onclick="openSpotModal('${escapedSku}')" title="Click to refresh score">${badges}</button></td>`;
+        } else {
+            html += `<td><button type="button" class="spot-cell-btn" onclick="openSpotModal('${escapedSku}')" title="Get Spot Placement Score">Score?</button></td>`;
+        }
+        
+        // Confidence score badge
+        const conf = sku.confidence || {};
+        if (conf.score != null) {
+            const lbl = (conf.label || "").toLowerCase().replace(/\s+/g, "-");
+            html += `<td><span class="confidence-badge confidence-${lbl}" title="Deployment confidence: ${conf.score}/100">${conf.score} <small>${escapeHtml(conf.label || "")}</small></span></td>`;
+        } else {
+            html += '<td>—</td>';
+        }
+        
+        // Price columns (only if pricing data is present)
+        if (hasPricing) {
+            const pricing = sku.pricing || {};
+            html += `<td class="price-cell">${pricing.paygo != null ? pricing.paygo.toFixed(4) : '<span title="No price available">—</span>'}</td>`;
+            html += `<td class="price-cell">${pricing.spot != null ? pricing.spot.toFixed(4) : '<span title="No price available">—</span>'}</td>`;
+        }
         
         allLogicalZones.forEach(logicalZone => {
             const isAvailable = sku.zones.includes(logicalZone);
@@ -1263,11 +1571,21 @@ function exportSkuCSV() {
     const zoneHeaders = allLogicalZones.map((lz, index) => 
         `Zone ${lz}\n${physicalZones[index]}`
     );
-    const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)", 
+    const hasPricing = lastSkuData.some(s => s.pricing);
+    const priceCurrency = lastSkuData.find(s => s.pricing)?.pricing?.currency || "USD";
+    const priceHeaders = hasPricing
+        ? [`PAYGO ${priceCurrency}/h`, `Spot ${priceCurrency}/h`]
+        : [];
+    const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)",
+        "Quota Limit", "Quota Used", "Quota Remaining",
+        "Spot Score",
+        "Confidence Score", "Confidence Label",
+        ...priceHeaders,
         ...zoneHeaders];
     
     // Data rows
     const rows = lastSkuData.map(sku => {
+        const quota = sku.quota || {};
         const zoneCols = allLogicalZones.map(logicalZone => {
             const isAvailable = sku.zones.includes(logicalZone);
             const isRestricted = sku.restrictions.includes(logicalZone);
@@ -1282,6 +1600,16 @@ function exportSkuCSV() {
             sku.family || "",
             sku.capabilities.vCPUs || "",
             sku.capabilities.MemoryGB || "",
+            quota.limit != null ? quota.limit : "",
+            quota.used != null ? quota.used : "",
+            quota.remaining != null ? quota.remaining : "",
+            Object.entries((lastSpotScores?.scores || {})[sku.name] || {}).sort(([a],[b]) => a.localeCompare(b)).map(([z, s]) => `Z${z}:${s}`).join(" ") || "",
+            (sku.confidence || {}).score != null ? sku.confidence.score : "",
+            (sku.confidence || {}).label || "",
+            ...(hasPricing ? [
+                sku.pricing?.paygo != null ? sku.pricing.paygo : "",
+                sku.pricing?.spot != null ? sku.pricing.spot : "",
+            ] : []),
             ...zoneCols
         ];
     });
@@ -1299,3 +1627,234 @@ function exportSkuCSV() {
     a.click();
     URL.revokeObjectURL(a.href);
 }
+
+// ---------------------------------------------------------------------------
+// SKU Pricing Detail Modal
+// ---------------------------------------------------------------------------
+let _pricingModalSku = null;
+
+function openPricingModal(skuName) {
+    _pricingModalSku = skuName;
+    document.getElementById("pricing-modal-sku").textContent = skuName;
+    document.getElementById("pricing-modal-loading").style.display = "none";
+    document.getElementById("pricing-modal-content").style.display = "none";
+    document.getElementById("pricing-modal").style.display = "flex";
+    fetchPricingDetail();
+}
+
+function closePricingModal(event) {
+    if (event && event.target !== document.getElementById("pricing-modal")) return;
+    document.getElementById("pricing-modal").style.display = "none";
+    _pricingModalSku = null;
+}
+
+function refreshPricingModal() {
+    if (_pricingModalSku) fetchPricingDetail();
+}
+
+async function fetchPricingDetail() {
+    const skuName = _pricingModalSku;
+    if (!skuName) return;
+
+    const region = document.getElementById("region-select").value;
+    const currency = document.getElementById("pricing-modal-currency-select").value;
+    if (!region) return;
+
+    document.getElementById("pricing-modal-loading").style.display = "flex";
+    document.getElementById("pricing-modal-content").style.display = "none";
+
+    try {
+        const params = new URLSearchParams({ region, skuName, currencyCode: currency });
+        const subId = selectedSkuSubscription || [...selectedSubscriptions][0];
+        if (subId) params.set("subscriptionId", subId);
+        const tqs = tenantQS("&");
+        const data = await apiFetch(`/api/sku-pricing?${params}${tqs}`);
+        renderPricingDetail(data);
+    } catch (err) {
+        const content = document.getElementById("pricing-modal-content");
+        content.innerHTML = `<p style="color:var(--danger);font-size:0.85rem;">Failed to load pricing: ${escapeHtml(err.message)}</p>`;
+        content.style.display = "block";
+    } finally {
+        document.getElementById("pricing-modal-loading").style.display = "none";
+    }
+}
+
+function renderPricingDetail(data) {
+    const content = document.getElementById("pricing-modal-content");
+    const currency = data.currency || "USD";
+    const HOURS_PER_MONTH = 730;
+
+    const rows = [
+        { label: "Pay-As-You-Go",         hourly: data.paygo },
+        { label: "Spot",                   hourly: data.spot },
+        { label: "Reserved Instance 1Y",   hourly: data.ri_1y },
+        { label: "Reserved Instance 3Y",   hourly: data.ri_3y },
+        { label: "Savings Plan 1Y",        hourly: data.sp_1y },
+        { label: "Savings Plan 3Y",        hourly: data.sp_3y },
+    ];
+
+    let html = '<table class="pricing-detail-table">';
+    html += `<thead><tr><th>Type</th><th>${escapeHtml(currency)}/hour</th><th>${escapeHtml(currency)}/month</th></tr></thead>`;
+    html += "<tbody>";
+    rows.forEach(r => {
+        const hourStr = r.hourly != null ? r.hourly.toFixed(4) : "—";
+        const monthStr = r.hourly != null ? (r.hourly * HOURS_PER_MONTH).toFixed(2) : "—";
+        html += `<tr><td>${escapeHtml(r.label)}</td><td class="price-cell">${hourStr}</td><td class="price-cell">${monthStr}</td></tr>`;
+    });
+    html += "</tbody></table>";
+
+    // VM Profile section
+    if (data.profile) {
+        html += renderVmProfile(data.profile);
+    }
+
+    // Confidence breakdown section
+    const confSku = (lastSkuData || []).find(s => s.name === _pricingModalSku);
+    if (confSku && confSku.confidence) {
+        html += renderConfidenceBreakdown(confSku.confidence);
+    }
+
+    content.innerHTML = html;
+    content.style.display = "block";
+}
+
+function renderVmProfile(profile) {
+    const caps = profile.capabilities || {};
+    const zones = profile.zones || [];
+    const restrictions = profile.restrictions || [];
+
+    function badge(val, trueLabel, falseLabel) {
+        if (val === true) return `<span class="vm-badge vm-badge-yes">${escapeHtml(trueLabel || "Yes")}</span>`;
+        if (val === false) return `<span class="vm-badge vm-badge-no">${escapeHtml(falseLabel || "No")}</span>`;
+        return `<span class="vm-badge vm-badge-unknown">—</span>`;
+    }
+
+    function row(label, value) {
+        return `<div class="vm-profile-row"><span class="vm-profile-label">${escapeHtml(label)}</span><span class="vm-profile-value">${value}</span></div>`;
+    }
+
+    function val(v, suffix) {
+        if (v == null) return '<span class="vm-badge vm-badge-unknown">—</span>';
+        return escapeHtml(String(v) + (suffix || ""));
+    }
+
+    // Format bytes/sec to MB/s
+    function bytesToMBs(v) {
+        if (v == null) return '<span class="vm-badge vm-badge-unknown">—</span>';
+        const mb = Number(v) / (1024 * 1024);
+        return escapeHtml(mb.toFixed(0) + " MB/s");
+    }
+
+    // Format bytes to GB
+    function bytesToGB(v) {
+        if (v == null) return '<span class="vm-badge vm-badge-unknown">—</span>';
+        const gb = Number(v) / (1024 * 1024 * 1024);
+        return escapeHtml(gb.toFixed(0) + " GB");
+    }
+
+    // Format Mbps to Gbps
+    function mbpsToGbps(v) {
+        if (v == null) return '<span class="vm-badge vm-badge-unknown">—</span>';
+        const gbps = Number(v) / 1000;
+        return escapeHtml(gbps >= 1 ? gbps.toFixed(1) + " Gbps" : v + " Mbps");
+    }
+
+    // Restrictions summary
+    let restrictionSummary = '<span class="vm-badge vm-badge-yes">None</span>';
+    if (restrictions.length > 0) {
+        const parts = restrictions.map(r => {
+            const rType = r.type || "Unknown";
+            const reason = r.reasonCode || "";
+            const rZones = (r.zones || []).join(", ");
+            let desc = rType;
+            if (reason) desc += ` (${reason})`;
+            if (rZones) desc += ` zones: ${rZones}`;
+            return escapeHtml(desc);
+        });
+        restrictionSummary = `<span class="vm-badge vm-badge-limited">${parts.join("; ")}</span>`;
+    }
+
+    let html = '<div class="vm-profile-section">';
+    html += '<h4 class="vm-profile-title">VM Profile</h4>';
+    html += '<div class="vm-profile-grid">';
+
+    // Compute card
+    html += '<div class="vm-profile-card">';
+    html += '<div class="vm-profile-card-title">Compute</div>';
+    html += row("vCPUs", val(caps.vCPUs));
+    html += row("Memory", val(caps.MemoryGB, " GB"));
+    html += row("Architecture", val(caps.CpuArchitectureType));
+    const gpuCount = caps.GPUs != null ? caps.GPUs : caps.GpuCount;
+    html += row("GPUs", val(gpuCount));
+    html += '</div>';
+
+    // Deployment card
+    html += '<div class="vm-profile-card">';
+    html += '<div class="vm-profile-card-title">Deployment</div>';
+    const zonesStr = zones.length > 0 ? zones.join(", ") : "None";
+    html += row("Zones", val(zonesStr));
+    html += row("HyperV Gen.", val(caps.HyperVGenerations));
+    html += row("Encryption at Host", badge(caps.EncryptionAtHostSupported));
+    html += row("Confidential", val(caps.ConfidentialComputingType || (caps.ConfidentialComputingType === false ? "None" : null)));
+    html += row("Restrictions", restrictionSummary);
+    html += '</div>';
+
+    // Storage card
+    html += '<div class="vm-profile-card">';
+    html += '<div class="vm-profile-card-title">Storage</div>';
+    html += row("Premium IO", badge(caps.PremiumIO));
+    html += row("Ultra SSD", badge(caps.UltraSSDAvailable));
+    html += row("Ephemeral OS Disk", badge(caps.EphemeralOSDiskSupported));
+    html += row("Max Data Disks", val(caps.MaxDataDiskCount));
+    html += row("Uncached Disk IOPS", val(caps.UncachedDiskIOPS));
+    html += row("Uncached Disk BW", bytesToMBs(caps.UncachedDiskBytesPerSecond));
+    html += row("Cached Disk Size", bytesToGB(caps.CachedDiskBytes));
+    html += row("Write Accelerator", val(caps.MaxWriteAcceleratorDisksAllowed));
+    html += row("Temp Disk", val(caps.TempDiskSizeInGiB, " GiB"));
+    html += '</div>';
+
+    // Network card
+    html += '<div class="vm-profile-card">';
+    html += '<div class="vm-profile-card-title">Network</div>';
+    html += row("Accelerated Net.", badge(caps.AcceleratedNetworkingEnabled));
+    const nics = caps.MaxNetworkInterfaces != null ? caps.MaxNetworkInterfaces : caps.MaximumNetworkInterfaces;
+    html += row("Max NICs", val(nics));
+    html += row("Max Bandwidth", mbpsToGbps(caps.MaxBandwidthMbps));
+    html += row("RDMA", badge(caps.RdmaEnabled));
+    html += '</div>';
+
+    html += '</div></div>';
+    return html;
+}
+
+function renderConfidenceBreakdown(conf) {
+    const lbl = (conf.label || "").toLowerCase().replace(/\s+/g, "-");
+    let html = '<div class="confidence-section">';
+    html += `<h4 class="confidence-title">Deployment Confidence <span class="confidence-badge confidence-${lbl}">${conf.score} ${escapeHtml(conf.label || "")}</span></h4>`;
+
+    if (conf.breakdown && conf.breakdown.length > 0) {
+        html += '<table class="confidence-breakdown-table">';
+        html += '<thead><tr><th>Signal</th><th>Score</th><th>Weight</th><th>Contribution</th></tr></thead><tbody>';
+        const signalLabels = { quota: "Quota Headroom", spot: "Spot Placement", zones: "Zone Breadth", restrictions: "Restrictions", pricePressure: "Price Pressure" };
+        conf.breakdown.forEach(b => {
+            html += `<tr><td>${escapeHtml(signalLabels[b.signal] || b.signal)}</td><td>${b.score}</td><td>${(b.weight * 100).toFixed(1)}%</td><td>${b.contribution.toFixed(1)}</td></tr>`;
+        });
+        html += '</tbody></table>';
+    }
+
+    if (conf.missing && conf.missing.length > 0) {
+        const signalLabels = { quota: "Quota Headroom", spot: "Spot Placement", zones: "Zone Breadth", restrictions: "Restrictions", pricePressure: "Price Pressure" };
+        const names = conf.missing.map(m => signalLabels[m] || m).join(", ");
+        html += `<p class="confidence-missing">Missing signals (excluded from score): ${escapeHtml(names)}</p>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+document.addEventListener("keydown", (e) => {
+    const modal = document.getElementById("pricing-modal");
+    if (modal && modal.style.display !== "none" && e.key === "Escape") {
+        closePricingModal();
+    }
+});

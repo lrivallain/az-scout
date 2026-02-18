@@ -108,6 +108,14 @@ body {
     opacity: 0.85;
 }
 
+.footer-disclaimer {
+    margin-top: 0.4rem;
+    font-size: 0.7rem;
+    opacity: 0.6;
+    font-style: italic;
+    text-align: center;
+}
+
 /* ---- Layout ---- */
 .app-container {
     display: flex;
@@ -880,6 +888,16 @@ body {
     padding: 0.6rem 0.85rem;
     border-bottom: 2px solid var(--azure-blue);
     white-space: nowrap;
+    user-select: none;
+}
+
+.sku-table th[style*="cursor:pointer"]:hover {
+    background: var(--azure-blue);
+    color: #fff;
+}
+
+.sku-table th.sort-active {
+    color: var(--azure-blue);
 }
 
 .sku-table td {
@@ -907,14 +925,460 @@ body {
     font-size: 1.1rem;
 }
 
+/* ---- Spot Placement Score badges ---- */
+.spot-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    text-transform: capitalize;
+}
+.spot-high {
+    background: var(--success);
+    color: #fff;
+}
+.spot-medium {
+    background: var(--warning);
+    color: #1a1a1a;
+}
+.spot-low {
+    background: var(--danger);
+    color: #fff;
+}
+.spot-unknown {
+    background: var(--border);
+    color: var(--text-muted);
+}
+
+/* Spot controls */
+.sku-controls-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border);
+    margin: 0 0.25rem;
+}
+.spot-instance-label {
+    display: flex;
+    align-items: center;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.spot-instance-input {
+    width: 70px;
+    padding: 0.5rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 0.875rem;
+    text-align: center;
+}
+.spot-instance-input:focus {
+    outline: none;
+    border-color: var(--azure-blue);
+    box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+}
+
+/* Spot score cell – clickable */
+.spot-cell-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+    color: var(--azure-blue);
+    font-size: 0.78rem;
+    transition: all var(--transition);
+}
+.spot-cell-btn:hover {
+    background: var(--azure-light);
+    border-color: var(--azure-blue);
+}
+.spot-cell-btn.has-score {
+    border: none;
+    padding: 0;
+}
+.spot-zone-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-right: 0.15rem;
+    margin-left: 0.3rem;
+}
+.spot-zone-label:first-child {
+    margin-left: 0;
+}
+.spot-modal-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.3rem 0.5rem;
+    align-items: center;
+}
+.spot-modal-zone {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-align: right;
+}
+
+/* ---- SKU Pricing controls ---- */
+.sku-price-toggle {
+    white-space: nowrap;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin: 0;
+    padding: 0.4rem 0;
+}
+.sku-currency-select {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card-bg);
+    color: var(--text);
+    min-width: 4.5rem;
+}
+.sku-currency-select:focus {
+    outline: none;
+    border-color: var(--azure-blue);
+}
+.price-cell {
+    font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+    font-size: 0.82rem;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* ---- Modal ---- */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-dialog {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    padding: 1.5rem;
+    width: 340px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.modal-dialog h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--azure-dark);
+    margin: 0;
+}
+.modal-sku-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text);
+    margin: 0;
+}
+.modal-dialog label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.modal-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+.modal-actions .primary-btn {
+    flex: 1;
+    padding: 0.5rem;
+}
+.modal-actions .secondary-btn {
+    flex: 1;
+    padding: 0.5rem;
+    justify-content: center;
+}
+
+/* ---- Pricing Detail Modal ---- */
+.pricing-modal-dialog {
+    width: 580px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.pricing-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.pricing-modal-header h3 {
+    margin: 0;
+}
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    transition: all var(--transition);
+}
+.modal-close-btn:hover {
+    background: var(--error-bg);
+    color: var(--danger);
+}
+.pricing-modal-currency {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+.pricing-modal-currency label {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.pricing-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.pricing-detail-table th {
+    background: var(--azure-light);
+    color: var(--azure-dark);
+    font-weight: 600;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--azure-blue);
+    white-space: nowrap;
+}
+.pricing-detail-table td {
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+.pricing-detail-table tr:hover td {
+    background: var(--table-hover);
+}
+
+/* SKU name clickable button in table */
+.sku-name-btn {
+    background: none;
+    border: none;
+    color: var(--azure-blue);
+    font-weight: 600;
+    font-size: inherit;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+.sku-name-btn:hover {
+    color: var(--azure-dark);
+    text-decoration-style: solid;
+}
+
+/* ---- VM Profile Section ---- */
+.vm-profile-section {
+    margin-top: 1rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+}
+.vm-profile-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--azure-dark);
+    margin: 0 0 0.5rem 0;
+}
+.vm-profile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+.vm-profile-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.75rem;
+}
+.vm-profile-card-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--azure-blue);
+    margin-bottom: 0.35rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
+}
+.vm-profile-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.15rem 0;
+    font-size: 0.8rem;
+    gap: 0.5rem;
+}
+.vm-profile-label {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.vm-profile-value {
+    font-weight: 500;
+    text-align: right;
+    word-break: break-word;
+}
+.vm-badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.vm-badge-yes {
+    background: var(--success);
+    color: #fff;
+}
+.vm-badge-no {
+    background: var(--danger);
+    color: #fff;
+}
+.vm-badge-unknown {
+    background: var(--border);
+    color: var(--text-muted);
+}
+.vm-badge-limited {
+    background: var(--warning);
+    color: #1a1a1a;
+}
+
 /* Dark mode: SKU table header */
 [data-theme="dark"] .sku-table th {
     background: var(--azure-light);
     color: #58a6ff;
 }
 
+[data-theme="dark"] .modal-dialog h3 {
+    color: #58a6ff;
+}
+[data-theme="dark"] .pricing-detail-table th {
+    background: var(--azure-light);
+    color: #58a6ff;
+}
+[data-theme="dark"] .vm-profile-title,
+[data-theme="dark"] .vm-profile-card-title {
+    color: #58a6ff;
+}
+[data-theme="dark"] .vm-profile-card {
+    background: var(--card-bg);
+}
+
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) .sku-table th {
+        background: var(--azure-light);
+        color: #58a6ff;
+    }
+    :root:not([data-theme="light"]) .modal-dialog h3 {
+        color: #58a6ff;
+    }
+    :root:not([data-theme="light"]) .pricing-detail-table th {
+        background: var(--azure-light);
+        color: #58a6ff;
+    }
+    :root:not([data-theme="light"]) .vm-profile-title,
+    :root:not([data-theme="light"]) .vm-profile-card-title {
+        color: #58a6ff;
+    }
+    :root:not([data-theme="light"]) .vm-profile-card {
+        background: var(--card-bg);
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Confidence Score
+   --------------------------------------------------------------------------- */
+.confidence-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.confidence-badge small {
+    font-weight: 500;
+    font-size: 0.68rem;
+    opacity: 0.85;
+}
+.confidence-high       { background: #dff6dd; color: #1a7f37; }
+.confidence-medium     { background: #fff8c5; color: #9a6700; }
+.confidence-low        { background: #ffebe9; color: #cf222e; }
+.confidence-very-low   { background: #ffcccb; color: #82071e; }
+
+.confidence-section {
+    margin-top: 1.25rem;
+}
+.confidence-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+.confidence-breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-bottom: 0.5rem;
+}
+.confidence-breakdown-table th {
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    background: var(--azure-light);
+    color: var(--azure);
+    font-weight: 600;
+    font-size: 0.75rem;
+    border-bottom: 2px solid var(--border);
+}
+.confidence-breakdown-table td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.confidence-missing {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin: 0;
+}
+
+/* Dark mode – confidence */
+[data-theme="dark"] .confidence-high     { background: #1a3d1f; color: #3fb950; }
+[data-theme="dark"] .confidence-medium   { background: #3d3012; color: #d29922; }
+[data-theme="dark"] .confidence-low      { background: #3d1519; color: #f85149; }
+[data-theme="dark"] .confidence-very-low { background: #4d0e14; color: #ff7b72; }
+[data-theme="dark"] .confidence-title { color: #58a6ff; }
+[data-theme="dark"] .confidence-breakdown-table th {
+    background: var(--azure-light);
+    color: #58a6ff;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .confidence-high     { background: #1a3d1f; color: #3fb950; }
+    :root:not([data-theme="light"]) .confidence-medium   { background: #3d3012; color: #d29922; }
+    :root:not([data-theme="light"]) .confidence-low      { background: #3d1519; color: #f85149; }
+    :root:not([data-theme="light"]) .confidence-very-low { background: #4d0e14; color: #ff7b72; }
+    :root:not([data-theme="light"]) .confidence-title { color: #58a6ff; }
+    :root:not([data-theme="light"]) .confidence-breakdown-table th {
         background: var(--azure-light);
         color: #58a6ff;
     }

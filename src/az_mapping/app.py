@@ -12,8 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from az_mapping import azure_api
+from az_mapping.services.capacity_confidence import compute_capacity_confidence
 
 _PKG_DIR = Path(__file__).resolve().parent
 
@@ -33,7 +35,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -175,6 +177,12 @@ async def get_skus(
     maxMemoryGB: float | None = Query(  # noqa: N803
         None, description="Maximum memory in GB (inclusive).", ge=0
     ),
+    includePrices: bool = Query(  # noqa: N803
+        False, description="Fetch retail prices from the Azure Retail Prices API."
+    ),
+    currencyCode: str = Query(  # noqa: N803
+        "USD", description="ISO 4217 currency code for prices."
+    ),
 ) -> JSONResponse:
     """Return resource SKUs with zone availability, restrictions and capabilities.
 
@@ -188,22 +196,117 @@ async def get_skus(
         )
 
     try:
-        return JSONResponse(
-            azure_api.get_skus(
-                region,
-                subscriptionId,
-                tenantId,
-                resourceType,
-                name=name,
-                family=family,
-                min_vcpus=minVcpus,
-                max_vcpus=maxVcpus,
-                min_memory_gb=minMemoryGB,
-                max_memory_gb=maxMemoryGB,
-            )
+        skus = azure_api.get_skus(
+            region,
+            subscriptionId,
+            tenantId,
+            resourceType,
+            name=name,
+            family=family,
+            min_vcpus=minVcpus,
+            max_vcpus=maxVcpus,
+            min_memory_gb=minMemoryGB,
+            max_memory_gb=maxMemoryGB,
         )
+        azure_api.enrich_skus_with_quotas(skus, region, subscriptionId, tenantId)
+        if includePrices:
+            azure_api.enrich_skus_with_prices(skus, region, currencyCode)
+
+        # Compute Deployment Confidence Score for each SKU
+        for sku in skus:
+            caps = sku.get("capabilities", {})
+            quota = sku.get("quota", {})
+            pricing = sku.get("pricing", {})
+            try:
+                vcpus = int(caps.get("vCPUs", 0))
+            except (TypeError, ValueError):
+                vcpus = None
+            remaining = quota.get("remaining")
+            sku["confidence"] = compute_capacity_confidence(
+                vcpus=vcpus,
+                zones_supported_count=len(sku.get("zones", [])),
+                restrictions_present=len(sku.get("restrictions", [])) > 0,
+                quota_remaining_vcpu=remaining,
+                paygo_price=pricing.get("paygo") if pricing else None,
+                spot_price=pricing.get("spot") if pricing else None,
+            )
+
+        return JSONResponse(skus)
     except Exception as exc:
         logger.exception("Failed to fetch SKUs")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/spot-scores
+# ---------------------------------------------------------------------------
+
+
+class SpotScoresRequest(BaseModel):
+    """Request body for the spot placement scores endpoint."""
+
+    region: str
+    subscriptionId: str
+    skus: list[str]
+    instanceCount: int = 1
+    tenantId: str | None = None
+
+
+@app.post("/api/spot-scores", tags=["SKUs"], summary="Get Spot Placement Scores")
+async def get_spot_scores(body: SpotScoresRequest) -> JSONResponse:
+    """Return Spot Placement Scores for a list of VM sizes.
+
+    Scores indicate the likelihood of successful Spot VM allocation
+    (High / Medium / Low) – this is **not** a measure of datacenter
+    capacity.
+    """
+    if not body.region or not body.subscriptionId or not body.skus:
+        return JSONResponse(
+            {"error": "'region', 'subscriptionId' and 'skus' are required"},
+            status_code=400,
+        )
+    try:
+        result = azure_api.get_spot_placement_scores(
+            body.region,
+            body.subscriptionId,
+            body.skus,
+            body.instanceCount,
+            body.tenantId,
+        )
+        return JSONResponse(result)
+    except Exception as exc:
+        logger.exception("Failed to fetch spot placement scores")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/sku-pricing", tags=["SKUs"], summary="Get detailed pricing for a SKU")
+async def get_sku_pricing(
+    region: str = Query(..., description="Azure region name."),
+    skuName: str = Query(..., description="ARM SKU name (e.g. Standard_D2s_v3)."),  # noqa: N803
+    currencyCode: str = Query(  # noqa: N803
+        "USD", description="ISO 4217 currency code."
+    ),
+    subscriptionId: str | None = Query(  # noqa: N803
+        None, description="Subscription ID for VM profile data."
+    ),
+    tenantId: str | None = Query(None, description="Optional tenant ID."),  # noqa: N803
+) -> JSONResponse:
+    """Return detailed Linux pricing for a single VM SKU.
+
+    Includes pay-as-you-go, Spot, Reserved Instance (1Y/3Y) and
+    Savings Plan (1Y/3Y) prices per hour.  When *subscriptionId* is
+    provided, also returns the full VM profile (capabilities,
+    restrictions, zones).
+    """
+    try:
+        result = azure_api.get_sku_pricing_detail(region, skuName, currencyCode)
+        if subscriptionId:
+            profile = azure_api.get_sku_profile(region, subscriptionId, skuName, tenantId)
+            if profile is not None:
+                result["profile"] = profile
+        return JSONResponse(result)
+    except Exception as exc:
+        logger.exception("Failed to fetch SKU pricing detail")
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 

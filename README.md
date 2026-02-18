@@ -68,7 +68,9 @@ az-mapping
 - **Collapsible sidebar** – toggle the filter panel to maximize the results area.
 - **Graph view** – D3.js bipartite diagram (Logical Zone → Physical Zone), colour-coded per subscription with interactive hover highlighting.
 - **Table view** – comparison table with consistency indicators.
-- **SKU availability view** – shows VM SKU availability per physical zone with filtering and CSV export.
+- **SKU availability view** – shows VM SKU availability per physical zone with vCPU quota usage (limit / used / remaining) and CSV export.
+- **Spot Placement Scores** – evaluate the likelihood of Spot VM allocation (High / Medium / Low) per SKU for a given region and instance count, powered by the Azure Compute RP.
+- **Deployment Confidence Score** – a composite 0–100 score per SKU estimating deployment success probability, synthesised from quota headroom, Spot Placement Score, availability zone breadth, restrictions, and price pressure signals. Missing signals are automatically excluded with weight renormalisation. The score updates live when Spot Placement Scores arrive.
 - **Export** – download the graph as PNG or the tables as CSV.
 - **Shareable URLs** – filters are reflected in the URL; reload or share a link to restore the exact view.
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
@@ -85,7 +87,8 @@ An [MCP](https://modelcontextprotocol.io/) server is included, allowing AI agent
 | `list_subscriptions` | List enabled subscriptions (optionally scoped to a tenant) |
 | `list_regions` | List regions that support Availability Zones |
 | `get_zone_mappings` | Get logical→physical zone mappings for subscriptions in a region |
-| `get_sku_availability` | Get VM SKU availability per zone with restrictions and capabilities |
+| `get_sku_availability` | Get VM SKU availability per zone with restrictions, capabilities, and vCPU quota per family |
+| `get_spot_scores` | Get Spot Placement Scores (High / Medium / Low) for a list of VM sizes in a region |
 
 `get_sku_availability` supports optional filters to reduce output size:
 `name`, `family`, `min_vcpus`, `max_vcpus`, `min_memory_gb`, `max_memory_gb`.
@@ -135,8 +138,10 @@ az-mapping mcp --sse --port 8080
 The backend calls the Azure Resource Manager REST API to fetch:
 - **Zone mappings**: `availabilityZoneMappings` from `/subscriptions/{id}/locations` endpoint
 - **Resource SKUs**: SKU details from `/subscriptions/{id}/providers/Microsoft.Compute/skus` endpoint with zone restrictions and capabilities
+- **Compute Usages**: vCPU quota per VM family from `/subscriptions/{id}/providers/Microsoft.Compute/locations/{region}/usages` endpoint (cached for 10 minutes, with retry on throttling and graceful handling of 403)
+- **Spot Placement Scores**: likelihood indicators for Spot VM allocation from `/subscriptions/{id}/providers/Microsoft.Compute/locations/{region}/placementScores/spot/generate` endpoint (batched in chunks of 100, sequential execution with retry/back-off, cached for 10 minutes). Note: these scores reflect the probability of obtaining a Spot VM allocation, not datacenter capacity.
 
-The frontend renders the results as an interactive graph, comparison table, and SKU availability table.
+The frontend renders the results as an interactive graph, comparison table, and SKU availability table with quota columns.
 
 API documentation is available at `/docs` (Swagger UI) and `/redoc` (ReDoc) when the server is running.
 
