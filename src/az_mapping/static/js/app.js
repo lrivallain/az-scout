@@ -15,6 +15,7 @@ let lastSkuData = null;          // cached SKU data
 let skuSortColumn = null;        // current SKU table sort column
 let skuSortAsc = true;           // sort direction
 let lastSpotScores = null;       // cached spot placement scores {scores: {sku: score}, errors: []}
+let currentPage = 'topology';   // active page: 'topology' | 'planner'
 
 // ---------------------------------------------------------------------------
 // Deployment Confidence Score – client-side recomputation
@@ -189,7 +190,87 @@ async function init() {
     if (urlState.region && urlState.subscriptions.length && !document.getElementById("load-btn").disabled) {
         await loadMappings();
     }
+
+    // Handle initial route from URL hash
+    const initialPage = window.location.hash.substring(1);
+    navigateTo(['topology', 'planner'].includes(initialPage) ? initialPage : 'topology');
 }
+
+// ---------------------------------------------------------------------------
+// Page routing (hash-based)
+// ---------------------------------------------------------------------------
+function navigateTo(page) {
+    if (!['topology', 'planner'].includes(page)) page = 'topology';
+    currentPage = page;
+
+    // Update hash without triggering full reload
+    const newHash = '#' + page;
+    if (window.location.hash !== newHash) {
+        history.replaceState(null, '', window.location.pathname + window.location.search + newHash);
+    }
+
+    // Show/hide pages
+    document.getElementById('page-topology').style.display = page === 'topology' ? '' : 'none';
+    document.getElementById('page-planner').style.display = page === 'planner' ? '' : 'none';
+
+    // Update active tab
+    document.querySelectorAll('.page-nav-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.page === page);
+    });
+
+    // When entering planner, update content visibility
+    if (page === 'planner') {
+        if (lastMappingData && lastMappingData.length > 0) {
+            document.getElementById('planner-empty').style.display = 'none';
+            document.getElementById('planner-content').style.display = 'block';
+            renderRegionHealthSummary();
+        } else {
+            document.getElementById('planner-empty').style.display = 'flex';
+            document.getElementById('planner-content').style.display = 'none';
+        }
+    }
+}
+
+function renderRegionHealthSummary() {
+    const container = document.getElementById('region-health-summary');
+    if (!container) return;
+    if (!lastMappingData || lastMappingData.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const regionName = document.getElementById('region-select').value;
+    const regionDisplay = document.getElementById('region-search').value || regionName;
+    const validData = lastMappingData.filter(d => d.mappings && d.mappings.length > 0);
+    const physicalZones = [...new Set(validData.flatMap(d => d.mappings.map(m => m.physicalZone)))].sort();
+    const logicalZones = [...new Set(validData.flatMap(d => d.mappings.map(m => m.logicalZone)))].sort();
+
+    let allConsistent = true;
+    logicalZones.forEach(z => {
+        const physicals = validData.map(sub => sub.mappings.find(m => m.logicalZone === z))
+            .filter(Boolean).map(m => m.physicalZone);
+        if (new Set(physicals).size > 1) allConsistent = false;
+    });
+
+    const consistencyHtml = allConsistent
+        ? '<span class="health-badge health-good">\u2713 Consistent</span>'
+        : '<span class="health-badge health-warn">\u26A0 Differences detected</span>';
+
+    container.innerHTML = `<div class="health-summary-card result-card">
+        <h2>Region Health Summary</h2>
+        <div class="health-grid">
+            <div class="health-stat"><div class="health-stat-value">${escapeHtml(regionDisplay)}</div><div class="health-stat-label">Region</div></div>
+            <div class="health-stat"><div class="health-stat-value">${physicalZones.length}</div><div class="health-stat-label">Physical Zones</div></div>
+            <div class="health-stat"><div class="health-stat-value">${validData.length}</div><div class="health-stat-label">Subscriptions</div></div>
+            <div class="health-stat"><div class="health-stat-value">${consistencyHtml}</div><div class="health-stat-label">Zone Consistency</div></div>
+        </div>
+    </div>`;
+}
+
+window.addEventListener('hashchange', () => {
+    const page = window.location.hash.substring(1) || 'topology';
+    navigateTo(page);
+});
 
 // ---------------------------------------------------------------------------
 // Sidebar collapse / expand
@@ -440,11 +521,21 @@ async function fetchTenants() {
 async function onTenantChange() {
     // Reset downstream state
     selectedSubscriptions.clear();
+    lastMappingData = null;
     document.getElementById("region-select").value = "";
     document.getElementById("region-search").value = "";
     document.getElementById("sub-filter").value = "";
-    document.getElementById("results-content").style.display = "none";
-    document.getElementById("empty-state").style.display = "flex";
+
+    // Reset topology page
+    document.getElementById("topology-content").style.display = "none";
+    document.getElementById("topology-empty").style.display = "flex";
+
+    // Reset planner page
+    document.getElementById("planner-content").style.display = "none";
+    document.getElementById("planner-empty").style.display = "flex";
+    document.getElementById("region-health-summary").innerHTML = "";
+    resetSkuSection();
+
     hideError();
     syncUrlParams();
 
@@ -589,9 +680,9 @@ async function loadMappings() {
     if (!region || selectedSubscriptions.size === 0) return;
 
     hideError();
-    document.getElementById("empty-state").style.display = "none";
-    document.getElementById("results-content").style.display = "none";
-    document.getElementById("results-loading").style.display = "flex";
+    document.getElementById("topology-empty").style.display = "none";
+    document.getElementById("topology-content").style.display = "none";
+    document.getElementById("topology-loading").style.display = "flex";
     
     // Reset SKU section when mappings are reloaded
     resetSkuSection();
@@ -600,14 +691,21 @@ async function loadMappings() {
         const subs = [...selectedSubscriptions].join(",");
         lastMappingData = await apiFetch(`/api/mappings?region=${region}&subscriptions=${subs}${tenantQS()}`);
 
-        document.getElementById("results-loading").style.display = "none";
-        document.getElementById("results-content").style.display = "block";
+        document.getElementById("topology-loading").style.display = "none";
+        document.getElementById("topology-content").style.display = "block";
 
         renderGraph(lastMappingData);
         renderTable(lastMappingData);
+
+        // If currently on planner, refresh planner content
+        if (currentPage === 'planner') {
+            document.getElementById('planner-empty').style.display = 'none';
+            document.getElementById('planner-content').style.display = 'block';
+            renderRegionHealthSummary();
+        }
     } catch (err) {
-        document.getElementById("results-loading").style.display = "none";
-        document.getElementById("empty-state").style.display = "flex";
+        document.getElementById("topology-loading").style.display = "none";
+        document.getElementById("topology-empty").style.display = "flex";
         showError("Failed to load mappings: " + err.message);
     }
 }
