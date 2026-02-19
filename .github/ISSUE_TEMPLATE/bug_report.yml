@@ -21,7 +21,7 @@ body:
       label: Steps to reproduce
       description: How can we reproduce this issue?
       placeholder: |
-        1. Run `uvx az-mapping`
+        1. Run `uvx az-scout`
         2. Select region '…'
         3. Click 'Load Mappings'
         4. See error
@@ -45,8 +45,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: az-mapping version
-      description: "Output of `uvx az-mapping --help` header or `pip show az-mapping`"
+      label: az-scout version
+      description: "Output of `uvx az-scout --help` header or `pip show az-scout`"
       placeholder: "0.1.0"
     validations:
       required: true

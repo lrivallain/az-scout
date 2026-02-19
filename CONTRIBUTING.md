@@ -1,4 +1,4 @@
-# Contributing to az-mapping
+# Contributing to az-scout
 
 Thanks for your interest in contributing! Here's how to get started.
 
@@ -7,8 +7,8 @@ Thanks for your interest in contributing! Here's how to get started.
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/lrivallain/az-mapping.git
-   cd az-mapping
+   git clone https://github.com/lrivallain/az-scout.git
+   cd az-scout
    ```
 
 2. **Install [uv](https://docs.astral.sh/uv/)**
@@ -26,9 +26,9 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Running the app locally
 
 ```bash
-uv run az-mapping web --no-open --reload --verbose
+uv run az-scout web --no-open --reload --verbose
 # or
-uv run python -m az_mapping web --no-open --reload --verbose
+uv run python -m az_scout web --no-open --reload --verbose
 ```
 
 You need valid Azure credentials (`az login` or any method supported by `DefaultAzureCredential`).
@@ -115,4 +115,4 @@ Pushing the tag triggers the **Publish** workflow which will:
 
 ## Reporting issues
 
-Please use the [issue templates](https://github.com/lrivallain/az-mapping/issues/new/choose) for bug reports and feature requests.
+Please use the [issue templates](https://github.com/lrivallain/az-scout/issues/new/choose) for bug reports and feature requests.

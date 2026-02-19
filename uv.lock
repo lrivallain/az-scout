@@ -43,7 +43,7 @@ wheels = [
 ]
 
 [[package]]
-name = "az-mapping"
+name = "az-scout"
 source = { editable = "." }
 dependencies = [
     { name = "azure-identity" },

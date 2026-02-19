@@ -1,7 +1,7 @@
 [project]
-name = "az-mapping"
+name = "az-scout"
 dynamic = ["version"]
-description = "Interactive web tool to visualize Azure Availability Zone logical-to-physical mappings across subscriptions"
+description = "Azure SKU scout — explore availability zones, capacity, pricing, and plan VM deployments across subscriptions"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
@@ -32,12 +32,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/lrivallain/az-mapping"
-Repository = "https://github.com/lrivallain/az-mapping"
-Issues = "https://github.com/lrivallain/az-mapping/issues"
+Homepage = "https://github.com/lrivallain/az-scout"
+Repository = "https://github.com/lrivallain/az-scout"
+Issues = "https://github.com/lrivallain/az-scout/issues"
 
 [project.scripts]
-az-mapping = "az_mapping.cli:cli"
+az-scout = "az_scout.cli:cli"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -49,7 +49,7 @@ raw-options.version_scheme = "calver-by-date"
 raw-options.local_scheme = "no-local-version"
 
 [tool.hatch.build.hooks.vcs]
-version-file = "src/az_mapping/_version.py"
+version-file = "src/az_scout/_version.py"
 
 [dependency-groups]
 dev = [
@@ -70,7 +70,7 @@ addopts = "-v --tb=short"
 target-version = "py311"
 line-length = 100
 src = ["src"]
-exclude = ["src/az_mapping/_version.py"]
+exclude = ["src/az_scout/_version.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "SIM"]
@@ -83,4 +83,4 @@ disallow_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/az_mapping"]
+packages = ["src/az_scout"]

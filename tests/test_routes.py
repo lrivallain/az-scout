@@ -1,4 +1,4 @@
-"""Tests for the az-mapping FastAPI routes."""
+"""Tests for the az-scout FastAPI routes."""
 
 import json
 from pathlib import Path
@@ -19,7 +19,7 @@ class TestIndex:
     def test_index_returns_html(self, client):
         resp = client.get("/")
         assert resp.status_code == 200
-        assert b"Azure AZ Mapping Viewer" in resp.content
+        assert b"Azure Scout" in resp.content
 
 
 # ---------------------------------------------------------------------------
@@ -44,9 +44,9 @@ class TestListTenants:
         mock_resp.raise_for_status.return_value = None
 
         with (
-            patch("az_mapping.azure_api.requests.get", return_value=mock_resp),
-            patch("az_mapping.azure_api._get_default_tenant_id", return_value="tid-1"),
-            patch("az_mapping.azure_api._check_tenant_auth", return_value=True),
+            patch("az_scout.azure_api.requests.get", return_value=mock_resp),
+            patch("az_scout.azure_api._get_default_tenant_id", return_value="tid-1"),
+            patch("az_scout.azure_api._check_tenant_auth", return_value=True),
         ):
             resp = client.get("/api/tenants")
 
@@ -75,9 +75,9 @@ class TestListTenants:
             return tid == "tid-ok"
 
         with (
-            patch("az_mapping.azure_api.requests.get", return_value=mock_resp),
-            patch("az_mapping.azure_api._get_default_tenant_id", return_value="tid-ok"),
-            patch("az_mapping.azure_api._check_tenant_auth", side_effect=_auth_side_effect),
+            patch("az_scout.azure_api.requests.get", return_value=mock_resp),
+            patch("az_scout.azure_api._get_default_tenant_id", return_value="tid-ok"),
+            patch("az_scout.azure_api._check_tenant_auth", side_effect=_auth_side_effect),
         ):
             resp = client.get("/api/tenants")
 
@@ -98,9 +98,9 @@ class TestListTenants:
         mock_resp.raise_for_status.return_value = None
 
         with (
-            patch("az_mapping.azure_api.requests.get", return_value=mock_resp),
-            patch("az_mapping.azure_api._get_default_tenant_id", return_value=None),
-            patch("az_mapping.azure_api._check_tenant_auth", return_value=True),
+            patch("az_scout.azure_api.requests.get", return_value=mock_resp),
+            patch("az_scout.azure_api._get_default_tenant_id", return_value=None),
+            patch("az_scout.azure_api._check_tenant_auth", return_value=True),
         ):
             resp = client.get("/api/tenants")
 
@@ -109,7 +109,7 @@ class TestListTenants:
         assert data["tenants"][0]["name"] == "tid-no-name"
 
     def test_returns_500_on_error(self, client):
-        with patch("az_mapping.azure_api.requests.get", side_effect=Exception("Azure down")):
+        with patch("az_scout.azure_api.requests.get", side_effect=Exception("Azure down")):
             resp = client.get("/api/tenants")
 
         assert resp.status_code == 500
@@ -138,7 +138,7 @@ class TestListSubscriptions:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/subscriptions")
 
         assert resp.status_code == 200
@@ -169,7 +169,7 @@ class TestListSubscriptions:
         mock_resp2.json.return_value = page2
         mock_resp2.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", side_effect=[mock_resp1, mock_resp2]):
+        with patch("az_scout.azure_api.requests.get", side_effect=[mock_resp1, mock_resp2]):
             resp = client.get("/api/subscriptions")
 
         assert resp.status_code == 200
@@ -177,7 +177,7 @@ class TestListSubscriptions:
         assert len(data) == 2
 
     def test_returns_500_on_azure_error(self, client):
-        with patch("az_mapping.azure_api.requests.get", side_effect=Exception("Azure down")):
+        with patch("az_scout.azure_api.requests.get", side_effect=Exception("Azure down")):
             resp = client.get("/api/subscriptions")
 
         assert resp.status_code == 500
@@ -227,7 +227,7 @@ class TestListRegions:
         mock_resp.json.return_value = self._make_locations_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/regions?subscriptionId=sub-123")
 
         assert resp.status_code == 200
@@ -248,7 +248,7 @@ class TestListRegions:
         locations_resp.json.return_value = self._make_locations_response()
         locations_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", side_effect=[subs_resp, locations_resp]):
+        with patch("az_scout.azure_api.requests.get", side_effect=[subs_resp, locations_resp]):
             resp = client.get("/api/regions")
 
         assert resp.status_code == 200
@@ -259,7 +259,7 @@ class TestListRegions:
         subs_resp.json.return_value = {"value": [{"subscriptionId": "x", "state": "Disabled"}]}
         subs_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=subs_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=subs_resp):
             resp = client.get("/api/regions")
 
         assert resp.status_code == 404
@@ -301,7 +301,7 @@ class TestGetMappings:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/mappings?region=eastus&subscriptions=sub1")
 
         assert resp.status_code == 200
@@ -328,7 +328,7 @@ class TestGetMappings:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/mappings?region=eastus&subscriptions=sub1,sub2")
 
         assert resp.status_code == 200
@@ -354,7 +354,7 @@ class TestGetMappings:
         mock_fail = MagicMock()
         mock_fail.raise_for_status.side_effect = Exception("Forbidden")
 
-        with patch("az_mapping.azure_api.requests.get", side_effect=[mock_ok, mock_fail]):
+        with patch("az_scout.azure_api.requests.get", side_effect=[mock_ok, mock_fail]):
             resp = client.get("/api/mappings?region=eastus&subscriptions=sub1,sub2")
 
         assert resp.status_code == 200
@@ -417,7 +417,7 @@ class TestGetSkus:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 200
@@ -457,7 +457,7 @@ class TestGetSkus:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 200
@@ -490,7 +490,7 @@ class TestGetSkus:
         mock_resp.json.return_value = azure_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 200
@@ -500,7 +500,7 @@ class TestGetSkus:
 
     def test_returns_500_on_error(self, client):
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=Exception("API error"),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
@@ -566,7 +566,7 @@ class TestGetSkus:
         mock_resp.json.return_value = self._make_multi_sku_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&name=D2s")
 
         data = resp.json()
@@ -578,7 +578,7 @@ class TestGetSkus:
         mock_resp.json.return_value = self._make_multi_sku_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&family=ESv4")
 
         data = resp.json()
@@ -590,7 +590,7 @@ class TestGetSkus:
         mock_resp.json.return_value = self._make_multi_sku_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&minVcpus=2&maxVcpus=4")
 
         data = resp.json()
@@ -604,7 +604,7 @@ class TestGetSkus:
         mock_resp.json.return_value = self._make_multi_sku_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get(
                 "/api/skus?region=eastus&subscriptionId=sub1&minMemoryGB=10&maxMemoryGB=32"
             )
@@ -618,7 +618,7 @@ class TestGetSkus:
         mock_resp.json.return_value = self._make_multi_sku_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&family=DSv3&minVcpus=4")
 
         data = resp.json()
@@ -630,7 +630,7 @@ class TestGetSkus:
         mock_resp.json.return_value = self._make_multi_sku_response()
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.get", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         data = resp.json()
@@ -671,7 +671,7 @@ class TestGetSkusQuotas:
         usages_resp = self._load_fixture("compute_usages_francecentral.json")
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_get_for(sku_resp, usages_resp),
         ):
             resp = client.get("/api/skus?region=francecentral&subscriptionId=sub1")
@@ -698,7 +698,7 @@ class TestGetSkusQuotas:
         usages_resp = self._load_fixture("compute_usages_francecentral.json")
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_get_for(sku_resp, usages_resp),
         ):
             resp = client.get("/api/skus?region=francecentral&subscriptionId=sub1")
@@ -730,7 +730,7 @@ class TestGetSkusQuotas:
                 resp.status_code = 200
             return resp
 
-        with patch("az_mapping.azure_api.requests.get", side_effect=_dispatch):
+        with patch("az_scout.azure_api.requests.get", side_effect=_dispatch):
             resp = client.get("/api/skus?region=francecentral&subscriptionId=sub1")
 
         assert resp.status_code == 200
@@ -768,7 +768,7 @@ class TestGetSkusQuotas:
             return resp
 
         with (
-            patch("az_mapping.azure_api.requests.get", side_effect=_dispatch),
+            patch("az_scout.azure_api.requests.get", side_effect=_dispatch),
             patch("time.sleep"),
         ):
             resp = client.get("/api/skus?region=francecentral&subscriptionId=sub1")
@@ -835,7 +835,7 @@ class TestSpotScores:
         mock_resp.json.return_value = spot_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.post", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.post", return_value=mock_resp):
             resp = client.post(
                 "/api/spot-scores",
                 json={
@@ -884,8 +884,8 @@ class TestSpotScores:
             return resp
 
         with (
-            patch("az_mapping.azure_api.requests.post", side_effect=_mock_post),
-            patch("az_mapping.azure_api.time.sleep"),
+            patch("az_scout.azure_api.requests.post", side_effect=_mock_post),
+            patch("az_scout.azure_api.time.sleep"),
         ):
             resp = client.post(
                 "/api/spot-scores",
@@ -927,8 +927,8 @@ class TestSpotScores:
             return resp
 
         with (
-            patch("az_mapping.azure_api.requests.post", side_effect=_mock_post),
-            patch("az_mapping.azure_api.time.sleep"),
+            patch("az_scout.azure_api.requests.post", side_effect=_mock_post),
+            patch("az_scout.azure_api.time.sleep"),
         ):
             resp = client.post(
                 "/api/spot-scores",
@@ -951,7 +951,7 @@ class TestSpotScores:
         mock_resp.headers = {}
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.post", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.post", return_value=mock_resp):
             resp = client.post(
                 "/api/spot-scores",
                 json={
@@ -973,7 +973,7 @@ class TestSpotScores:
         mock_resp.headers = {}
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.post", return_value=mock_resp):
+        with patch("az_scout.azure_api.requests.post", return_value=mock_resp):
             resp = client.post(
                 "/api/spot-scores",
                 json={
@@ -1005,7 +1005,7 @@ class TestSpotScores:
         mock_resp.json.return_value = spot_response
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.post", return_value=mock_resp) as mock_post:
+        with patch("az_scout.azure_api.requests.post", return_value=mock_resp) as mock_post:
             payload = {
                 "region": "eastus",
                 "subscriptionId": "sub-1",
@@ -1026,7 +1026,7 @@ class TestSpotScores:
         mock_resp.json.return_value = {"placementScores": []}
         mock_resp.raise_for_status.return_value = None
 
-        with patch("az_mapping.azure_api.requests.post", return_value=mock_resp) as mock_post:
+        with patch("az_scout.azure_api.requests.post", return_value=mock_resp) as mock_post:
             client.post(
                 "/api/spot-scores",
                 json={
@@ -1116,7 +1116,7 @@ class TestGetSkusPricing:
                 resp.json.return_value = {"value": []}
             return resp
 
-        with patch("az_mapping.azure_api.requests.get", side_effect=_dispatch):
+        with patch("az_scout.azure_api.requests.get", side_effect=_dispatch):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         assert resp.status_code == 200
@@ -1130,7 +1130,7 @@ class TestGetSkusPricing:
         retail_resp = self._load_fixture("retail_prices_sample.json")
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp, retail_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
@@ -1154,7 +1154,7 @@ class TestGetSkusPricing:
         retail_resp = self._load_fixture("retail_prices_sample.json")
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp, retail_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
@@ -1189,7 +1189,7 @@ class TestGetSkusPricing:
                 resp.json.return_value = {"value": []}
             return resp
 
-        with patch("az_mapping.azure_api.requests.get", side_effect=_dispatch):
+        with patch("az_scout.azure_api.requests.get", side_effect=_dispatch):
             resp = client.get(
                 "/api/skus?region=eastus&subscriptionId=sub1&includePrices=true&currencyCode=EUR"
             )
@@ -1220,7 +1220,7 @@ class TestGetSkusPricing:
                 resp.json.return_value = {"value": []}
             return resp
 
-        with patch("az_mapping.azure_api.requests.get", side_effect=_dispatch):
+        with patch("az_scout.azure_api.requests.get", side_effect=_dispatch):
             resp1 = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
             resp2 = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
 
@@ -1250,7 +1250,7 @@ class TestGetSkusPricing:
         retail_resp = self._load_fixture("retail_prices_sample.json")
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp, retail_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
@@ -1318,7 +1318,7 @@ class TestGetSkusPricing:
         }
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp, retail_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
@@ -1385,7 +1385,7 @@ class TestGetSkuPricingDetail:
             },
         ]
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             return_value=self._retail_response(items),
         ):
             resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3")
@@ -1422,7 +1422,7 @@ class TestGetSkuPricingDetail:
             },
         ]
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             return_value=self._retail_response(items),
         ):
             resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3")
@@ -1451,7 +1451,7 @@ class TestGetSkuPricingDetail:
             },
         ]
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             return_value=self._retail_response(items),
         ):
             resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3")
@@ -1473,7 +1473,7 @@ class TestGetSkuPricingDetail:
             },
         ]
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             return_value=self._retail_response(items),
         ):
             resp = client.get(
@@ -1487,7 +1487,7 @@ class TestGetSkuPricingDetail:
     def test_missing_sku_returns_nulls(self, client):
         """When SKU has no price items, all prices are null."""
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             return_value=self._retail_response([]),
         ):
             resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_NONEXIST")
@@ -1588,7 +1588,7 @@ class TestSkuProfile:
     def test_profile_returned_with_subscription_id(self, client):
         """When subscriptionId is provided, the response includes profile."""
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch([self._SAMPLE_SKU], [self._RETAIL_ITEM]),
         ):
             resp = client.get(
@@ -1620,7 +1620,7 @@ class TestSkuProfile:
         }
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             return_value=retail_resp,
         ):
             resp = client.get("/api/sku-pricing?region=eastus&skuName=Standard_D2s_v3")
@@ -1632,7 +1632,7 @@ class TestSkuProfile:
     def test_profile_none_when_sku_not_found(self, client):
         """When SKU doesn't exist, profile key should be absent."""
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch([], [self._RETAIL_ITEM]),
         ):
             resp = client.get(
@@ -1647,7 +1647,7 @@ class TestSkuProfile:
         """SKU with empty restrictions list returns empty list."""
         sku = {**self._SAMPLE_SKU, "restrictions": []}
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch([sku], [self._RETAIL_ITEM]),
         ):
             resp = client.get(
@@ -1660,7 +1660,7 @@ class TestSkuProfile:
     def test_profile_tenant_id_forwarded(self, client):
         """tenantId parameter should be forwarded to get_sku_profile."""
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch([self._SAMPLE_SKU], [self._RETAIL_ITEM]),
         ):
             resp = client.get(
@@ -1687,7 +1687,7 @@ class TestSkuProfile:
             "restrictions": [],
         }
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch([sku], [self._RETAIL_ITEM]),
         ):
             resp = client.get(
@@ -1762,7 +1762,7 @@ class TestDeploymentConfidence:
         """Every SKU in the response must have a confidence dict."""
         sku_resp = self._sku_response()
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
@@ -1780,7 +1780,7 @@ class TestDeploymentConfidence:
         """Without pricing, pricePressure should be in the missing list."""
         sku_resp = self._sku_response()
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
@@ -1815,7 +1815,7 @@ class TestDeploymentConfidence:
             "NextPageLink": None,
         }
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp, retail_resp=retail_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
@@ -1830,7 +1830,7 @@ class TestDeploymentConfidence:
         sku_resp = self._sku_response()
         usage_resp = self._usage_response(limit=100, current=10)
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(sku_resp, usage_resp=usage_resp),
         ):
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
@@ -1848,13 +1848,13 @@ class TestDeploymentConfidence:
         clean_resp = self._sku_response()
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(restricted_resp),
         ):
             resp_r = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(clean_resp),
         ):
             resp_c = client.get("/api/skus?region=eastus&subscriptionId=sub1")
@@ -1869,13 +1869,13 @@ class TestDeploymentConfidence:
         three_zones = self._sku_response(zones=("1", "2", "3"))
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(one_zone),
         ):
             resp1 = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         with patch(
-            "az_mapping.azure_api.requests.get",
+            "az_scout.azure_api.requests.get",
             side_effect=self._mock_dispatch(three_zones),
         ):
             resp3 = client.get("/api/skus?region=eastus&subscriptionId=sub1")

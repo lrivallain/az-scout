@@ -10,8 +10,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Literal
 
-from az_mapping import azure_api
-from az_mapping.models.deployment_plan import (
+from az_scout import azure_api
+from az_scout.models.deployment_plan import (
     BusinessAlternative,
     BusinessView,
     ConfidenceEvaluation,
@@ -28,8 +28,8 @@ from az_mapping.models.deployment_plan import (
     TechnicalView,
     VerdictEvaluation,
 )
-from az_mapping.services.capacity_confidence import compute_capacity_confidence
-from az_mapping.services.intent_parser import derive_requirements
+from az_scout.services.capacity_confidence import compute_capacity_confidence
+from az_scout.services.intent_parser import derive_requirements
 
 logger = logging.getLogger(__name__)
 

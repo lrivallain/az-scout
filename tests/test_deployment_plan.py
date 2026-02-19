@@ -8,7 +8,7 @@ Covers:
 
 from unittest.mock import patch
 
-from az_mapping.models.deployment_plan import (
+from az_scout.models.deployment_plan import (
     DeploymentIntentRequest,
     PricingPreference,
     RegionConstraints,
@@ -16,12 +16,12 @@ from az_mapping.models.deployment_plan import (
     SkuConstraints,
     TimingPreference,
 )
-from az_mapping.services.deployment_planner import (
+from az_scout.services.deployment_planner import (
     _is_gpu_family,
     _ranking_key,
     plan_deployment,
 )
-from az_mapping.services.intent_parser import derive_requirements
+from az_scout.services.intent_parser import derive_requirements
 
 # ---------------------------------------------------------------------------
 # Fixtures — sample SKU dicts as returned by azure_api.get_skus (processed)
@@ -194,7 +194,7 @@ def _enrich_prices(skus: list[dict], *_args, **_kwargs) -> list[dict]:
 class TestPlanDeployment:
     """Integration-level tests for plan_deployment with mocked Azure API."""
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_nominal_case(self, mock_api) -> None:
         """Nominal: quota OK, zones OK, spot High -> coherent recommendation."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -222,7 +222,7 @@ class TestPlanDeployment:
         # The spot warning is always present
         assert any("Spot" in w for w in result.warnings)
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_quota_blocking_excludes_combo(self, mock_api) -> None:
         """When quota=0, combos should be marked ineligible."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -244,7 +244,7 @@ class TestPlanDeployment:
         # No eligible combo -> business view should mention no eligible
         assert "No eligible" in result.businessView.keyMessage
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_restrictions_mark_ineligible(self, mock_api) -> None:
         """SKU with restrictions present should be ineligible."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -264,7 +264,7 @@ class TestPlanDeployment:
 
         assert result.summary.recommendedSku is None
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_spot_missing_adds_warning(self, mock_api) -> None:
         """When spot scores are not required, a warning is emitted."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -283,7 +283,7 @@ class TestPlanDeployment:
 
         assert any("Spot scores were not evaluated" in w for w in result.warnings)
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_max_hourly_budget_exceeded(self, mock_api) -> None:
         """Combos exceeding maxHourlyBudget are ineligible."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -305,7 +305,7 @@ class TestPlanDeployment:
         assert result.summary.recommendedSku is None
         assert "No eligible" in result.businessView.keyMessage
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_deny_regions_excluded(self, mock_api) -> None:
         """Regions in denyRegions should not be evaluated."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -329,7 +329,7 @@ class TestPlanDeployment:
         assert "westeurope" not in evaluated
         assert "francecentral" in evaluated
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_data_residency_fr(self, mock_api) -> None:
         """dataResidency=FR limits candidates to France regions."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -349,7 +349,7 @@ class TestPlanDeployment:
         evaluated = result.technicalView.evaluation.regionsEvaluated
         assert set(evaluated).issubset({"francecentral", "francesouth"})
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_ranking_prefers_eligible_then_confidence(self, mock_api) -> None:
         """Eligible combos should rank above ineligible ones."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -372,7 +372,7 @@ class TestPlanDeployment:
         # Only Standard_D2s_v3 has 3 zones, so it should be recommended
         assert result.summary.recommendedSku == "Standard_D2s_v3"
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_preferred_skus_filter(self, mock_api) -> None:
         """preferredSkus should filter to only those SKUs."""
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
@@ -403,7 +403,7 @@ class TestPlanDeployment:
 
 class TestRankingKey:
     def test_eligible_before_ineligible(self) -> None:
-        from az_mapping.models.deployment_plan import (
+        from az_scout.models.deployment_plan import (
             ConfidenceEvaluation,
             RegionSkuEvaluation,
             VerdictEvaluation,
@@ -430,7 +430,7 @@ class TestRankingKey:
         assert _ranking_key(eligible, False) < _ranking_key(ineligible, False)
 
     def test_higher_confidence_wins(self) -> None:
-        from az_mapping.models.deployment_plan import (
+        from az_scout.models.deployment_plan import (
             ConfidenceEvaluation,
             RegionSkuEvaluation,
             VerdictEvaluation,
@@ -465,7 +465,7 @@ class TestRankingKey:
 class TestDeploymentPlanEndpoint:
     """Integration tests for POST /api/deployment-plan."""
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_nominal_200(self, mock_api, client) -> None:
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
         mock_api.SPOT_API_VERSION = "2025-06-05"
@@ -493,7 +493,7 @@ class TestDeploymentPlanEndpoint:
         assert body["summary"]["recommendedRegion"] == "francecentral"
         assert body["summary"]["recommendedSku"] is not None
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_quota_blocking_200(self, mock_api, client) -> None:
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
         mock_api.SPOT_API_VERSION = "2025-06-05"
@@ -522,7 +522,7 @@ class TestDeploymentPlanEndpoint:
         )
         assert resp.status_code == 422
 
-    @patch("az_mapping.services.deployment_planner.azure_api")
+    @patch("az_scout.services.deployment_planner.azure_api")
     def test_empty_regions_returns_error(self, mock_api, client) -> None:
         mock_api.COMPUTE_API_VERSION = "2024-11-01"
         mock_api.SPOT_API_VERSION = "2025-06-05"

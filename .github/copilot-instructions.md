@@ -1,8 +1,8 @@
-# Copilot Instructions for az-mapping
+# Copilot Instructions for az-scout
 
 ## Project overview
 
-`az-mapping` is a Python web tool that visualizes Azure Availability Zone logical-to-physical mappings across subscriptions. It uses a FastAPI backend and an MCP server, both calling shared Azure ARM REST API helpers, and a frontend with D3.js for graph rendering and vanilla JavaScript.
+`az-scout` is a Python web tool that visualizes Azure Availability Zone logical-to-physical mappings across subscriptions. It uses a FastAPI backend and an MCP server, both calling shared Azure ARM REST API helpers, and a frontend with D3.js for graph rendering and vanilla JavaScript.
 
 ## Tech stack
 
@@ -15,7 +15,7 @@
 ## Project structure
 
 ```
-src/az_mapping/
+src/az_scout/
 ├── azure_api.py      # Shared Azure ARM logic (auth, pagination, data functions)
 ├── app.py            # FastAPI routes, CLI entry point (thin wrappers over azure_api)
 ├── mcp_server.py     # MCP server exposing tools (thin wrappers over azure_api)

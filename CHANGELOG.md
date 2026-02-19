@@ -19,7 +19,7 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
   - `get_zone_mappings` – query logical-to-physical zone mappings.
   - `get_sku_availability` – query VM SKU availability per zone with filtering
     (by name, family, vCPU range, memory range).
-  - Supports stdio and SSE transports via `az-mapping mcp` subcommand.
+  - Supports stdio and SSE transports via `az-scout mcp` subcommand.
 - New `azure_api` module – shared Azure ARM logic used by both the web app and MCP server.
 - **Colored logging** – reuses uvicorn's `DefaultFormatter` for consistent colored output.
 - **`--reload` CLI flag** – auto-reload on code changes for development (uses uvicorn's watcher).
@@ -29,8 +29,8 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 - **Migrated from Flask to FastAPI** – async routes, built-in request validation,
   automatic OpenAPI schema generation.
-- **Unified CLI** – `az-mapping web` and `az-mapping mcp` subcommands replace the
-  separate entry points. Running `az-mapping` without a subcommand defaults to
+- **Unified CLI** – `az-scout web` and `az-scout mcp` subcommands replace the
+  separate entry points. Running `az-scout` without a subcommand defaults to
   `web` for backward compatibility. `--verbose` is available on both subcommands;
   `--reload` is specific to `web`.
 - Tenant authentication checks now suppress noisy Azure CLI subprocess stderr output
@@ -84,14 +84,14 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 - Export – download graph as PNG or table as CSV.
 - Collapsible sidebar for the filter panel.
 - URL parameter sync – filters are reflected in the URL and restored on reload.
-- CLI entry point (`az-mapping` / `uvx az-mapping`) with `--host`, `--port`, and `--no-open` options.
+- CLI entry point (`az-scout` / `uvx az-scout`) with `--host`, `--port`, and `--no-open` options.
 - Fault-proof automatic browser opening on startup.
 - GitHub Actions workflow for publishing to PyPI via trusted publishing.
 - GitHub Actions CI workflow (ruff lint + pytest across Python 3.11–3.13).
 - Issue templates (bug report, feature request) and PR template.
 
-[Unreleased]: https://github.com/lrivallain/az-mapping/compare/v2026.2.3...HEAD
-[2026.2.3]: https://github.com/lrivallain/az-mapping/compare/v2026.2.2...v2026.2.3
-[2026.2.2]: https://github.com/lrivallain/az-mapping/compare/v2026.2.1...v2026.2.2
-[2026.2.1]: https://github.com/lrivallain/az-mapping/compare/v2026.2.0...v2026.2.1
-[2026.2.0]: https://github.com/lrivallain/az-mapping/releases/tag/v2026.2.0
+[Unreleased]: https://github.com/lrivallain/az-scout/compare/v2026.2.3...HEAD
+[2026.2.3]: https://github.com/lrivallain/az-scout/compare/v2026.2.2...v2026.2.3
+[2026.2.2]: https://github.com/lrivallain/az-scout/compare/v2026.2.1...v2026.2.2
+[2026.2.1]: https://github.com/lrivallain/az-scout/compare/v2026.2.0...v2026.2.1
+[2026.2.0]: https://github.com/lrivallain/az-scout/releases/tag/v2026.2.0

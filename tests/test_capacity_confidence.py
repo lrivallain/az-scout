@@ -2,7 +2,7 @@
 
 import pytest
 
-from az_mapping.services.capacity_confidence import (
+from az_scout.services.capacity_confidence import (
     WEIGHTS,
     _price_pressure_score,
     _quota_score,

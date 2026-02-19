@@ -1,5 +1,5 @@
 /* ===================================================================
-   Azure AZ Mapping Viewer – Frontend Logic  (Bootstrap 5 rewrite)
+   Azure Scout – Frontend Logic  (Bootstrap 5 rewrite)
    =================================================================== */
 
 // ---------------------------------------------------------------------------
@@ -867,9 +867,9 @@ function exportGraphPNG() {
         ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
         URL.revokeObjectURL(url);
-        const region = document.getElementById("region-select").value || "az-mapping";
+        const region = document.getElementById("region-select").value || "az-scout";
         const a = document.createElement("a");
-        a.download = `az-mapping-${region}.png`;
+        a.download = `az-scout-${region}.png`;
         a.href = canvas.toDataURL("image/png");
         a.click();
     };
@@ -898,7 +898,7 @@ function exportTableCSV() {
         const cols = logicalZones.map(z => { const m = sub.mappings.find(m => m.logicalZone === z); return m ? m.physicalZone : ""; });
         return [getSubName(sub.subscriptionId), sub.subscriptionId, ...cols];
     });
-    downloadCSV([headers, ...rows], `az-mapping-${document.getElementById("region-select").value || "export"}.csv`);
+    downloadCSV([headers, ...rows], `az-scout-${document.getElementById("region-select").value || "export"}.csv`);
 }
 
 function downloadCSV(data, filename) {
