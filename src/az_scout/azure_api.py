@@ -572,21 +572,21 @@ def _fetch_spot_batch(
             time.sleep(retry_after)
             continue
         if resp.status_code == 403:
-            logger.warning(
-                "Access denied (403) for spot placement scores – ensure your "
-                "identity has the Reader role on subscription %s.",
-                subscription_id,
+            msg = (
+                f"Access denied (403) for spot placement scores on subscription "
+                f"{subscription_id}. Ensure the identity has Virtual Machine "
+                f"Contributor (or equivalent) role."
             )
-            return {}
+            logger.warning(msg)
+            raise PermissionError(msg)
         if resp.status_code == 404:
-            logger.warning(
-                "Spot placement scores endpoint not found (404) for "
-                "subscription %s / region %s. Ensure the Microsoft.Compute "
-                "resource provider is registered.",
-                subscription_id,
-                region,
+            msg = (
+                f"Spot placement scores endpoint not found (404) for "
+                f"subscription {subscription_id} / region {region}. "
+                f"Ensure Microsoft.Compute resource provider is registered."
             )
-            return {}
+            logger.warning(msg)
+            raise FileNotFoundError(msg)
         if resp.status_code >= 500:
             wait_time = 2**attempt  # 1, 2, 4
             logger.warning(

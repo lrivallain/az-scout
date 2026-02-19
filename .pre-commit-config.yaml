@@ -18,6 +18,15 @@ repos:
         pass_filenames: false
         entry: mypy src/
 
+  - repo: local
+    hooks:
+      - id: bicep-to-arm
+        name: Rebuild deploy/main.json from Bicep
+        language: system
+        entry: bash -c 'az bicep build -f deploy/main.bicep --outfile deploy/main.json && echo >> deploy/main.json && git add deploy/main.json'
+        files: ^deploy/main\.bicep$
+        pass_filenames: false
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

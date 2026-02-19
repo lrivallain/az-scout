@@ -97,7 +97,11 @@ logger = logging.getLogger(__name__)
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def index(request: Request) -> HTMLResponse:
     """Serve the main page."""
-    return templates.TemplateResponse(request, "index.html", {"version": __version__})
+    # EasyAuth injects the authenticated user's display name via this header.
+    auth_user = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME", "")
+    return templates.TemplateResponse(
+        request, "index.html", {"version": __version__, "auth_user": auth_user}
+    )
 
 
 @app.get("/api/tenants", tags=["Discovery"], summary="List Azure AD tenants")

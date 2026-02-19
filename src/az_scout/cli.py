@@ -43,7 +43,15 @@ def cli(ctx: click.Context) -> None:
     default=False,
     help="Auto-reload on code changes (development only).",
 )
-def web(host: str, port: int, no_open: bool, verbose: bool, reload: bool) -> None:
+@click.option(
+    "--proxy-headers",
+    is_flag=True,
+    default=False,
+    help="Trust X-Forwarded-Proto/Host headers (enable behind a reverse proxy).",
+)
+def web(
+    host: str, port: int, no_open: bool, verbose: bool, reload: bool, proxy_headers: bool
+) -> None:
     """Run the web UI (default)."""
     import logging
 
@@ -75,6 +83,11 @@ def web(host: str, port: int, no_open: bool, verbose: bool, reload: bool) -> Non
 
         threading.Timer(1.0, _open_browser).start()
 
+    proxy_kwargs: dict[str, object] = {}
+    if proxy_headers:
+        proxy_kwargs["proxy_headers"] = True
+        proxy_kwargs["forwarded_allow_ips"] = "*"
+
     if reload:
         uvicorn.run(
             "az_scout.app:app",
@@ -83,9 +96,10 @@ def web(host: str, port: int, no_open: bool, verbose: bool, reload: bool) -> Non
             log_level=log_level,
             reload=True,
             reload_dirs=[str(_PKG_DIR)],
+            **proxy_kwargs,  # type: ignore[arg-type]
         )
     else:
-        uvicorn.run(app, host=host, port=port, log_level=log_level)
+        uvicorn.run(app, host=host, port=port, log_level=log_level, **proxy_kwargs)  # type: ignore[arg-type]
 
 
 @cli.command()

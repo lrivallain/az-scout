@@ -63,17 +63,12 @@ az-scout
 
 ## Features
 
-- **Region selector** – AZ-enabled regions, loaded automatically.
-- **Subscription picker** – searchable, multi-select.
-- **Collapsible sidebar** – toggle the filter panel to maximize the results area.
-- **Graph view** – D3.js bipartite diagram (Logical Zone → Physical Zone), colour-coded per subscription with interactive hover highlighting.
-- **Table view** – comparison table with consistency indicators.
+- **Logical-to-physical zone mapping** – visualise how Azure maps logical Availability Zones (Zone 1, Zone 2, Zone 3) to physical zones (e.g., eastus-az1, eastus-az2) across subscriptions in a region.
 - **SKU availability view** – shows VM SKU availability per physical zone with vCPU quota usage (limit / used / remaining) and CSV export.
 - **Spot Placement Scores** – evaluate the likelihood of Spot VM allocation (High / Medium / Low) per SKU for a given region and instance count, powered by the Azure Compute RP.
 - **Deployment Confidence Score** – a composite 0–100 score per SKU estimating deployment success probability, synthesised from quota headroom, Spot Placement Score, availability zone breadth, restrictions, and price pressure signals. Missing signals are automatically excluded with weight renormalisation. The score updates live when Spot Placement Scores arrive.
 - **Deployment Plan** – agent-ready `POST /api/deployment-plan` endpoint that evaluates (region, SKU) combinations against zones, quotas, spot scores, pricing, and restrictions. Returns a deterministic, ranked plan with business and technical views (no LLM, no invention — missing data is flagged explicitly).
-- **Export** – download the graph as PNG or the tables as CSV.
-- **Shareable URLs** – filters are reflected in the URL; reload or share a link to restore the exact view.
+- **Export** – download graph as PNG or the tables as CSV.
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
 
 ## MCP server
@@ -202,6 +197,70 @@ The backend calls the Azure Resource Manager REST API to fetch:
 The frontend renders the results as an interactive graph, comparison table, and SKU availability table with quota columns.
 
 API documentation is available at `/docs` (Swagger UI) and `/redoc` (ReDoc) when the server is running.
+
+## Deploy to Azure (Container App)
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Flrivallain%2Faz-scout%2Fmain%2Fdeploy%2Fmain.json)
+
+A Bicep template is provided to deploy az-scout as an Azure Container App with a managed identity.
+You can use the **Deploy to Azure** button above for a portal-guided experience, or use the CLI commands below.
+
+### Quick deploy (CLI)
+
+```bash
+# Create a resource group
+az group create -n rg-az-scout -l westeurope
+
+# Deploy (replace subscription IDs with your own)
+az deployment group create \
+  -g rg-az-scout \
+  -f deploy/main.bicep \
+  -p containerImageTag=latest \
+  -p readerSubscriptionIds='["SUB_ID_1","SUB_ID_2"]'
+```
+
+The deployment creates:
+
+| Resource | Purpose |
+|---|---|
+| **Container App** | Runs `ghcr.io/lrivallain/az-scout` |
+| **Managed Identity** | `Reader` role on target subscriptions |
+| **VM Contributor** | `Virtual Machine Contributor` role for Spot Placement Scores (enabled by default) |
+| **Log Analytics** | Container logs and diagnostics |
+| **Container Apps Env** | Hosting environment |
+
+> **Note:** The `Virtual Machine Contributor` role is required for querying Spot Placement Scores (POST endpoint). Set `enableSpotScoreRole=false` to skip this if you don't need spot scores or prefer to manage permissions manually.
+
+### Docker (local)
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e AZURE_TENANT_ID=<your-tenant> \
+  -e AZURE_CLIENT_ID=<your-sp-client-id> \
+  -e AZURE_CLIENT_SECRET=<your-sp-secret> \
+  ghcr.io/lrivallain/az-scout:latest
+```
+
+### Enable Entra ID authentication (EasyAuth)
+
+Add these parameters to protect the app with Microsoft login:
+
+```bash
+az deployment group create \
+  -g rg-az-scout \
+  -f deploy/main.bicep \
+  -p containerImageTag=latest \
+  -p readerSubscriptionIds='["SUB_ID_1"]' \
+  -p enableAuth=true \
+  -p authClientId=<app-registration-client-id> \
+  -p authClientSecret=<app-registration-client-secret>
+```
+
+Requires an [Entra ID App Registration](https://learn.microsoft.com/entra/identity-platform/quickstart-register-app) with a redirect URI pointing to your Container App's `/.auth/login/aad/callback` endpoint.
+
+For a complete walkthrough (App Registration creation, client secret, user assignment, troubleshooting), see [`deploy/EASYAUTH.md`](deploy/EASYAUTH.md).
+
+See [`deploy/main.example.bicepparam`](deploy/main.example.bicepparam) for all available parameters.
 
 ## License
 

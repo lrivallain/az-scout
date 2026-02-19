@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Git (we need .git for hatch-vcs, but exclude heavy objects selectively)
+.github/
+
+# Docs & config not needed at runtime
+*.md
+!README.md
+LICENSE.txt
+tests/
+deploy/

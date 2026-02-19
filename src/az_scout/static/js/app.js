@@ -264,10 +264,12 @@ async function fetchTenants() {
         const defaultTid = result.defaultTenantId || "";
         const authTenants = tenants.filter(t => t.authenticated);
         if (authTenants.length <= 1) {
-            document.getElementById("tenant-section").classList.add("d-none");
             if (authTenants.length === 1) {
                 select.innerHTML = `<option value="${authTenants[0].id}">${escapeHtml(authTenants[0].name)}</option>`;
                 select.value = authTenants[0].id;
+                select.disabled = true;
+            } else {
+                document.getElementById("tenant-section").classList.add("d-none");
             }
             return;
         }

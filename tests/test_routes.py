@@ -945,7 +945,7 @@ class TestSpotScores:
         assert call_count["n"] == 2
 
     def test_403_returns_empty_scores(self, client):
-        """403 → empty scores, no crash."""
+        """403 → empty scores with error message."""
         mock_resp = MagicMock()
         mock_resp.status_code = 403
         mock_resp.headers = {}
@@ -964,7 +964,8 @@ class TestSpotScores:
         assert resp.status_code == 200
         data = resp.json()
         assert data["scores"] == {}
-        assert data["errors"] == []
+        assert len(data["errors"]) == 1
+        assert "403" in data["errors"][0]
 
     def test_404_returns_empty_scores(self, client):
         """404 → empty scores (provider not registered), no crash."""
@@ -986,7 +987,8 @@ class TestSpotScores:
         assert resp.status_code == 200
         data = resp.json()
         assert data["scores"] == {}
-        assert data["errors"] == []
+        assert len(data["errors"]) == 1
+        assert "404" in data["errors"][0]
 
     def test_cache_returns_cached_result(self, client):
         """Second call with same params hits cache."""
