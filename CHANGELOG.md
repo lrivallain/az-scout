@@ -8,6 +8,44 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
+## [2026.2.4] - 2026-02-19
+
+### Added
+
+- **Deployment Confidence Score** – composite 0–100 score per SKU estimating deployment success,
+  synthesised from quota headroom, Spot Placement Score, zone breadth, restrictions, and price
+  pressure. Missing signals are excluded with automatic weight renormalisation.
+- **Deployment Plan API** – deterministic `POST /api/deployment-plan` endpoint that evaluates
+  (region, SKU) combinations against zones, quotas, spot scores, pricing, and restrictions.
+  Returns ranked plans with business and technical views (no LLM).
+- **Spot Placement Scores** – per-SKU Spot VM allocation likelihood (High / Medium / Low),
+  fetched from the Azure Compute RP with batching, retry/back-off, and 10-minute cache.
+- **SKU pricing** – retail prices (PayGo, Spot, RI 1Y/3Y, SP 1Y/3Y) with currency selector,
+  spot discount badge, and pricing detail modal with VM profile section.
+- **Region summary bar** – readiness and consistency scores at the top of results.
+- **Tenant preload** – background thread warms the tenant cache at startup (5-minute TTL)
+  for faster first page load.
+- **Version display** – package version shown in the API (OpenAPI spec) and web page footer.
+- **Column toggles** – show/hide Prices and Spot columns with `localStorage` persistence.
+- MCP tools: `get_sku_pricing_detail`, `get_spot_scores`, confidence score and VM profile.
+
+### Changed
+
+- **Project renamed** from `az-mapping` to `az-scout` – package, CLI entry point, imports,
+  documentation, and CI/CD all updated. PyPI package is now `az-scout`.
+- **Bootstrap 5 rewrite** – migrated from vanilla CSS to Bootstrap 5.3 with Simple-DataTables,
+  per-column filters, dark/light theme toggle, and responsive modal (fullscreen on mobile).
+- **Two-page layout** – UI split into Topology and Planner tabs with hash routing.
+- SKU table headers show zone availability icons instead of plain text.
+- CalVer versioning simplified: `calver-by-date` scheme, no local version suffix.
+
+### Fixed
+
+- Pricing modal now scrollable when content overflows.
+- Spot score calculation uses per-zone averaging (not best-zone-only).
+- Price Pressure signal computed from modal pricing data even without pre-fetched prices.
+- Test warnings from preload daemon thread suppressed by mocking in fixtures.
+
 ## [2026.2.3] - 2026-02-16
 
 ### Added
@@ -89,9 +127,3 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 - GitHub Actions workflow for publishing to PyPI via trusted publishing.
 - GitHub Actions CI workflow (ruff lint + pytest across Python 3.11–3.13).
 - Issue templates (bug report, feature request) and PR template.
-
-[Unreleased]: https://github.com/lrivallain/az-scout/compare/v2026.2.3...HEAD
-[2026.2.3]: https://github.com/lrivallain/az-scout/compare/v2026.2.2...v2026.2.3
-[2026.2.2]: https://github.com/lrivallain/az-scout/compare/v2026.2.1...v2026.2.2
-[2026.2.1]: https://github.com/lrivallain/az-scout/compare/v2026.2.0...v2026.2.1
-[2026.2.0]: https://github.com/lrivallain/az-scout/releases/tag/v2026.2.0

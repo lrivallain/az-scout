@@ -1,8 +1,8 @@
 # az-scout
 
-Visualize how Azure maps **logical** Availability Zones to **physical** zones across your subscriptions.
+Scout Azure regions for VM availability, zone mappings, pricing, spot scores, and quota — then plan deployments with confidence.
 
-> Different subscriptions may map the same logical zone (e.g. Zone 1) to different physical datacenters. This tool lets you compare them side-by-side.
+> **az-scout** helps you compare how Azure maps logical Availability Zones to physical zones across subscriptions, evaluate SKU capacity and pricing, and generate deterministic deployment plans — all from a single web UI or MCP-powered AI agent.
 
 ## Quick start
 
