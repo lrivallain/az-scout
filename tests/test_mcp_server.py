@@ -1,11 +1,11 @@
-"""Tests for the az-mapping MCP server tools."""
+"""Tests for the az-scout MCP server tools."""
 
 import json
 from unittest.mock import patch
 
 import pytest
 
-from az_mapping.mcp_server import mcp
+from az_scout.mcp_server import mcp
 
 
 @pytest.fixture()
@@ -15,7 +15,7 @@ def _mock_credential():
 
     mock_token = MagicMock()
     mock_token.token = "fake-token"
-    with patch("az_mapping.azure_api.credential") as cred:
+    with patch("az_scout.azure_api.credential") as cred:
         cred.get_token.return_value = mock_token
         yield cred
 
@@ -36,7 +36,7 @@ class TestMcpListTenants:
             ],
             "defaultTenantId": "tid-1",
         }
-        with patch("az_mapping.azure_api.list_tenants", return_value=mock_data):
+        with patch("az_scout.azure_api.list_tenants", return_value=mock_data):
             content, _ = await mcp.call_tool("list_tenants", {})
 
         data = json.loads(content[0].text)
@@ -55,7 +55,7 @@ class TestMcpListSubscriptions:
     @pytest.mark.anyio()
     async def test_returns_subscriptions_json(self, _mock_credential):
         mock_data = [{"id": "sub-1", "name": "My Sub"}]
-        with patch("az_mapping.azure_api.list_subscriptions", return_value=mock_data):
+        with patch("az_scout.azure_api.list_subscriptions", return_value=mock_data):
             content, _ = await mcp.call_tool("list_subscriptions", {})
 
         data = json.loads(content[0].text)
@@ -64,7 +64,7 @@ class TestMcpListSubscriptions:
 
     @pytest.mark.anyio()
     async def test_passes_tenant_id(self, _mock_credential):
-        with patch("az_mapping.azure_api.list_subscriptions", return_value=[]) as mock_fn:
+        with patch("az_scout.azure_api.list_subscriptions", return_value=[]) as mock_fn:
             _, _ = await mcp.call_tool("list_subscriptions", {"tenant_id": "tid-x"})
 
         mock_fn.assert_called_once_with("tid-x")
@@ -81,7 +81,7 @@ class TestMcpListRegions:
     @pytest.mark.anyio()
     async def test_returns_regions_json(self, _mock_credential):
         mock_data = [{"name": "eastus", "displayName": "East US"}]
-        with patch("az_mapping.azure_api.list_regions", return_value=mock_data):
+        with patch("az_scout.azure_api.list_regions", return_value=mock_data):
             content, _ = await mcp.call_tool("list_regions", {})
 
         data = json.loads(content[0].text)
@@ -107,7 +107,7 @@ class TestMcpGetZoneMappings:
                 ],
             }
         ]
-        with patch("az_mapping.azure_api.get_mappings", return_value=mock_data):
+        with patch("az_scout.azure_api.get_mappings", return_value=mock_data):
             content, _ = await mcp.call_tool(
                 "get_zone_mappings",
                 {"region": "eastus", "subscription_ids": ["sub-1"]},
@@ -140,8 +140,8 @@ class TestMcpGetSkuAvailability:
             }
         ]
         with (
-            patch("az_mapping.azure_api.get_skus", return_value=mock_data),
-            patch("az_mapping.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.get_skus", return_value=mock_data),
+            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -157,8 +157,8 @@ class TestMcpGetSkuAvailability:
     @pytest.mark.anyio()
     async def test_passes_resource_type(self, _mock_credential):
         with (
-            patch("az_mapping.azure_api.get_skus", return_value=[]) as mock_fn,
-            patch("az_mapping.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.get_skus", return_value=[]) as mock_fn,
+            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
         ):
             _, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -185,8 +185,8 @@ class TestMcpGetSkuAvailability:
     @pytest.mark.anyio()
     async def test_passes_sku_filters(self, _mock_credential):
         with (
-            patch("az_mapping.azure_api.get_skus", return_value=[]) as mock_fn,
-            patch("az_mapping.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.get_skus", return_value=[]) as mock_fn,
+            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
         ):
             _, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -241,8 +241,8 @@ class TestMcpGetSkuAvailability:
             }
         ]
         with (
-            patch("az_mapping.azure_api.get_skus", return_value=mock_skus),
-            patch("az_mapping.azure_api.get_compute_usages", return_value=mock_usages),
+            patch("az_scout.azure_api.get_skus", return_value=mock_skus),
+            patch("az_scout.azure_api.get_compute_usages", return_value=mock_usages),
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -269,9 +269,9 @@ class TestMcpGetSkuAvailability:
             }
         ]
         with (
-            patch("az_mapping.azure_api.get_skus", return_value=mock_skus),
-            patch("az_mapping.azure_api.get_compute_usages", return_value=[]),
-            patch("az_mapping.azure_api.enrich_skus_with_prices") as mock_enrich,
+            patch("az_scout.azure_api.get_skus", return_value=mock_skus),
+            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.enrich_skus_with_prices") as mock_enrich,
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -308,8 +308,8 @@ class TestMcpGetSkuAvailability:
             }
         ]
         with (
-            patch("az_mapping.azure_api.get_skus", return_value=mock_skus),
-            patch("az_mapping.azure_api.get_compute_usages", return_value=mock_usages),
+            patch("az_scout.azure_api.get_skus", return_value=mock_skus),
+            patch("az_scout.azure_api.get_compute_usages", return_value=mock_usages),
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -326,9 +326,9 @@ class TestMcpGetSkuAvailability:
     async def test_no_pricing_by_default(self, _mock_credential):
         """Pricing enrichment is not called when include_prices is omitted."""
         with (
-            patch("az_mapping.azure_api.get_skus", return_value=[]),
-            patch("az_mapping.azure_api.get_compute_usages", return_value=[]),
-            patch("az_mapping.azure_api.enrich_skus_with_prices") as mock_enrich,
+            patch("az_scout.azure_api.get_skus", return_value=[]),
+            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.enrich_skus_with_prices") as mock_enrich,
         ):
             _, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -356,7 +356,7 @@ class TestMcpGetSpotScores:
             "errors": [],
         }
         with patch(
-            "az_mapping.azure_api.get_spot_placement_scores",
+            "az_scout.azure_api.get_spot_placement_scores",
             return_value=mock_result,
         ):
             content, _ = await mcp.call_tool(
@@ -376,7 +376,7 @@ class TestMcpGetSpotScores:
     @pytest.mark.anyio()
     async def test_passes_instance_count_and_tenant(self, _mock_credential):
         with patch(
-            "az_mapping.azure_api.get_spot_placement_scores",
+            "az_scout.azure_api.get_spot_placement_scores",
             return_value={"scores": {}, "errors": []},
         ) as mock_fn:
             _, _ = await mcp.call_tool(
@@ -421,7 +421,7 @@ class TestMcpGetSkuPricingDetail:
             "sp_3y": 0.053,
         }
         with patch(
-            "az_mapping.azure_api.get_sku_pricing_detail",
+            "az_scout.azure_api.get_sku_pricing_detail",
             return_value=mock_result,
         ):
             content, _ = await mcp.call_tool(
@@ -438,7 +438,7 @@ class TestMcpGetSkuPricingDetail:
     @pytest.mark.anyio()
     async def test_passes_currency_code(self, _mock_credential):
         with patch(
-            "az_mapping.azure_api.get_sku_pricing_detail",
+            "az_scout.azure_api.get_sku_pricing_detail",
             return_value={},
         ) as mock_fn:
             _, _ = await mcp.call_tool(
@@ -462,11 +462,11 @@ class TestMcpGetSkuPricingDetail:
         }
         with (
             patch(
-                "az_mapping.azure_api.get_sku_pricing_detail",
+                "az_scout.azure_api.get_sku_pricing_detail",
                 return_value=mock_pricing,
             ),
             patch(
-                "az_mapping.azure_api.get_sku_profile",
+                "az_scout.azure_api.get_sku_profile",
                 return_value=mock_profile,
             ) as mock_prof,
         ):
@@ -491,10 +491,10 @@ class TestMcpGetSkuPricingDetail:
         mock_pricing = {"skuName": "Standard_D2s_v5", "paygo": 0.1}
         with (
             patch(
-                "az_mapping.azure_api.get_sku_pricing_detail",
+                "az_scout.azure_api.get_sku_pricing_detail",
                 return_value=mock_pricing,
             ),
-            patch("az_mapping.azure_api.get_sku_profile") as mock_prof,
+            patch("az_scout.azure_api.get_sku_profile") as mock_prof,
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_pricing_detail",

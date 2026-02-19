@@ -1,22 +1,22 @@
-"""Unified CLI for az-mapping.
+"""Unified CLI for az-scout.
 
 Provides two subcommands:
-    az-mapping web  – run the web UI (FastAPI + uvicorn)
-    az-mapping mcp  – run the MCP server (stdio or SSE transport)
+    az-scout web  – run the web UI (FastAPI + uvicorn)
+    az-scout mcp  – run the MCP server (stdio or SSE transport)
 
-Running ``az-mapping`` without a subcommand defaults to ``web``.
+Running ``az-scout`` without a subcommand defaults to ``web``.
 """
 
 import click
 
-from az_mapping import __version__
+from az_scout import __version__
 
 
 @click.group(invoke_without_command=True)
-@click.version_option(version=__version__, prog_name="az-mapping")
+@click.version_option(version=__version__, prog_name="az-scout")
 @click.pass_context
 def cli(ctx: click.Context) -> None:
-    """Azure Availability Zone Mapping Viewer."""
+    """Azure Scout."""
     if ctx.invoked_subcommand is None:
         ctx.invoke(web)
 
@@ -49,13 +49,13 @@ def web(host: str, port: int, no_open: bool, verbose: bool, reload: bool) -> Non
 
     import uvicorn
 
-    from az_mapping.app import _PKG_DIR, _setup_logging, app
+    from az_scout.app import _PKG_DIR, _setup_logging, app
 
     log_level = "info" if verbose else "warning"
     _setup_logging(level=logging.DEBUG if verbose else logging.WARNING)
 
     url = f"http://{host}:{port}"
-    click.echo(f"✦ az-mapping running at {click.style(url, fg='cyan', bold=True)}")
+    click.echo(f"✦ az-scout running at {click.style(url, fg='cyan', bold=True)}")
     if reload:
         click.echo(f"  {click.style('⟳ Auto-reload enabled', fg='yellow')}")
     click.echo("  Press Ctrl+C to stop.\n")
@@ -77,7 +77,7 @@ def web(host: str, port: int, no_open: bool, verbose: bool, reload: bool) -> Non
 
     if reload:
         uvicorn.run(
-            "az_mapping.app:app",
+            "az_scout.app:app",
             host=host,
             port=port,
             log_level=log_level,
@@ -112,7 +112,7 @@ def mcp(sse: bool, port: int, verbose: bool) -> None:
     """Run the MCP server."""
     import logging
 
-    from az_mapping.mcp_server import mcp as mcp_server
+    from az_scout.mcp_server import mcp as mcp_server
 
     if verbose:
         logging.basicConfig(level=logging.INFO)

@@ -5,7 +5,7 @@ Pure function: no I/O, no side effects, no Azure calls.
 
 import logging
 
-from az_mapping.models.deployment_plan import (
+from az_scout.models.deployment_plan import (
     DeploymentIntentRequest,
     DerivedRequirements,
 )

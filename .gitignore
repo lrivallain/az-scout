@@ -16,4 +16,4 @@ wheels/
 .coverage
 
 # Generated version file (hatch-vcs)
-src/az_mapping/_version.py
+src/*/_version.py

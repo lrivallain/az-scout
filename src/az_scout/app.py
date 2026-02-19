@@ -1,4 +1,4 @@
-"""Azure Availability Zone Mapping Viewer – FastAPI web application.
+"""Azure Scout – FastAPI web application.
 
 Interactive web tool to visualize how Azure maps logical availability zones
 to physical zones across subscriptions in a given region.
@@ -17,10 +17,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from az_mapping import __version__, azure_api
-from az_mapping.models.deployment_plan import DeploymentIntentRequest
-from az_mapping.services.capacity_confidence import compute_capacity_confidence
-from az_mapping.services.deployment_planner import plan_deployment
+from az_scout import __version__, azure_api
+from az_scout.models.deployment_plan import DeploymentIntentRequest
+from az_scout.services.capacity_confidence import compute_capacity_confidence
+from az_scout.services.deployment_planner import plan_deployment
 
 _PKG_DIR = Path(__file__).resolve().parent
 
@@ -39,10 +39,10 @@ async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(
-    title="az-mapping API",
+    title="az-scout API",
     version=__version__,
     description=(
-        "REST API for the Azure Availability Zone Mapping Viewer. "
+        "REST API for the Azure Scout. "
         "Provides endpoints to discover Azure tenants, subscriptions, "
         "AZ-enabled regions, logical-to-physical zone mappings, and "
         "resource SKU availability with optional filtering."
@@ -69,14 +69,14 @@ templates = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
 
 
 def _setup_logging(level: int = logging.WARNING) -> None:
-    """Configure the root ``az_mapping`` logger with uvicorn-style colours."""
+    """Configure the root ``az_scout`` logger with uvicorn-style colours."""
     from uvicorn.logging import DefaultFormatter
 
     handler = logging.StreamHandler()
     handler.setFormatter(
         DefaultFormatter(fmt="%(levelprefix)s %(name)s - %(message)s", use_colors=True)
     )
-    app_logger = logging.getLogger("az_mapping")
+    app_logger = logging.getLogger("az_scout")
     app_logger.handlers = [handler]
     app_logger.setLevel(level)
     app_logger.propagate = False
@@ -357,6 +357,6 @@ async def deployment_plan(body: DeploymentIntentRequest) -> JSONResponse:
 
 
 if __name__ == "__main__":
-    from az_mapping.cli import cli
+    from az_scout.cli import cli
 
     cli()

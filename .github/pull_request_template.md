@@ -16,7 +16,7 @@
 
 ## Checklist
 
-- [ ] I have tested my changes locally (`uvx az-mapping` or `uv run az-mapping`)
+- [ ] I have tested my changes locally (`uvx az-scout` or `uv run az-scout`)
 - [ ] I have updated the documentation / README if needed
 - [ ] My changes do not introduce new warnings or errors
 

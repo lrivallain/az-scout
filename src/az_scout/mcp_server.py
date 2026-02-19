@@ -5,14 +5,14 @@ subscriptions, regions, zone mappings and SKU availability – as
 MCP tools so that AI agents can query them directly.
 
 Run with:
-    az-mapping mcp            # stdio transport (default)
-    az-mapping mcp --sse      # SSE transport on port 8080
+    az-scout mcp            # stdio transport (default)
+    az-scout mcp --sse      # SSE transport on port 8080
 
 Or add to your MCP client config (e.g. Claude Desktop):
     {
       "mcpServers": {
-        "az-mapping": {
-          "command": "az-mapping",
+        "az-scout": {
+          "command": "az-scout",
           "args": ["mcp"]
         }
       }
@@ -24,13 +24,13 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
-from az_mapping import azure_api
-from az_mapping.services.capacity_confidence import compute_capacity_confidence
+from az_scout import azure_api
+from az_scout.services.capacity_confidence import compute_capacity_confidence
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
-    "az-mapping",
+    "az-scout",
     instructions=(
         "Azure Availability Zone mapping tools. "
         "Use these tools to discover Azure tenants, subscriptions and regions, "

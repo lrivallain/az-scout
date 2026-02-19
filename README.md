@@ -1,4 +1,4 @@
-# az-mapping
+# az-scout
 
 Visualize how Azure maps **logical** Availability Zones to **physical** zones across your subscriptions.
 
@@ -11,7 +11,7 @@ Visualize how Azure maps **logical** Availability Zones to **physical** zones ac
 az login
 
 # Run the tool (no install required)
-uvx az-mapping
+uvx az-scout
 ```
 
 Your browser opens automatically at `http://127.0.0.1:5001`.
@@ -19,10 +19,10 @@ Your browser opens automatically at `http://127.0.0.1:5001`.
 ### CLI options
 
 ```
-az-mapping [COMMAND] [OPTIONS]
+az-scout [COMMAND] [OPTIONS]
 ```
 
-#### `az-mapping web` (default)
+#### `az-scout web` (default)
 
 Run the web UI. This is the default when no subcommand is given.
 
@@ -35,7 +35,7 @@ Run the web UI. This is the default when no subcommand is given.
   --help          Show this message and exit.
 ```
 
-#### `az-mapping mcp`
+#### `az-scout mcp`
 
 Run the MCP server.
 
@@ -49,8 +49,8 @@ Run the MCP server.
 ### Alternative install
 
 ```bash
-pip install az-mapping
-az-mapping
+pip install az-scout
+az-scout
 ```
 
 ## Prerequisites
@@ -99,7 +99,7 @@ An [MCP](https://modelcontextprotocol.io/) server is included, allowing AI agent
 #### stdio transport (default – for Claude Desktop, VS Code, etc.)
 
 ```bash
-az-mapping mcp
+az-scout mcp
 ```
 
 Add to your MCP client configuration:
@@ -107,8 +107,8 @@ Add to your MCP client configuration:
 ```json
 {
   "mcpServers": {
-    "az-mapping": {
-      "command": "az-mapping",
+    "az-scout": {
+      "command": "az-scout",
       "args": ["mcp"]
     }
   }
@@ -120,9 +120,9 @@ If using `uv`:
 ```json
 {
   "mcpServers": {
-    "az-mapping": {
+    "az-scout": {
       "command": "uvx",
-      "args": ["az-mapping", "mcp"]
+      "args": ["az-scout", "mcp"]
     }
   }
 }
@@ -131,7 +131,7 @@ If using `uv`:
 #### SSE transport
 
 ```bash
-az-mapping mcp --sse --port 8080
+az-scout mcp --sse --port 8080
 ```
 
 ## Deployment Plan API
