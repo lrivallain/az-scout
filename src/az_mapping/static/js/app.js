@@ -45,18 +45,24 @@ function recomputeConfidence(sku) {
     const zones = sku.zones || [];
     const restrictions = sku.restrictions || [];
     const zoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
-    const spotLabel = _bestSpotLabel(zoneScores);
 
     const signals = {};
     if (remaining != null) {
         if (remaining <= 0) signals.quota = 0;
         else signals.quota = Math.min((remaining / Math.max(vcpus, 1)) / 10, 1) * 100;
     }
-    const spotMap = { high: 100, medium: 60, low: 25 };
-    if (spotLabel && spotMap[spotLabel.toLowerCase()] != null) {
-        signals.spot = spotMap[spotLabel.toLowerCase()];
+    // Spot score: average per-zone scores across 3 zones (non-scorable = 0)
+    if (Object.keys(zoneScores).length > 0) {
+        const spotMap = { high: 100, medium: 60, low: 25 };
+        let total = 0;
+        for (const z of ["1", "2", "3"]) {
+            const raw = (zoneScores[z] || "").toLowerCase();
+            total += spotMap[raw] || 0;
+        }
+        signals.spot = Math.round(total / 3 * 10) / 10;
     }
-    signals.zones = Math.min(zones.length / 3, 1) * 100;
+    const availableZones = zones.filter(z => !restrictions.includes(z));
+    signals.zones = Math.min(availableZones.length / 3, 1) * 100;
     signals.restrictions = restrictions.length > 0 ? 0 : 100;
     if (pricing.paygo != null && pricing.spot != null && pricing.paygo > 0) {
         const ratio = pricing.spot / pricing.paygo;
@@ -123,6 +129,9 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+    // Restore column visibility preferences
+    _restoreColumnPrefs();
+
     // Topology subscription filter
     document.getElementById("topo-sub-filter").addEventListener("input", e => renderTopoSubList(e.target.value));
 
@@ -227,6 +236,15 @@ function escapeHtml(str) {
 
 function truncate(str, max) {
     return str.length > max ? str.substring(0, max - 1) + "\u2026" : str;
+}
+
+/** Format a number with narrow no-break space thousands separator. */
+function formatNum(value, decimals) {
+    if (value == null) return "\u2014";
+    const fixed = Number(value).toFixed(decimals);
+    const [intPart, decPart] = fixed.split(".");
+    const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0");
+    return decPart != null ? grouped + "." + decPart : grouped;
 }
 
 function getSubName(id) {
@@ -1012,15 +1030,12 @@ async function loadSkus() {
         // Fetch zone mappings for this sub to get physical zone headers
         const mappingsPromise = apiFetch(`/api/mappings?region=${region}&subscriptions=${subscriptionId}${tenantQS()}`);
 
-        // Fetch SKUs
+        // Fetch SKUs (always include prices)
         const params = new URLSearchParams({ region, subscriptionId });
         if (tenant) params.append("tenantId", tenant);
-        const includePrices = document.getElementById("planner-include-prices")?.checked;
-        if (includePrices) {
-            params.append("includePrices", "true");
-            const currency = document.getElementById("planner-currency")?.value || "USD";
-            params.append("currencyCode", currency);
-        }
+        params.append("includePrices", "true");
+        const currency = document.getElementById("planner-currency")?.value || "USD";
+        params.append("currencyCode", currency);
         const skuPromise = apiFetch(`/api/skus?${params}`);
 
         // Run in parallel
@@ -1058,6 +1073,62 @@ function getPlannerPhysicalZoneMap() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Fetch spot score from the Zone Availability panel button
+// ---------------------------------------------------------------------------
+async function fetchSpotFromPanel() {
+    const skuName = _pricingModalSku;
+    if (!skuName) return;
+    const region = document.getElementById("region-select").value;
+    const tenant = document.getElementById("tenant-select").value;
+    const subscriptionId = plannerSubscriptionId;
+    if (!subscriptionId || !region) return;
+
+    // Show spinner on button
+    const btn = document.querySelector('#zoneCollapsePanel .btn-outline-primary');
+    const origHtml = btn?.innerHTML;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Fetching…';
+    }
+    const instanceCount = parseInt(document.getElementById("spot-panel-instances")?.value, 10) || 1;
+
+    try {
+        const payload = { region, subscriptionId, skus: [skuName], instanceCount };
+        if (tenant) payload.tenantId = tenant;
+        const result = await apiPost("/api/spot-scores", payload);
+        if (!lastSpotScores) lastSpotScores = { scores: {}, errors: [] };
+        if (result.scores) {
+            for (const [sku, zoneScores] of Object.entries(result.scores)) {
+                lastSpotScores.scores[sku] = { ...(lastSpotScores.scores[sku] || {}), ...zoneScores };
+            }
+        }
+        if (result.errors?.length) lastSpotScores.errors.push(...result.errors);
+
+        // Recompute confidence for all SKUs
+        if (lastSkuData) {
+            for (const sku of lastSkuData) recomputeConfidence(sku);
+            renderRegionSummary(lastSkuData);
+            renderSkuTable(lastSkuData);
+        }
+
+        // Re-render modal in place with Zone Availability kept open
+        if (_lastPricingData) {
+            // Collect currently open accordion panels
+            const content = document.getElementById("pricing-modal-content");
+            const openIds = [...content.querySelectorAll('.accordion-collapse.show')].map(el => el.id).filter(Boolean);
+            // Ensure zone accordion stays open
+            if (!openIds.includes('zoneCollapsePanel')) openIds.push('zoneCollapsePanel');
+            renderPricingDetail(_lastPricingData, openIds);
+        }
+
+        if (result.errors?.length) showError("planner-error", "Spot score error: " + result.errors.join("; "));
+    } catch (err) {
+        showError("planner-error", "Failed to fetch Spot Score: " + err.message);
+        if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+    }
+}
+
 // Spot Score Modal
 // ---------------------------------------------------------------------------
 let _spotModalSku = null;
@@ -1135,10 +1206,12 @@ async function confirmSpotScore() {
 }
 
 // ---------------------------------------------------------------------------
-// SKU Pricing Detail Modal
+// SKU Detail Modal
 // ---------------------------------------------------------------------------
 let _pricingModalSku = null;
 let _pricingModal = null;
+let _pricingModalCurrency = "USD";
+let _lastPricingData = null;
 
 function openPricingModal(skuName) {
     _pricingModalSku = skuName;
@@ -1151,6 +1224,8 @@ function openPricingModal(skuName) {
 }
 
 function refreshPricingModal() {
+    const sel = document.getElementById("pricing-modal-currency-select");
+    if (sel) _pricingModalCurrency = sel.value;
     if (_pricingModalSku) fetchPricingDetail();
 }
 
@@ -1158,7 +1233,7 @@ async function fetchPricingDetail() {
     const skuName = _pricingModalSku;
     if (!skuName) return;
     const region = document.getElementById("region-select").value;
-    const currency = document.getElementById("pricing-modal-currency-select").value;
+    const currency = _pricingModalCurrency;
     if (!region) return;
 
     document.getElementById("pricing-modal-loading").classList.remove("d-none");
@@ -1179,36 +1254,91 @@ async function fetchPricingDetail() {
     }
 }
 
-function renderPricingDetail(data) {
+function renderPricingDetail(data, openAccordionIds) {
+    _lastPricingData = data;
     const content = document.getElementById("pricing-modal-content");
     const currency = data.currency || "USD";
     const HOURS_PER_MONTH = 730;
 
+    const confSku = (lastSkuData || []).find(s => s.name === _pricingModalSku);
+
+    // Feed modal pricing into SKU so Price Pressure signal can be computed
+    if (confSku && (data.paygo != null || data.spot != null)) {
+        if (!confSku.pricing) confSku.pricing = {};
+        if (data.paygo != null) confSku.pricing.paygo = data.paygo;
+        if (data.spot != null) confSku.pricing.spot = data.spot;
+        confSku.pricing.currency = currency;
+        recomputeConfidence(confSku);
+    }
+
+    // Build sections in order: Confidence → VM Profile → Zone Availability → Quota → Pricing
+    let html = "";
+    if (confSku?.confidence) html += renderConfidenceBreakdown(confSku.confidence);
+    if (data.profile) html += renderVmProfile(data.profile);
+    if (data.profile) html += renderZoneAvailability(data.profile, confSku?.confidence);
+    const vcpus = parseInt(confSku?.capabilities?.vCPUs, 10) || 0;
+    if (confSku?.quota) html += renderQuotaPanel(confSku.quota, vcpus, confSku.confidence);
+
+    // Build pricing table
+    const spotDiscount = (data.paygo != null && data.spot != null && data.paygo > 0)
+        ? Math.round((1 - data.spot / data.paygo) * 100)
+        : null;
+    const spotLabel = spotDiscount != null
+        ? `Spot <span class="badge bg-success-subtle text-success-emphasis ms-1">\u2212${spotDiscount}%</span>`
+        : "Spot";
     const rows = [
         { label: "Pay-As-You-Go", hourly: data.paygo },
-        { label: "Spot", hourly: data.spot },
+        { label: spotLabel, raw: true, hourly: data.spot },
         { label: "Reserved Instance 1Y", hourly: data.ri_1y },
         { label: "Reserved Instance 3Y", hourly: data.ri_3y },
         { label: "Savings Plan 1Y", hourly: data.sp_1y },
         { label: "Savings Plan 3Y", hourly: data.sp_3y },
     ];
 
-    let html = '<table class="table table-sm pricing-detail-table">';
-    html += `<thead><tr><th>Type</th><th>${escapeHtml(currency)}/hour</th><th>${escapeHtml(currency)}/month</th></tr></thead><tbody>`;
+    let pricingHtml = '<table class="table table-sm pricing-detail-table mb-0">';
+    pricingHtml += `<thead><tr><th>Type</th><th>${escapeHtml(currency)}/hour</th><th>${escapeHtml(currency)}/month</th></tr></thead><tbody>`;
     rows.forEach(r => {
-        const hourStr = r.hourly != null ? r.hourly.toFixed(4) : "\u2014";
-        const monthStr = r.hourly != null ? (r.hourly * HOURS_PER_MONTH).toFixed(2) : "\u2014";
-        html += `<tr><td>${escapeHtml(r.label)}</td><td class="price-cell">${hourStr}</td><td class="price-cell">${monthStr}</td></tr>`;
+        const hourStr = r.hourly != null ? formatNum(r.hourly, 4) : "\u2014";
+        const monthStr = r.hourly != null ? formatNum(r.hourly * HOURS_PER_MONTH, 2) : "\u2014";
+        const labelHtml = r.raw ? r.label : escapeHtml(r.label);
+        pricingHtml += `<tr><td>${labelHtml}</td><td class="price-cell">${hourStr}</td><td class="price-cell">${monthStr}</td></tr>`;
     });
-    html += "</tbody></table>";
+    pricingHtml += "</tbody></table>";
 
-    if (data.profile) html += renderVmProfile(data.profile);
+    // Currency selector options
+    const currencies = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "SEK", "BRL", "INR"];
+    const currencyOpts = currencies.map(c =>
+        `<option value="${c}"${c === currency ? " selected" : ""}>${c}</option>`
+    ).join("");
 
-    const confSku = (lastSkuData || []).find(s => s.name === _pricingModalSku);
-    if (confSku?.confidence) html += renderConfidenceBreakdown(confSku.confidence);
+    // Wrap pricing + currency in a collapsible accordion
+    html += '<div class="accordion mt-3" id="pricingAccordion">';
+    html += '<div class="accordion-item">';
+    html += '<h2 class="accordion-header">';
+    html += '<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pricingCollapsePanel" aria-expanded="false" aria-controls="pricingCollapsePanel">';
+    html += '<i class="bi bi-currency-exchange me-2"></i>Pricing';
+    html += '</button></h2>';
+    html += '<div id="pricingCollapsePanel" class="accordion-collapse collapse" data-bs-parent="#pricingAccordion">';
+    html += '<div class="accordion-body p-2">';
+    html += '<div class="d-flex align-items-center gap-2 mb-2">';
+    html += '<label for="pricing-modal-currency-select" class="form-label small mb-0">Currency:</label>';
+    html += `<select class="form-select form-select-sm" id="pricing-modal-currency-select" onchange="refreshPricingModal()" style="width:100px;">${currencyOpts}</select>`;
+    html += '</div>';
+    html += pricingHtml;
+    html += '</div></div></div></div>';
 
     content.innerHTML = html;
     content.classList.remove("d-none");
+
+    // Restore open accordion panels
+    if (openAccordionIds?.length) {
+        openAccordionIds.forEach(id => {
+            const panel = content.querySelector(`#${id}`);
+            if (panel) panel.classList.add("show");
+            const btn = content.querySelector(`[data-bs-target="#${id}"]`);
+            if (btn) { btn.classList.remove("collapsed"); btn.setAttribute("aria-expanded", "true"); }
+        });
+    }
 
     // Init Bootstrap tooltips for confidence info icons
     content.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
@@ -1218,8 +1348,6 @@ function renderPricingDetail(data) {
 
 function renderVmProfile(profile) {
     const caps = profile.capabilities || {};
-    const zones = profile.zones || [];
-    const restrictions = profile.restrictions || [];
 
     function badge(val, trueLabel, falseLabel) {
         if (val === true) return `<span class="vm-badge vm-badge-yes">${escapeHtml(trueLabel || "Yes")}</span>`;
@@ -1247,17 +1375,6 @@ function renderVmProfile(profile) {
         return escapeHtml(gbps >= 1 ? gbps.toFixed(1) + " Gbps" : v + " Mbps");
     }
 
-    let restrictionSummary = '<span class="vm-badge vm-badge-yes">None</span>';
-    if (restrictions.length > 0) {
-        const parts = restrictions.map(r => {
-            let desc = r.type || "Unknown";
-            if (r.reasonCode) desc += ` (${r.reasonCode})`;
-            if (r.zones?.length) desc += ` zones: ${r.zones.join(", ")}`;
-            return `<div class="restriction-item">${escapeHtml(desc)}</div>`;
-        });
-        restrictionSummary = `<span class="vm-badge vm-badge-limited vm-badge-block">${parts.join("")}</span>`;
-    }
-
     let html = '<div class="vm-profile-section">';
     html += '<h4 class="vm-profile-title">VM Profile</h4>';
     html += '<div class="vm-profile-grid">';
@@ -1268,19 +1385,9 @@ function renderVmProfile(profile) {
     html += row("Memory", val(caps.MemoryGB, " GB"));
     html += row("Architecture", val(caps.CpuArchitectureType));
     html += row("GPUs", val(caps.GPUs ?? caps.GpuCount));
-    html += '</div>';
-
-    html += '<div class="vm-profile-card">';
-    html += '<div class="vm-profile-card-title">Deployment</div>';
-    html += row("Zones", val(zones.length > 0 ? zones.join(", ") : "None"));
     html += row("HyperV Gen.", val(caps.HyperVGenerations));
     html += row("Encryption at Host", badge(caps.EncryptionAtHostSupported));
     html += row("Confidential", val(caps.ConfidentialComputingType || null));
-    if (restrictions.length > 0) {
-        html += `<div class="vm-profile-row vm-profile-row-stacked"><span class="vm-profile-label">Restrictions</span>${restrictionSummary}</div>`;
-    } else {
-        html += row("Restrictions", restrictionSummary);
-    }
     html += '</div>';
 
     html += '<div class="vm-profile-card">';
@@ -1308,6 +1415,222 @@ function renderVmProfile(profile) {
     return html;
 }
 
+function renderZoneAvailability(profile, confidence) {
+    const zones = profile.zones || [];
+    const restrictions = profile.restrictions || [];
+    const zoneSignal = confidence?.breakdown?.find(b => b.signal === "zones");
+    const zoneScore = zoneSignal?.score;
+    const spotSignal = confidence?.breakdown?.find(b => b.signal === "spot");
+    const spotScore = spotSignal?.score;
+    const physicalZoneMap = getPlannerPhysicalZoneMap();
+    const spotZoneScores = (lastSpotScores?.scores || {})[_pricingModalSku] || {};
+
+    function row(label, value) {
+        return `<div class="vm-profile-row"><span class="vm-profile-label">${escapeHtml(label)}</span><span>${value}</span></div>`;
+    }
+    function val(v) {
+        if (v == null) return '<span class="vm-badge vm-badge-unknown">\u2014</span>';
+        return escapeHtml(String(v));
+    }
+
+    const reasonLabels = {
+        NotAvailableForSubscription: "Not available for this subscription",
+        QuotaId: "Subscription offer type not eligible",
+    };
+
+    const hasLocationRestriction = restrictions.some(r => r.type === "Location");
+    const zoneRestrictionZones = new Set(restrictions.filter(r => r.type === "Zone").flatMap(r => r.zones || []));
+    const allZoneIds = [...new Set([...["1", "2", "3"], ...zones])].sort();
+    const availableCount = zones.filter(z => !zoneRestrictionZones.has(z) && !hasLocationRestriction).length;
+
+    let bodyHtml = '<div class="vm-profile-grid">';
+
+    // Zone status card
+    bodyHtml += '<div class="vm-profile-card">';
+    bodyHtml += '<div class="vm-profile-card-title">Zones</div>';
+    if (hasLocationRestriction) {
+        bodyHtml += row("Region", '<span class="vm-badge vm-badge-no">Restricted</span>');
+    }
+    bodyHtml += row("Available", val(availableCount + " / 3"));
+    allZoneIds.forEach(z => {
+        const pz = physicalZoneMap[z];
+        const zLabel = `Zone ${z}`;
+        const pzTip = pz ? ` data-bs-toggle="tooltip" data-bs-title="${escapeHtml(pz)}"` : "";
+        const offered = zones.includes(z);
+        const restricted = zoneRestrictionZones.has(z) || hasLocationRestriction;
+        if (!offered && !restricted) {
+            bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label"${pzTip}>${escapeHtml(zLabel)}</span><span class="vm-badge vm-badge-unknown">Not offered</span></div>`;
+        } else if (restricted) {
+            bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label"${pzTip}>${escapeHtml(zLabel)}</span><span class="vm-badge vm-badge-no">Restricted</span></div>`;
+        } else {
+            bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label"${pzTip}>${escapeHtml(zLabel)}</span><span class="vm-badge vm-badge-yes">Available</span></div>`;
+        }
+    });
+    if (zoneScore != null) {
+        const lbl = _scoreLabel(zoneScore).toLowerCase().replace(/\s+/g, "-");
+        bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label">Breadth Score</span><span class="confidence-badge confidence-${lbl}" data-bs-toggle="tooltip" data-bs-title="Zone Breadth signal: ${availableCount}/3 zones available without restrictions. Score of 100 means all 3 zones are offered and unrestricted.">${zoneScore}/100</span></div>`;
+    }
+    bodyHtml += '</div>';
+
+    // Spot Placement card
+    const hasSpotData = Object.keys(spotZoneScores).length > 0;
+    const spotLabels = {
+        high: "High", medium: "Medium", low: "Low",
+        restrictedskunotavailable: "Restricted", unknown: "Unknown",
+        datanotfoundorstale: "No data",
+    };
+    function spotBadgeHtml(raw) {
+        const key = (raw || "").toLowerCase();
+        const friendly = spotLabels[key] || raw;
+        const knownClass = ["high", "medium", "low"].includes(key) ? `spot-badge spot-${key}` : "vm-badge vm-badge-unknown";
+        return `<span class="${knownClass}">${escapeHtml(friendly)}</span>`;
+    }
+    bodyHtml += '<div class="vm-profile-card">';
+    bodyHtml += '<div class="vm-profile-card-title">Spot Placement</div>';
+    const modalSku = (lastSkuData || []).find(s => s.name === _pricingModalSku);
+    const hasSpotPrice = modalSku?.pricing?.spot != null || (_lastPricingData?.spot != null);
+    if (!hasSpotData && !hasSpotPrice) {
+        bodyHtml += row("Status", '<span class="vm-badge vm-badge-unknown">No spot pricing</span>');
+    } else if (!hasSpotData) {
+        bodyHtml += row("Status", '<span class="vm-badge vm-badge-unknown">No data</span>');
+        bodyHtml += '<div class="vm-profile-row"><div class="d-flex align-items-center gap-2 w-100">';
+        bodyHtml += '<input type="number" id="spot-panel-instances" class="form-control form-control-sm" value="1" min="1" max="1000" style="width:70px;" title="Instance count">';
+        bodyHtml += '<button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="fetchSpotFromPanel()"><i class="bi bi-lightning-charge me-1"></i>Fetch Spot Scores</button>';
+        bodyHtml += '</div></div>';
+    } else {
+        const bestLabel = _bestSpotLabel(spotZoneScores);
+        allZoneIds.forEach(z => {
+            const pz = physicalZoneMap[z];
+            const zLabel = `Zone ${z}`;
+            const pzTip = pz ? ` data-bs-toggle="tooltip" data-bs-title="${escapeHtml(pz)}"` : "";
+            const s = spotZoneScores[z];
+            if (s) {
+                const key = s.toLowerCase();
+                const isBest = key === (bestLabel || "").toLowerCase() && ["high", "medium", "low"].includes(key);
+                const star = isBest ? ' <i class="bi bi-star-fill text-warning" data-bs-toggle="tooltip" data-bs-title="Best eviction rate \u2014 used for confidence score"></i>' : "";
+                bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label"${pzTip}>${escapeHtml(zLabel)}</span><span>${spotBadgeHtml(s)}${star}</span></div>`;
+            } else {
+                bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label"${pzTip}>${escapeHtml(zLabel)}</span><span class="vm-badge vm-badge-unknown">\u2014</span></div>`;
+            }
+        });
+        if (spotScore != null) {
+            const lbl = _scoreLabel(spotScore).toLowerCase().replace(/\s+/g, "-");
+            bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label">Spot Score</span><span class="confidence-badge confidence-${lbl}" data-bs-toggle="tooltip" data-bs-title="Average per-zone score across 3 zones (High\u2192100, Medium\u219260, Low\u219225, Restricted/Unknown\u21920).">${spotScore}/100</span></div>`;
+        }
+    }
+    bodyHtml += '</div>';
+
+    // Restrictions card
+    bodyHtml += '<div class="vm-profile-card">';
+    bodyHtml += '<div class="vm-profile-card-title">Restrictions</div>';
+    if (restrictions.length === 0) {
+        bodyHtml += row("Status", '<span class="vm-badge vm-badge-yes">None</span>');
+    } else {
+        restrictions.forEach(r => {
+            const reason = reasonLabels[r.reasonCode] || r.reasonCode || "Unknown reason";
+            let scope;
+            if (r.type === "Location") {
+                scope = "Entire region";
+            } else if (r.type === "Zone" && r.zones?.length) {
+                scope = `Zone${r.zones.length > 1 ? "s" : ""} ${r.zones.join(", ")}`;
+            } else {
+                scope = r.type || "Unknown";
+            }
+            bodyHtml += `<div class="vm-profile-row vm-profile-row-stacked"><span class="vm-profile-label">${escapeHtml(scope)}</span><span class="vm-badge vm-badge-limited vm-badge-block">${escapeHtml(reason)}</span></div>`;
+        });
+    }
+    bodyHtml += '</div>';
+
+    bodyHtml += '</div>';
+
+    // Wrap in accordion
+    let html = '<div class="accordion mt-3" id="zoneAccordion">';
+    html += '<div class="accordion-item">';
+    html += '<h2 class="accordion-header">';
+    html += '<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#zoneCollapsePanel" aria-expanded="false" aria-controls="zoneCollapsePanel">';
+    html += '<i class="bi bi-pin-map me-2"></i>Zone Availability';
+    html += '</button></h2>';
+    html += '<div id="zoneCollapsePanel" class="accordion-collapse collapse" data-bs-parent="#zoneAccordion">';
+    html += '<div class="accordion-body p-2">';
+    html += bodyHtml;
+    html += '</div></div></div></div>';
+    return html;
+}
+
+function renderQuotaPanel(quota, vcpus, confidence) {
+    const limit = quota.limit;
+    const used = quota.used;
+    const remaining = quota.remaining;
+    const pct = (limit != null && limit > 0) ? Math.round((used / limit) * 100) : null;
+    const deployable = (remaining != null && vcpus > 0) ? Math.floor(remaining / vcpus) : null;
+
+    // Extract the quota signal from the confidence breakdown
+    const quotaSignal = confidence?.breakdown?.find(b => b.signal === "quota");
+    const quotaScore = quotaSignal?.score;
+
+    function row(label, value) {
+        return `<div class="vm-profile-row"><span class="vm-profile-label">${escapeHtml(label)}</span><span>${value}</span></div>`;
+    }
+    function val(v) {
+        if (v == null) return '<span class="vm-badge vm-badge-unknown">\u2014</span>';
+        return escapeHtml(formatNum(v, 0));
+    }
+
+    let barClass = "bg-success";
+    if (pct != null) {
+        if (pct >= 90) barClass = "bg-danger";
+        else if (pct >= 70) barClass = "bg-warning";
+    }
+
+    let bodyHtml = '<div class="vm-profile-grid">';
+
+    bodyHtml += '<div class="vm-profile-card">';
+    bodyHtml += '<div class="vm-profile-card-title">vCPU Family Quota</div>';
+    bodyHtml += row("Limit", val(limit));
+    bodyHtml += row("Used", val(used));
+    bodyHtml += row("Remaining", val(remaining));
+    if (pct != null) {
+        bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label">Usage</span><span>${pct}%</span></div>`;
+        bodyHtml += `<div class="progress mt-1" style="height: 6px;" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">`;
+        bodyHtml += `<div class="progress-bar ${barClass}" style="width: ${pct}%"></div></div>`;
+    }
+    bodyHtml += '</div>';
+
+    bodyHtml += '<div class="vm-profile-card">';
+    bodyHtml += '<div class="vm-profile-card-title">Deployment Headroom</div>';
+    bodyHtml += row("vCPUs per Instance", vcpus > 0 ? escapeHtml(String(vcpus)) : '\u2014');
+    if (deployable != null) {
+        const badge = deployable === 0
+            ? '<span class="vm-badge vm-badge-no">' + formatNum(deployable, 0) + '</span>'
+            : deployable <= 5
+                ? '<span class="vm-badge vm-badge-limited">' + formatNum(deployable, 0) + '</span>'
+                : '<span class="vm-badge vm-badge-yes">' + formatNum(deployable, 0) + '</span>';
+        bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label">Deployable Instances</span>${badge}</div>`;
+    } else {
+        bodyHtml += row("Deployable Instances", '\u2014');
+    }
+    if (quotaScore != null) {
+        const lbl = _scoreLabel(quotaScore).toLowerCase().replace(/\s+/g, "-");
+        bodyHtml += `<div class="vm-profile-row"><span class="vm-profile-label">Headroom Score</span><span class="confidence-badge confidence-${lbl}" data-bs-toggle="tooltip" data-bs-title="Quota signal score: remaining vCPUs relative to SKU size. Score of 100 means \u226510 instances can be deployed.">${quotaScore}/100</span></div>`;
+    }
+    bodyHtml += '</div>';
+
+    bodyHtml += '</div>';
+
+    // Wrap in accordion
+    let html = '<div class="accordion mt-3" id="quotaAccordion">';
+    html += '<div class="accordion-item">';
+    html += '<h2 class="accordion-header">';
+    html += '<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#quotaCollapsePanel" aria-expanded="false" aria-controls="quotaCollapsePanel">';
+    html += '<i class="bi bi-speedometer me-2"></i>Quota';
+    html += '</button></h2>';
+    html += '<div id="quotaCollapsePanel" class="accordion-collapse collapse" data-bs-parent="#quotaAccordion">';
+    html += '<div class="accordion-body p-2">';
+    html += bodyHtml;
+    html += '</div></div></div></div>';
+    return html;
+}
+
 function renderConfidenceBreakdown(conf) {
     const lbl = (conf.label || "").toLowerCase().replace(/\s+/g, "-");
     let html = '<div class="confidence-section">';
@@ -1317,7 +1640,7 @@ function renderConfidenceBreakdown(conf) {
         const signalLabels = { quota: "Quota Headroom", spot: "Spot Placement", zones: "Zone Breadth", restrictions: "Restrictions", pricePressure: "Price Pressure" };
         const signalDescriptions = {
             quota: "Remaining quota relative to vCPU count. Low quota means deployments may be blocked.",
-            spot: "Best spot eviction score across zones. High means lower eviction risk.",
+            spot: "Average per-zone spot score across 3 zones. Accounts for both zone coverage and eviction risk.",
             zones: "Number of availability zones where the SKU is offered (out of 3).",
             restrictions: "Whether any subscription or zone-level restrictions apply to this SKU.",
             pricePressure: "Spot-to-PAYGO price ratio. A lower ratio indicates better spot savings."
@@ -1463,17 +1786,20 @@ function renderSkuTable(skus) {
     const allLogicalZones = [...new Set(skus.flatMap(s => s.zones))].sort();
     const physicalZones = allLogicalZones.map(lz => physicalZoneMap[lz] || `Zone ${lz}`);
     const hasPricing = skus.some(s => s.pricing);
+    const showPricing = hasPricing && (document.getElementById("planner-show-prices")?.checked !== false);
+    const showSpot = document.getElementById("planner-show-spot")?.checked !== false;
 
     // Build table HTML
     let html = '<table id="sku-datatable" class="table table-sm table-hover sku-table">';
     html += "<thead><tr>";
 
+    const priceCurrency = skus.find(s => s.pricing)?.pricing?.currency || "USD";
     const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)",
-        "Quota Limit", "Quota Used", "Quota Remaining",
-        "Spot Score", "Confidence"];
-    if (hasPricing) {
-        const currency = skus.find(s => s.pricing)?.pricing?.currency || "USD";
-        headers.push(`PAYGO ${currency}/h`, `Spot ${currency}/h`);
+        "Quota Limit", "Quota Used", "Quota Remaining"];
+    if (showSpot) headers.push("Spot Score");
+    headers.push("Confidence");
+    if (showPricing) {
+        headers.push(`PAYGO ${priceCurrency}/h`, `Spot ${priceCurrency}/h`);
     }
     allLogicalZones.forEach((lz, i) => {
         headers.push(`Zone ${escapeHtml(lz)}<br>${escapeHtml(physicalZones[i])}`);
@@ -1494,16 +1820,21 @@ function renderSkuTable(skus) {
         html += `<td>${quota.remaining != null ? quota.remaining : "\u2014"}</td>`;
 
         // Spot Score
-        const spotZoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
-        const spotZones = Object.keys(spotZoneScores).sort();
-        if (spotZones.length > 0) {
-            const badges = spotZones.map(z => {
-                const s = spotZoneScores[z] || "Unknown";
-                return `<span class="spot-zone-label">Z${escapeHtml(z)}</span><span class="spot-badge spot-${s.toLowerCase()}">${escapeHtml(s)}</span>`;
-            }).join(" ");
-            html += `<td><button type="button" class="spot-cell-btn has-score" data-action="spot" data-sku="${escapeHtml(sku.name)}" title="Click to refresh">${badges}</button></td>`;
-        } else {
-            html += `<td><button type="button" class="spot-cell-btn" data-action="spot" data-sku="${escapeHtml(sku.name)}" title="Get Spot Placement Score">Score?</button></td>`;
+        if (showSpot) {
+            const spotZoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
+            const spotZones = Object.keys(spotZoneScores).sort();
+            const hasSpotPrice = sku.pricing?.spot != null;
+            if (spotZones.length > 0) {
+                const badges = spotZones.map(z => {
+                    const s = spotZoneScores[z] || "Unknown";
+                    return `<span class="spot-zone-label">Z${escapeHtml(z)}</span><span class="spot-badge spot-${s.toLowerCase()}">${escapeHtml(s)}</span>`;
+                }).join(" ");
+                html += `<td><button type="button" class="spot-cell-btn has-score" data-action="spot" data-sku="${escapeHtml(sku.name)}" title="Click to refresh">${badges}</button></td>`;
+            } else if (hasSpotPrice) {
+                html += `<td><button type="button" class="spot-cell-btn" data-action="spot" data-sku="${escapeHtml(sku.name)}" title="Get Spot Placement Score">Spot Score?</button></td>`;
+            } else {
+                html += '<td class="text-body-secondary small">\u2014</td>';
+            }
         }
 
         // Confidence
@@ -1518,10 +1849,10 @@ function renderSkuTable(skus) {
         }
 
         // Prices
-        if (hasPricing) {
+        if (showPricing) {
             const pricing = sku.pricing || {};
-            html += `<td class="price-cell">${pricing.paygo != null ? pricing.paygo.toFixed(4) : '\u2014'}</td>`;
-            html += `<td class="price-cell">${pricing.spot != null ? pricing.spot.toFixed(4) : '\u2014'}</td>`;
+            html += `<td class="price-cell">${pricing.paygo != null ? formatNum(pricing.paygo, 4) : '\u2014'}</td>`;
+            html += `<td class="price-cell">${pricing.spot != null ? formatNum(pricing.spot, 4) : '\u2014'}</td>`;
         }
 
         // Zone availability
@@ -1538,12 +1869,14 @@ function renderSkuTable(skus) {
     container.innerHTML = html;
 
     // Column type configuration for proper numeric sorting
+    // Columns: SKU(0) Family(1) vCPUs(2) Mem(3) QLimit(4) QUsed(5) QRem(6) [Spot(7)] Conf(7|8) [PAYGO Spot]
+    const confCol = showSpot ? 8 : 7;
     const colConfig = [
         { select: [2, 3, 4, 5, 6], type: "number" },   // vCPUs, Memory, Quota
-        { select: 8, type: "number" },                   // Confidence (uses data-sort attr)
+        { select: confCol, type: "number" },              // Confidence (uses data-sort attr)
     ];
-    let nextCol = 9;
-    if (hasPricing) {
+    let nextCol = confCol + 1;
+    if (showPricing) {
         colConfig.push({ select: [nextCol, nextCol + 1], type: "number" });
         nextCol += 2;
     }
@@ -1553,8 +1886,9 @@ function renderSkuTable(skus) {
 
     // Build per-column header filter config
     // Only text-filterable columns get an input; Zone columns are excluded
-    const filterableCols = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-    if (hasPricing) { filterableCols.push(nextCol - 2, nextCol - 1); }
+    const filterableCols = [];
+    for (let i = 0; i <= confCol; i++) filterableCols.push(i);
+    if (showPricing) { filterableCols.push(nextCol - 2, nextCol - 1); }
     const headerConfig = {};
     filterableCols.forEach(idx => {
         headerConfig[idx] = { type: "input", attr: { placeholder: "Filter\u2026", class: "datatable-column-filter" } };
@@ -1644,6 +1978,32 @@ function _applyColumnFilters(tableEl, filterRow) {
         });
         row.style.display = match ? "" : "none";
     });
+}
+
+// ---------------------------------------------------------------------------
+// Toggle table column visibility (persisted in localStorage)
+// ---------------------------------------------------------------------------
+function toggleTableColumns() {
+    try {
+        localStorage.setItem("azm-show-prices", document.getElementById("planner-show-prices")?.checked ? "1" : "0");
+        localStorage.setItem("azm-show-spot", document.getElementById("planner-show-spot")?.checked ? "1" : "0");
+    } catch {}
+    if (lastSkuData) renderSkuTable(lastSkuData);
+}
+
+function _restoreColumnPrefs() {
+    try {
+        const prices = localStorage.getItem("azm-show-prices");
+        const spot = localStorage.getItem("azm-show-spot");
+        if (prices !== null) {
+            const el = document.getElementById("planner-show-prices");
+            if (el) el.checked = prices === "1";
+        }
+        if (spot !== null) {
+            const el = document.getElementById("planner-show-spot");
+            if (el) el.checked = spot === "1";
+        }
+    } catch {}
 }
 
 // ---------------------------------------------------------------------------

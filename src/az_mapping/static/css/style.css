@@ -375,9 +375,8 @@
 
 /* ---- Confidence breakdown / VM profile inside pricing modal ---- */
 .confidence-section {
-    margin-top: 1.25rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--bs-border-color);
+    margin-top: 0;
+    padding-top: 0;
 }
 
 .confidence-title {
@@ -402,7 +401,8 @@
 .confidence-missing {
     font-size: 0.78rem;
     color: var(--bs-secondary-color);
-    margin-top: 0.4rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0;
 }
 
 .vm-profile-section {
@@ -484,6 +484,19 @@
 
 /* ---- Pricing detail table in modal ---- */
 .pricing-detail-table {
+    font-size: 0.85rem;
+}
+
+#pricingAccordion .accordion-button,
+#quotaAccordion .accordion-button,
+#zoneAccordion .accordion-button {
+    font-size: 0.88rem;
+    padding: 0.5rem 0.75rem;
+}
+
+#pricingAccordion .accordion-body,
+#quotaAccordion .accordion-body,
+#zoneAccordion .accordion-body {
     font-size: 0.85rem;
 }
 

@@ -179,12 +179,6 @@
                             </div>
                         </div>
                         <div class="col-auto">
-                            <div class="form-check form-switch mt-1">
-                                <input class="form-check-input" type="checkbox" id="planner-include-prices">
-                                <label class="form-check-label small" for="planner-include-prices">Prices</label>
-                            </div>
-                        </div>
-                        <div class="col-auto">
                             <select class="form-select form-select-sm" id="planner-currency" title="Currency" style="width:80px;">
                                 <option value="USD" selected>USD</option>
                                 <option value="EUR">EUR</option>
@@ -204,7 +198,15 @@
                             </button>
                         </div>
                         <div class="col d-none" id="planner-csv-btn">
-                            <div class="d-flex justify-content-end">
+                            <div class="d-flex justify-content-end gap-2 align-items-center">
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="planner-show-spot" checked onchange="toggleTableColumns()">
+                                    <label class="form-check-label small" for="planner-show-spot">Spot</label>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="planner-show-prices" checked onchange="toggleTableColumns()">
+                                    <label class="form-check-label small" for="planner-show-prices">Prices</label>
+                                </div>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportSkuCSV()" title="Export as CSV">
                                     <i class="bi bi-download"></i> CSV
                                 </button>
@@ -276,26 +278,10 @@
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="pricingModalLabel">SKU Pricing Detail</h5>
+                <h5 class="modal-title" id="pricingModalLabel">SKU Detail — <span id="pricing-modal-sku"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="fw-semibold" id="pricing-modal-sku"></p>
-                <div class="mb-3">
-                    <label for="pricing-modal-currency-select" class="form-label small">Currency:</label>
-                    <select class="form-select form-select-sm" id="pricing-modal-currency-select" onchange="refreshPricingModal()" style="width:100px;">
-                        <option value="USD" selected>USD</option>
-                        <option value="EUR">EUR</option>
-                        <option value="GBP">GBP</option>
-                        <option value="JPY">JPY</option>
-                        <option value="AUD">AUD</option>
-                        <option value="CAD">CAD</option>
-                        <option value="CHF">CHF</option>
-                        <option value="SEK">SEK</option>
-                        <option value="BRL">BRL</option>
-                        <option value="INR">INR</option>
-                    </select>
-                </div>
                 <div id="pricing-modal-loading" class="text-center d-none">
                     <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
                     <span class="ms-2 small">Fetching prices…</span>
