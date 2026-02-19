@@ -18,7 +18,9 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from az_mapping import azure_api
+from az_mapping.models.deployment_plan import DeploymentIntentRequest
 from az_mapping.services.capacity_confidence import compute_capacity_confidence
+from az_mapping.services.deployment_planner import plan_deployment
 
 _PKG_DIR = Path(__file__).resolve().parent
 
@@ -325,6 +327,31 @@ async def get_sku_pricing(
         return JSONResponse(result)
     except Exception as exc:
         logger.exception("Failed to fetch SKU pricing detail")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/deployment-plan
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/api/deployment-plan",
+    tags=["Deployment"],
+    summary="Generate a deployment plan",
+)
+async def deployment_plan(body: DeploymentIntentRequest) -> JSONResponse:
+    """Generate a deterministic deployment plan from a deployment intent.
+
+    Evaluates candidate (region, SKU) combinations against zones, quotas,
+    spot scores, pricing, and restrictions.  Returns a ranked recommendation
+    with business and technical views.
+    """
+    try:
+        result = plan_deployment(body)
+        return JSONResponse(result.model_dump())
+    except Exception as exc:
+        logger.exception("Failed to generate deployment plan")
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 

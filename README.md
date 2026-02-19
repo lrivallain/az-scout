@@ -71,6 +71,7 @@ az-mapping
 - **SKU availability view** – shows VM SKU availability per physical zone with vCPU quota usage (limit / used / remaining) and CSV export.
 - **Spot Placement Scores** – evaluate the likelihood of Spot VM allocation (High / Medium / Low) per SKU for a given region and instance count, powered by the Azure Compute RP.
 - **Deployment Confidence Score** – a composite 0–100 score per SKU estimating deployment success probability, synthesised from quota headroom, Spot Placement Score, availability zone breadth, restrictions, and price pressure signals. Missing signals are automatically excluded with weight renormalisation. The score updates live when Spot Placement Scores arrive.
+- **Deployment Plan** – agent-ready `POST /api/deployment-plan` endpoint that evaluates (region, SKU) combinations against zones, quotas, spot scores, pricing, and restrictions. Returns a deterministic, ranked plan with business and technical views (no LLM, no invention — missing data is flagged explicitly).
 - **Export** – download the graph as PNG or the tables as CSV.
 - **Shareable URLs** – filters are reflected in the URL; reload or share a link to restore the exact view.
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
@@ -132,6 +133,62 @@ If using `uv`:
 ```bash
 az-mapping mcp --sse --port 8080
 ```
+
+## Deployment Plan API
+
+The `POST /api/deployment-plan` endpoint provides a deterministic decision engine for deployment planning. It is designed for Sales / Solution Engineers and AI agents: no LLM is involved — every decision traces back to real Azure data.
+
+### Request
+
+```json
+{
+  "subscriptionId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "regionConstraints": {
+    "allowRegions": ["francecentral", "westeurope"],
+    "dataResidency": "EU"
+  },
+  "skuConstraints": {
+    "preferredSkus": ["Standard_D2s_v3", "Standard_E8s_v4"],
+    "requireZonal": true
+  },
+  "scale": { "instanceCount": 4 },
+  "pricing": {
+    "currencyCode": "EUR",
+    "preferSpot": true,
+    "maxHourlyBudget": 2.0
+  },
+  "timing": { "urgency": "now" }
+}
+```
+
+### Response (abbreviated)
+
+```json
+{
+  "summary": {
+    "recommendedRegion": "francecentral",
+    "recommendedSku": "Standard_D2s_v3",
+    "recommendedMode": "zonal",
+    "riskLevel": "low",
+    "confidenceScore": 85
+  },
+  "businessView": {
+    "keyMessage": "Standard_D2s_v3 in francecentral is recommended ...",
+    "reasons": ["Available in 3 availability zone(s).", "Sufficient quota ..."],
+    "risks": [],
+    "mitigations": [],
+    "alternatives": [{ "region": "westeurope", "sku": "Standard_E8s_v4", "reason": "..." }]
+  },
+  "technicalView": {
+    "evaluation": { "regionsEvaluated": ["francecentral", "westeurope"], "perRegionResults": [] },
+    "dataProvenance": { "evaluatedAt": "...", "cacheTtl": {}, "apiVersions": {} }
+  },
+  "warnings": ["Spot placement score is probabilistic and not a guarantee."],
+  "errors": []
+}
+```
+
+> **Note:** Spot placement scores are probabilistic and not a guarantee of allocation. Quota values are dynamic and may change between planning and actual deployment.
 
 ## How it works
 
