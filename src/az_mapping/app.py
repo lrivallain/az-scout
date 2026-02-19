@@ -5,6 +5,9 @@ to physical zones across subscriptions in a given region.
 """
 
 import logging
+import threading
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
@@ -19,6 +22,20 @@ from az_mapping.services.capacity_confidence import compute_capacity_confidence
 
 _PKG_DIR = Path(__file__).resolve().parent
 
+
+# ---------------------------------------------------------------------------
+# Lifespan – preload discovery caches on startup
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+    """Warm the tenant cache in a background thread."""
+    t = threading.Thread(target=azure_api.preload_discovery, daemon=True)
+    t.start()
+    yield
+
+
 app = FastAPI(
     title="az-mapping API",
     description=(
@@ -30,6 +47,7 @@ app = FastAPI(
     license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=_lifespan,
 )
 
 app.add_middleware(

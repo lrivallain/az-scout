@@ -107,12 +107,38 @@ def _paginate(url: str, headers: dict[str, str], timeout: int = 30) -> list[dict
 # Public API
 # ---------------------------------------------------------------------------
 
+# Discovery cache – short TTL to avoid stale data but fast enough for
+# page loads that hit the same endpoints in quick succession.
+_DISCOVERY_CACHE_TTL = 300  # 5 minutes
+_discovery_cache: dict[str, tuple[float, object]] = {}
+
+
+def _cached(key: str, ttl: int = _DISCOVERY_CACHE_TTL) -> object | None:
+    """Return cached value if still valid, else ``None``."""
+    entry = _discovery_cache.get(key)
+    if entry is not None:
+        ts, data = entry
+        if time.monotonic() - ts < ttl:
+            return data
+    return None
+
+
+def _cache_set(key: str, data: object) -> None:
+    """Store a value in the discovery cache."""
+    _discovery_cache[key] = (time.monotonic(), data)
+
 
 def list_tenants(tenant_id: str | None = None) -> dict:
     """Return tenants with auth status and the default tenant ID.
 
     Returns ``{"tenants": [...], "defaultTenantId": ...}``.
+    Results are cached for ``_DISCOVERY_CACHE_TTL`` seconds.
     """
+    cache_key = f"tenants:{tenant_id or ''}"
+    cached = _cached(cache_key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
     headers = _get_headers(tenant_id)
     url = f"{AZURE_MGMT_URL}/tenants?api-version={AZURE_API_VERSION}"
     all_tenants = _paginate(url, headers)
@@ -131,10 +157,12 @@ def list_tenants(tenant_id: str | None = None) -> dict:
         }
         for t in all_tenants
     ]
-    return {
+    result = {
         "tenants": sorted(tenants, key=lambda x: x["name"].lower()),
         "defaultTenantId": _get_default_tenant_id(),
     }
+    _cache_set(cache_key, result)
+    return result
 
 
 def list_subscriptions(tenant_id: str | None = None) -> list[dict]:
@@ -186,7 +214,8 @@ def list_regions(
         if loc.get("availabilityZoneMappings")
         and loc.get("metadata", {}).get("regionType") == "Physical"
     ]
-    return sorted(regions, key=lambda x: x["displayName"])
+    result = sorted(regions, key=lambda x: x["displayName"])
+    return result
 
 
 def get_mappings(
@@ -1070,3 +1099,23 @@ def get_sku_pricing_detail(
 
     _detail_price_cache[cache_key] = (time.monotonic(), result)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Startup preload – warm the discovery cache
+# ---------------------------------------------------------------------------
+
+
+def preload_discovery() -> None:
+    """Fetch tenants to warm the cache.
+
+    Intended to be called in a background thread at server startup so that
+    the first browser request is served from cache.  Errors are logged but
+    never propagated – the web UI will retry on demand.
+    """
+    try:
+        logger.info("Preloading tenant list…")
+        list_tenants()
+        logger.info("Tenant preload complete.")
+    except Exception:
+        logger.warning("Preload: failed to fetch tenants", exc_info=True)
