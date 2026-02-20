@@ -8,7 +8,9 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
-### Added
+## [2026.2.7] - 2026-02-20
+
+### Changed
 
 - Replacement of SSE transport with Streamable HTTP in the MCP server for broader compatibility (e.g., Azure Container Apps, GitHub Codespaces).
 - MCP server available at `/mcp` for integration with web-based clients or when running as a hosted deployment (Container App, etc.).
