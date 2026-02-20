@@ -32,10 +32,16 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-    """Warm the tenant cache in a background thread."""
+    """Warm the tenant cache and start the MCP session manager."""
     t = threading.Thread(target=azure_api.preload_discovery, daemon=True)
     t.start()
-    yield
+    # The StreamableHTTP session manager needs a running task group;
+    # sub-app lifespans are not invoked by FastAPI, so we start it here.
+    # Re-create the session manager if a previous instance was already used
+    # (e.g. across multiple TestClient contexts in tests).
+    _ensure_fresh_session_manager()
+    async with _mcp_server.session_manager.run():
+        yield
 
 
 app = FastAPI(
@@ -74,7 +80,34 @@ from az_scout.mcp_server import mcp as _mcp_server  # noqa: E402
 # Override the internal path so that mounting at "/mcp" gives a clean
 # "/mcp" endpoint (instead of the default "/mcp/mcp").
 _mcp_server.settings.streamable_http_path = "/"
-app.mount("/mcp", _mcp_server.streamable_http_app())
+_mcp_starlette = _mcp_server.streamable_http_app()
+app.mount("/mcp", _mcp_starlette)
+
+
+def _ensure_fresh_session_manager() -> None:
+    """Re-create the StreamableHTTP session manager if already used.
+
+    ``StreamableHTTPSessionManager.run()`` can only be called once per
+    instance.  When the FastAPI lifespan is re-entered (e.g. across
+    multiple ``TestClient`` contexts in tests) we need a fresh manager.
+    """
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    mgr = _mcp_server.session_manager
+    if mgr._has_started:  # type: ignore[attr-defined]
+        new_mgr = StreamableHTTPSessionManager(
+            app=_mcp_server._mcp_server,
+            event_store=_mcp_server._event_store,
+            json_response=_mcp_server.settings.json_response,
+            stateless=_mcp_server.settings.stateless_http,
+            security_settings=_mcp_server.settings.transport_security,
+        )
+        _mcp_server._session_manager = new_mgr
+        # Also patch the ASGI handler used by the mounted Starlette app
+        for route in _mcp_starlette.routes:
+            if hasattr(route, "app") and hasattr(route.app, "session_manager"):
+                route.app.session_manager = new_mgr
+
 
 # ---------------------------------------------------------------------------
 # Colored logging (reuse uvicorn's formatter)
