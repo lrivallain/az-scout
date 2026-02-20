@@ -16,9 +16,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.responses import StreamingResponse
 
 from az_scout import __version__, azure_api
 from az_scout.models.deployment_plan import DeploymentIntentRequest
+from az_scout.services.ai_chat import is_chat_enabled
 from az_scout.services.capacity_confidence import compute_capacity_confidence
 from az_scout.services.deployment_planner import plan_deployment
 
@@ -146,7 +148,13 @@ async def index(request: Request) -> HTMLResponse:
     # EasyAuth injects the authenticated user's display name via this header.
     auth_user = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME", "")
     return templates.TemplateResponse(
-        request, "index.html", {"version": __version__, "auth_user": auth_user}
+        request,
+        "index.html",
+        {
+            "version": __version__,
+            "auth_user": auth_user,
+            "chat_enabled": is_chat_enabled(),
+        },
     )
 
 
@@ -410,3 +418,51 @@ if __name__ == "__main__":
     from az_scout.cli import cli
 
     cli()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/chat – AI chat with tool calling (streaming SSE)
+# ---------------------------------------------------------------------------
+
+
+class ChatMessage(BaseModel):
+    """A single chat message."""
+
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    """Request body for the chat endpoint."""
+
+    messages: list[ChatMessage]
+    tenant_id: str | None = None
+    region: str | None = None
+
+
+@app.post(
+    "/api/chat",
+    tags=["AI Chat"],
+    summary="AI chat with Azure Scout tools",
+    responses={503: {"description": "AI chat not configured"}},
+)
+async def chat(body: ChatRequest) -> StreamingResponse:
+    """Stream AI chat completions with tool-calling support.
+
+    Requires ``AZURE_OPENAI_ENDPOINT``, ``AZURE_OPENAI_API_KEY``, and
+    ``AZURE_OPENAI_DEPLOYMENT`` environment variables.
+    """
+    if not is_chat_enabled():
+        return JSONResponse(  # type: ignore[return-value]
+            {"error": "AI chat is not configured. Set AZURE_OPENAI_* environment variables."},
+            status_code=503,
+        )
+
+    from az_scout.services.ai_chat import chat_stream
+
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    return StreamingResponse(
+        chat_stream(messages, tenant_id=body.tenant_id, region=body.region),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

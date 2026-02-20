@@ -10,7 +10,12 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ### Added
 
-- Add numeric operator filters to SKU table columns
+- **AI Chat Assistant** – interactive chat panel powered by Azure OpenAI with streaming responses,
+  tool calling (zones, SKUs, pricing, spot scores), markdown/table rendering, and clickable choice chips.
+  - Pin-to-side mode docks the chat as a resizable sidebar.
+  - Tenant and region context auto-injected into tool calls; `switch_tenant`/`switch_region` tools update the UI.
+  - Conversation persistence, input history (Up/Down arrows), error retry, and suggested prompts on start.
+- Numeric operator filters on SKU table columns (`>`, `>=`, `<`, `<=`, `=`, ranges).
 
 ## [2026.2.7] - 2026-02-20
 

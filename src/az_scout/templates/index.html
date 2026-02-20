@@ -301,6 +301,60 @@
     </div>
 </div>
 
+{% if chat_enabled %}
+<!-- ===== AI Chat Panel ===== -->
+<button type="button" class="chat-fab" id="chat-fab" onclick="toggleChatPanel()" title="AI Chat Assistant">
+    <i class="bi bi-chat-dots-fill"></i>
+</button>
+
+<div class="chat-panel d-none" id="chat-panel">
+    <div class="chat-resize-handle" id="chat-resize-handle" title="Drag to resize"></div>
+    <div class="chat-panel-header">
+        <span class="d-flex align-items-center gap-2">
+            <i class="bi bi-robot"></i> Azure Scout Assistant
+        </span>
+        <div class="d-flex gap-1">
+            <button type="button" class="btn btn-sm btn-link chat-header-btn" id="chat-pin-btn"
+                    onclick="toggleChatPin()" title="Pin chat to side" data-tooltip="Pin chat to side">
+                <i class="bi bi-pin-angle"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-link chat-header-btn" id="chat-persist-btn"
+                    onclick="toggleChatPersist()" title="Save conversation to local storage" data-tooltip="Save conversation history">
+                <i class="bi bi-clock-history"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-link chat-header-btn" onclick="clearChat()" data-tooltip="Clear conversation">
+                <i class="bi bi-trash3"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-link chat-header-btn" onclick="toggleChatPanel()" data-tooltip="Close chat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+        <div class="chat-message assistant">
+            <div class="chat-bubble">
+                👋 Hi! I'm your Azure Scout assistant. Ask me about Azure regions, SKU availability, pricing, zone mappings, and more. I can query live Azure data for you.
+                <div class="chat-suggestions">
+                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">Show me available VM sizes in this region</button>
+                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">Compare zone mappings across my subscriptions</button>
+                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">What are the cheapest spot VMs with 4 vCPUs?</button>
+                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">List all regions with availability zones</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="chat-input-area">
+        <div class="input-group">
+            <textarea class="form-control" id="chat-input" placeholder="Ask about Azure SKUs, zones, pricing…"
+                      rows="1" onkeydown="handleChatKeydown(event)"></textarea>
+            <button type="button" class="btn btn-primary" id="chat-send-btn" onclick="sendChatMessage()" title="Send">
+                <i class="bi bi-send-fill"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>

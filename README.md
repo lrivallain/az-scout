@@ -15,10 +15,11 @@ Scout Azure regions for VM availability, zone mappings, pricing, spot scores, an
 ## Features
 
 - **Logical-to-physical zone mapping** – visualise how Azure maps logical Availability Zones (Zone 1, Zone 2, Zone 3) to physical zones (e.g., eastus-az1, eastus-az2) across subscriptions in a region.
-- **SKU availability view** – shows VM SKU availability per physical zone with vCPU quota usage (limit / used / remaining) and CSV export.
+- **SKU availability view** – shows VM SKU availability per physical zone with vCPU quota usage (limit / used / remaining), numeric operator filters, and CSV export.
 - **Spot Placement Scores** – evaluate the likelihood of Spot VM allocation (High / Medium / Low) per SKU for a given region and instance count, powered by the Azure Compute RP.
 - **Deployment Confidence Score** – a composite 0–100 score per SKU estimating deployment success probability, synthesised from quota headroom, Spot Placement Score, availability zone breadth, restrictions, and price pressure signals. Missing signals are automatically excluded with weight renormalisation. The score updates live when Spot Placement Scores arrive.
 - **Deployment Plan** – agent-ready `POST /api/deployment-plan` endpoint that evaluates (region, SKU) combinations against zones, quotas, spot scores, pricing, and restrictions. Returns a deterministic, ranked plan with business and technical views (no LLM, no invention — missing data is flagged explicitly).
+- **AI Chat Assistant** *(optional)* – interactive chat panel powered by Azure OpenAI with streaming responses, tool calling (zones, SKUs, pricing, spot scores), and markdown rendering. Supports pin-to-side mode, conversation persistence, input history, clickable choice chips, and error retry. Requires Azure OpenAI environment variables (see below).
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
 
 
@@ -31,6 +32,7 @@ Scout Azure regions for VM availability, zone mappings, pricing, spot scores, an
 | Python | ≥ 3.11 |
 | Azure credentials | Any method supported by `DefaultAzureCredential` (`az login`, managed identity, …) |
 | RBAC | **Reader** on the subscriptions you want to query, **Virtual Machine Contributor** on the subscriptions for Spot Placement Scores retrieval |
+| Azure OpenAI *(optional)* | For the AI Chat Assistant: set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, and optionally `AZURE_OPENAI_API_VERSION` |
 
 ### Run locally with `uv` tool (recommended)
 
