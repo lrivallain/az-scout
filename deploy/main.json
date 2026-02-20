@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "13139971893127309198"
+      "templateHash": "13110913782615244126"
     }
   },
   "parameters": {
@@ -223,12 +223,19 @@
             "registration": {
               "clientId": "[parameters('authClientId')]",
               "clientSecretSettingName": "microsoft-provider-authentication-secret",
-              "openIdIssuer": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, parameters('authTenantId'))]"
+              "openIdIssuer": "[format('{0}{1}/', environment().authentication.loginEndpoint, parameters('authTenantId'))]"
             },
             "validation": {
               "allowedAudiences": [
-                "[format('api://{0}', parameters('authClientId'))]"
-              ]
+                "[format('api://{0}', parameters('authClientId'))]",
+                "[parameters('authClientId')]"
+              ],
+              "defaultAuthorizationPolicy": {
+                "allowedApplications": [
+                  "[parameters('authClientId')]",
+                  "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
+                ]
+              }
             }
           }
         }

@@ -225,12 +225,21 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (e
         registration: {
           clientId: authClientId
           clientSecretSettingName: 'microsoft-provider-authentication-secret'
-          openIdIssuer: '${environment().authentication.loginEndpoint}${authTenantId}/v2.0'
+          openIdIssuer: '${environment().authentication.loginEndpoint}${authTenantId}/'
         }
         validation: {
           allowedAudiences: [
             'api://${authClientId}'
+            authClientId
           ]
+          defaultAuthorizationPolicy: {
+            // Azure CLI app ID – required so `az account get-access-token`
+            // tokens are accepted by EasyAuth for MCP/API bearer-token access.
+            allowedApplications: [
+              authClientId
+              '04b07795-8ddb-461a-bbee-02f9e1bf7b46'   // Microsoft Azure CLI
+            ]
+          }
         }
       }
     }

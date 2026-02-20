@@ -119,6 +119,9 @@ az rest --method POST \
 | "Assignment required?" toggle is greyed out in the portal | Use the CLI command in step 6 instead |
 | `Resource does not exist` when querying the SP | Create it first with `az ad sp create --id $APP_ID` |
 | `AADSTS65001: The user or administrator has not consented to use the application` | The App Registration must expose an API and pre-authorize the Azure CLI — see [step 7](#7-connect-mcp-clients-through-easyauth) |
+| VS Code asks "Enter an existing client ID" with redirect URIs | Enter your az-scout App Registration client ID, then add those redirect URIs and enable public client flows — see [VS Code interactive login](#vs-code-copilot-recommended--interactive-login) |
+| 401 Unauthorized with valid token | Ensure the `openIdIssuer` does **not** end with `/v2.0` — the Azure CLI issues v1 tokens. Use `https://login.microsoftonline.com/<TENANT_ID>/` |
+| 403 Forbidden with valid token | Remove `defaultAuthorizationPolicy.allowedApplications` from the auth config if empty, or explicitly add the Azure CLI app ID (`04b07795-8ddb-461a-bbee-02f9e1bf7b46`) |
 
 ## 7. Connect MCP clients through EasyAuth
 
@@ -217,9 +220,68 @@ TOKEN=$(az account get-access-token \
 
 > **Note:** Tokens are short-lived (typically 1 hour). You will need to refresh the token periodically.
 
-### VS Code Copilot (recommended)
+### VS Code Copilot (recommended – interactive login)
 
-Create a `.vscode/mcp.json` in your workspace (or add to your user `settings.json` under `mcp.servers`):
+VS Code can handle Microsoft Entra ID login interactively via the MCP OAuth2 protocol.
+The az-scout app includes OAuth2 proxy routes (`/authorize`, `/token`, `/.well-known/oauth-authorization-server`) that redirect to Entra ID — these are automatically excluded from EasyAuth validation by the Bicep deployment.
+
+#### a. Register VS Code redirect URIs
+
+```bash
+# Add VS Code redirect URIs
+az ad app update --id "$APP_ID" \
+  --public-client-redirect-uris \
+    "http://localhost" \
+    "https://vscode.dev/redirect"
+
+# Enable public client flows (required for desktop OAuth)
+az ad app update --id "$APP_ID" \
+  --is-fallback-public-client true
+```
+
+#### b. Create a client secret for VS Code
+
+You can reuse the one created in [step 3](#3-create-a-client-secret), or create a dedicated one:
+
+```bash
+VSCODE_SECRET=$(az ad app credential reset \
+  --id "$APP_ID" \
+  --display-name "az-scout-vscode" \
+  --query password -o tsv)
+
+echo "VS Code Client Secret: $VSCODE_SECRET"
+```
+
+#### c. Configure the MCP server
+
+Create a `.vscode/mcp.json` in your workspace:
+
+```jsonc
+{
+  "servers": {
+    "az-scout": {
+      "type": "sse",
+      "url": "https://az-scout.<env>.<region>.azurecontainerapps.io/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${microsoft_entra_id:<APP_ID>}"
+      }
+    }
+  }
+}
+```
+
+Replace `<APP_ID>` with your App Registration's client ID. When the MCP server starts, VS Code will prompt for:
+
+1. **Client ID** — enter your App Registration's client ID (`$APP_ID`)
+2. **Client Secret** — enter the secret from step 3 or the one created above
+
+VS Code then opens a browser for interactive Entra ID login. Tokens are managed and refreshed automatically.
+
+> **How it works:** VS Code discovers the OAuth2 metadata from `/.well-known/oauth-authorization-server`, which points `/authorize` and `/token` to the app's proxy routes. These routes redirect to Entra ID for the actual OAuth2 flow (PKCE). EasyAuth validates the resulting bearer token on `/mcp/sse`.
+
+### VS Code Copilot (manual token)
+
+If you prefer not to use the interactive flow, you can paste a token manually:
 
 ```jsonc
 {
@@ -242,8 +304,6 @@ Create a `.vscode/mcp.json` in your workspace (or add to your user `settings.jso
   }
 }
 ```
-
-VS Code will prompt you for the token when the MCP server connection is first established.
 
 To refresh an expired token, restart the MCP server (`MCP: List Servers` → restart) and paste a fresh token.
 

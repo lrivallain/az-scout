@@ -21,13 +21,31 @@ Or add to your MCP client config (e.g. Claude Desktop):
 
 import json
 import logging
+import os
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from az_scout import azure_api
 from az_scout.services.capacity_confidence import compute_capacity_confidence
 
 logger = logging.getLogger(__name__)
+
+# When deployed behind a reverse proxy (e.g. Azure Container Apps), DNS
+# rebinding protection must either be disabled or the external hostname(s)
+# added to the allow-list.  Set FASTMCP_ALLOWED_HOSTS to a comma-separated
+# list of allowed Host header values (e.g. "myapp.azurecontainerapps.io").
+# If empty/unset, rebinding protection is disabled for remote deployments.
+_allowed_hosts_env = os.environ.get("FASTMCP_ALLOWED_HOSTS", "")
+if _allowed_hosts_env:
+    _transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[h.strip() for h in _allowed_hosts_env.split(",")],
+    )
+else:
+    _transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    )
 
 mcp = FastMCP(
     "az-scout",
@@ -38,6 +56,7 @@ mcp = FastMCP(
         "All tools require valid Azure credentials via DefaultAzureCredential "
         "(e.g. `az login`)."
     ),
+    transport_security=_transport_security,
 )
 
 
