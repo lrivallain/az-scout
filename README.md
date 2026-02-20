@@ -207,9 +207,27 @@ If using `uv`:
 
 #### SSE transport
 
+When running in `web` mode, the MCP server is automatically available at `/mcp/sse` for integration with web-based clients or when running as a hosted deployment (Container App, etc.).
+
+For **MCP-only** use with SSE transport, run:
+
 ```bash
-az-scout mcp --sse --port 8080
+az-scout mcp --sse --port 8082
 ```
+
+Add to your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "az-scout": {
+      "url": "http://localhost:8082/sse" // or "https://<your-app-url>/mcp/sse" for web command
+    }
+  }
+}
+```
+
+> **Hosted deployment:** When running as a Container App (or any hosted web server), the MCP SSE endpoint is automatically available at `/mcp/sse` alongside the web UI — no separate server needed. Point your MCP client to `https://<your-app-url>/mcp/sse`.
 
 ### API
 
