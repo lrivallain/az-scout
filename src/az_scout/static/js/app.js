@@ -19,6 +19,7 @@ let plannerZoneMappings = null;             // zone mappings fetched independent
 let lastSkuData = null;                     // cached SKU list
 let lastSpotScores = null;                  // {scores: {sku: {zone: label}}, errors: []}
 let _skuDataTable = null;                   // Simple-DataTables instance
+let _skuFilterState = {};                   // {headerText: filterValue} – persists across re-renders
 
 // ---------------------------------------------------------------------------
 // Deployment Confidence Score – client-side recomputation
@@ -1009,6 +1010,7 @@ function resetPlannerResults() {
     lastSkuData = null;
     lastSpotScores = null;
     plannerZoneMappings = null;
+    _skuFilterState = {};
     if (_skuDataTable) {
         try { _skuDataTable.destroy(); } catch {}
         _skuDataTable = null;
@@ -1775,6 +1777,9 @@ function renderRegionSummary(skus) {
 function renderSkuTable(skus) {
     const container = document.getElementById("sku-table-container");
 
+    // Save current filter values before destroying the table
+    _saveSkuFilters();
+
     if (_skuDataTable) {
         try { _skuDataTable.destroy(); } catch {}
         _skuDataTable = null;
@@ -1892,10 +1897,6 @@ function renderSkuTable(skus) {
     const filterableCols = [];
     for (let i = 0; i <= confCol; i++) filterableCols.push(i);
     if (showPricing) { filterableCols.push(nextCol - 2, nextCol - 1); }
-    const headerConfig = {};
-    filterableCols.forEach(idx => {
-        headerConfig[idx] = { type: "input", attr: { placeholder: "Filter\u2026", class: "datatable-column-filter" } };
-    });
 
     _skuDataTable = new simpleDatatables.DataTable(tableEl, {
         searchable: false,
@@ -1907,8 +1908,15 @@ function renderSkuTable(skus) {
         columns: colConfig,
     });
 
+    // Numeric column indices (for operator-aware filtering: >5, <32, 4-16, etc.)
+    const numericCols = new Set([2, 3, 4, 5, 6, confCol]);
+    if (showPricing) { numericCols.add(nextCol - 2); numericCols.add(nextCol - 1); }
+
     // Build per-column filter row in thead
-    _buildColumnFilters(tableEl, filterableCols);
+    _buildColumnFilters(tableEl, filterableCols, numericCols);
+
+    // Restore saved filter values and re-apply
+    _restoreSkuFilters(tableEl);
 
     // Init Bootstrap tooltips on zone & confidence cells
     function _initSkuTooltips() {
@@ -1924,12 +1932,81 @@ function renderSkuTable(skus) {
     _skuDataTable.on("datatable.sort", () => _initSkuTooltips());
 }
 
+/** Save current filter input values keyed by column header text. */
+function _saveSkuFilters() {
+    const tableEl = document.getElementById("sku-datatable");
+    if (!tableEl) return;
+    const headers = tableEl.querySelectorAll("thead tr:first-child th");
+    const inputs = tableEl.querySelectorAll(".datatable-filter-row input[data-col]");
+    const state = {};
+    inputs.forEach(inp => {
+        const val = inp.value.trim();
+        if (!val) return;
+        const col = parseInt(inp.dataset.col, 10);
+        const hdr = headers[col]?.textContent?.trim();
+        if (hdr) state[hdr] = val;
+    });
+    _skuFilterState = state;
+}
+
+/** Restore saved filter values after a re-render, then re-apply filtering. */
+function _restoreSkuFilters(tableEl) {
+    if (!Object.keys(_skuFilterState).length) return;
+    const headers = tableEl.querySelectorAll("thead tr:first-child th");
+    const headerMap = {};
+    headers.forEach((th, idx) => { headerMap[th.textContent.trim()] = idx; });
+    const filterRow = tableEl.querySelector(".datatable-filter-row");
+    if (!filterRow) return;
+    let restored = false;
+    for (const [hdr, val] of Object.entries(_skuFilterState)) {
+        const col = headerMap[hdr];
+        if (col == null) continue;
+        const input = filterRow.querySelector(`input[data-col="${col}"]`);
+        if (input) { input.value = val; restored = true; }
+    }
+    if (restored) _applyColumnFilters(tableEl, filterRow);
+}
+
+/**
+ * Parse a numeric filter expression.
+ * Supported syntax:  >5  >=5  <32  <=32  =8  5-16 (range)  or plain number (exact).
+ * Returns null if the input is not a numeric filter.
+ */
+function _parseNumericFilter(val) {
+    const s = val.trim();
+    let m;
+    // Range: 4-16, 4..16, 4–16
+    m = s.match(/^(\d+(?:\.\d+)?)\s*(?:[-–]|\.\.)\s*(\d+(?:\.\d+)?)$/);
+    if (m) return { op: "range", lo: parseFloat(m[1]), hi: parseFloat(m[2]) };
+    // Operators: >=, <=, >, <, =
+    m = s.match(/^(>=?|<=?|=)\s*(\d+(?:\.\d+)?)$/);
+    if (m) return { op: m[1], val: parseFloat(m[2]) };
+    // Plain number → exact match
+    if (/^\d+(?:\.\d+)?$/.test(s)) return { op: "=", val: parseFloat(s) };
+    return null;
+}
+
+/** Test a cell value against a parsed numeric filter. */
+function _matchNumericFilter(cellVal, filter) {
+    const n = parseFloat(cellVal);
+    if (isNaN(n)) return false;
+    switch (filter.op) {
+        case ">": return n > filter.val;
+        case ">=": return n >= filter.val;
+        case "<": return n < filter.val;
+        case "<=": return n <= filter.val;
+        case "=": return n === filter.val;
+        case "range": return n >= filter.lo && n <= filter.hi;
+        default: return false;
+    }
+}
+
 /**
  * Inject a second <tr> into thead with <input> filters for specified columns.
- * Filtering uses Simple-DataTables columns().search() when available,
- * otherwise falls back to manual row-level filtering.
+ * Numeric columns accept operator expressions (>5, <32, 4-16, etc.).
+ * Text columns use substring matching.
  */
-function _buildColumnFilters(tableEl, filterableCols) {
+function _buildColumnFilters(tableEl, filterableCols, numericCols) {
     const thead = tableEl.querySelector("thead");
     if (!thead) return;
 
@@ -1943,7 +2020,9 @@ function _buildColumnFilters(tableEl, filterableCols) {
             const input = document.createElement("input");
             input.type = "search";
             input.className = "datatable-column-filter";
-            input.placeholder = "Filter\u2026";
+            const isNumeric = numericCols && numericCols.has(idx);
+            input.placeholder = isNumeric ? ">5, <32, 4-16\u2026" : "Filter\u2026";
+            if (isNumeric) input.dataset.numeric = "1";
             input.dataset.col = idx;
             td.appendChild(input);
         }
@@ -1963,8 +2042,16 @@ function _applyColumnFilters(tableEl, filterRow) {
     const inputs = filterRow.querySelectorAll("input[data-col]");
     const filters = [];
     inputs.forEach(inp => {
-        const val = inp.value.trim().toLowerCase();
-        if (val) filters.push({ col: parseInt(inp.dataset.col, 10), text: val });
+        const val = inp.value.trim();
+        if (!val) return;
+        const col = parseInt(inp.dataset.col, 10);
+        const isNumeric = inp.dataset.numeric === "1";
+        if (isNumeric) {
+            const nf = _parseNumericFilter(val);
+            if (nf) { filters.push({ col, numeric: nf }); return; }
+        }
+        // Fallback: text substring match
+        filters.push({ col, text: val.toLowerCase() });
     });
 
     const rows = tableEl.querySelectorAll("tbody tr");
@@ -1977,6 +2064,7 @@ function _applyColumnFilters(tableEl, filterRow) {
         const match = filters.every(f => {
             const cell = cells[f.col];
             if (!cell) return false;
+            if (f.numeric) return _matchNumericFilter(cell.textContent, f.numeric);
             return cell.textContent.toLowerCase().includes(f.text);
         });
         row.style.display = match ? "" : "none";

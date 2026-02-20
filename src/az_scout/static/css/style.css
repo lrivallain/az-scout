@@ -233,6 +233,11 @@ select.no-arrow {
     font-size: 0.75rem;
 }
 
+.datatable-column-filter[data-numeric]::placeholder {
+    font-family: var(--bs-font-monospace);
+    font-size: 0.7rem;
+}
+
 .zone-available {
     color: var(--bs-success) !important;
     text-align: center;

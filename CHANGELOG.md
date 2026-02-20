@@ -8,6 +8,10 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
+### Added
+
+- Add numeric operator filters to SKU table columns
+
 ## [2026.2.7] - 2026-02-20
 
 ### Changed
