@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Backend: install",
+      "type": "shell",
+      "command": "uv sync --frozen",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: run",
+      "type": "shell",
+      "command": "uv run az-scout web --host 0.0.0.0 --port 5001 --reload --no-open -v",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: test",
+      "type": "shell",
+      "command": "uv run pytest",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: lint",
+      "type": "shell",
+      "command": "uv run ruff check src/ tests/",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: format check",
+      "type": "shell",
+      "command": "uv run ruff format --check src/ tests/",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: type check",
+      "type": "shell",
+      "command": "uv run mypy src/",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev: run all checks",
+      "dependsOn": [
+        "Backend: lint",
+        "Backend: format check",
+        "Backend: type check",
+        "Backend: test"
+      ],
+      "dependsOrder": "sequence",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}
