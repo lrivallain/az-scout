@@ -641,7 +641,7 @@ select.no-arrow {
     align-items: center;
     justify-content: space-between;
     padding: 0.6rem 0.8rem;
-    min-height: 56px; /* align with navbar height */
+    min-height: 57px; /* match navbar height (56px content + 1px border-bottom) */
     border-bottom: 1px solid var(--bs-border-color);
     font-weight: 600;
     font-size: 0.9rem;
@@ -718,6 +718,27 @@ select.no-arrow {
     background: var(--bs-tertiary-bg, #f0f0f0);
     color: var(--bs-body-color);
     border-bottom-left-radius: 0.15rem;
+}
+
+/* Thinking dots indicator */
+.chat-thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0;
+}
+.chat-thinking .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--bs-secondary-color, #6c757d);
+    animation: chat-bounce 1.2s ease-in-out infinite;
+}
+.chat-thinking .dot:nth-child(2) { animation-delay: 0.15s; }
+.chat-thinking .dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
 }
 
 .chat-bubble code {
@@ -837,6 +858,39 @@ select.no-arrow {
     opacity: 0.5;
     pointer-events: none;
     border-style: dashed;
+}
+
+/* ---- Chat mode toggle (pill switch) ---- */
+.chat-mode-toggle {
+    display: flex;
+    border-radius: 999px;
+    border: 2px solid var(--bs-primary);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.chat-mode-toggle button {
+    flex: 1;
+    border: none;
+    padding: 0.22rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    white-space: nowrap;
+    line-height: 1.4;
+    background: transparent;
+    color: var(--bs-primary);
+}
+.chat-mode-toggle button.active {
+    background: var(--bs-primary);
+    color: #fff;
+}
+.chat-mode-toggle button:not(.active):hover {
+    background: color-mix(in srgb, var(--bs-primary) 12%, transparent);
+}
+.chat-mode-toggle button:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: -2px;
 }
 
 /* ---- Input area ---- */
