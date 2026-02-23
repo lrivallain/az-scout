@@ -36,9 +36,16 @@ from az_scout.models.capacity_strategy import (
     WorkloadConstraints,
     WorkloadProfileRequest,
 )
+from az_scout.services.admission_confidence import compute_admission_confidence
 from az_scout.services.capacity_confidence import compute_capacity_confidence
 from az_scout.services.capacity_strategy_engine import recommend_capacity_strategy
+from az_scout.services.eviction_rate import get_spot_eviction_rate
+from az_scout.services.fragmentation import (
+    estimate_fragmentation_risk,
+    fragmentation_to_normalized,
+)
 from az_scout.services.region_latency import get_rtt_ms
+from az_scout.services.volatility import compute_volatility, volatility_to_normalized
 
 logger = logging.getLogger(__name__)
 
@@ -427,3 +434,122 @@ def region_latency(
         ),
     }
     return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def sku_admission_intelligence(
+    region: str,
+    sku_name: str,
+    subscription_id: str,
+    tenant_id: str | None = None,
+) -> str:
+    """Return Admission Intelligence signals for a single VM SKU.
+
+    Combines fragmentation risk, price/score volatility, spot eviction rate,
+    and a composite Admission Confidence Score with detailed breakdown.
+
+    All metrics are heuristic estimates derived from publicly observable
+    Azure signals – they do NOT represent internal Azure capacity data.
+
+    Args:
+        region: Azure region name (e.g. ``francecentral``).
+        sku_name: ARM SKU name (e.g. ``Standard_D2s_v3``).
+        subscription_id: Subscription ID for quota/spot queries.
+        tenant_id: Optional tenant ID.
+    """
+    import contextlib
+
+    spot_score_label: str | None = None
+    zones_count: int | None = None
+    restrictions_present: bool | None = None
+    vcpus: int | None = None
+    memory_gb: float | None = None
+    gpu_count = 0
+    paygo_price: float | None = None
+    spot_price: float | None = None
+    quota_remaining: int | None = None
+    require_zonal = False
+
+    try:
+        skus = azure_api.get_skus(
+            region, subscription_id, tenant_id, "virtualMachines", name=sku_name
+        )
+        for s in skus:
+            if s.get("name") == sku_name:
+                zones_count = len(s.get("zones", []))
+                restrictions_present = len(s.get("restrictions", [])) > 0
+                caps = s.get("capabilities", {})
+                with contextlib.suppress(TypeError, ValueError):
+                    vcpus = int(caps.get("vCPUs", 0))
+                with contextlib.suppress(TypeError, ValueError):
+                    memory_gb = float(caps.get("MemoryGB", 0))
+                try:
+                    gpu_count = int(caps.get("GPUs", 0))
+                except (TypeError, ValueError):
+                    gpu_count = 0
+                require_zonal = zones_count is not None and zones_count > 0
+                q = s.get("quota", {})
+                quota_remaining = q.get("remaining")
+                break
+    except Exception:
+        pass
+
+    try:
+        spot_result = azure_api.get_spot_placement_scores(
+            region, subscription_id, [sku_name], 1, tenant_id
+        )
+        sku_scores = spot_result.get("scores", {}).get(sku_name, {})
+        if sku_scores:
+            rank = {"High": 3, "Medium": 2, "Low": 1}
+            best = max(sku_scores.values(), key=lambda s: rank.get(s, 0))
+            spot_score_label = best
+    except Exception:
+        pass
+
+    try:
+        all_prices = azure_api.get_retail_prices(region)
+        sku_pricing = all_prices.get(sku_name)
+        if sku_pricing:
+            paygo_price = sku_pricing.get("paygo")
+            spot_price = sku_pricing.get("spot")
+    except Exception:
+        pass
+
+    price_ratio: float | None = None
+    if paygo_price and spot_price and paygo_price > 0:
+        price_ratio = spot_price / paygo_price
+
+    frag = estimate_fragmentation_risk(
+        vcpu=vcpus,
+        memory_gb=memory_gb,
+        gpu_count=gpu_count,
+        require_zonal=require_zonal,
+        spot_score=spot_score_label,
+        price_ratio=price_ratio,
+    )
+    vol24 = compute_volatility(region, sku_name, window="24h")
+    vol7d = compute_volatility(region, sku_name, window="7d")
+    eviction = get_spot_eviction_rate(
+        region, sku_name, subscription_id=subscription_id, tenant_id=tenant_id
+    )
+
+    admission = compute_admission_confidence(
+        spot_score_label=spot_score_label,
+        eviction_rate_normalized=eviction.get("normalizedScore"),
+        volatility_normalized=volatility_to_normalized(vol24.get("label", "")),
+        fragmentation_normalized=fragmentation_to_normalized(frag.get("label", "")),
+        quota_remaining_vcpu=quota_remaining,
+        vcpus=vcpus,
+        zones_supported_count=zones_count,
+        restrictions_present=restrictions_present,
+    )
+    return json.dumps(
+        {
+            "admissionConfidence": admission,
+            "fragmentationRisk": frag,
+            "volatility24h": vol24,
+            "volatility7d": vol7d,
+            "evictionRate": eviction,
+        },
+        indent=2,
+    )

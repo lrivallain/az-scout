@@ -552,6 +552,51 @@ select.no-arrow {
 [data-bs-theme="dark"] .vm-badge-no { background: #4a1c1e; color: #f5a3a7; }
 [data-bs-theme="dark"] .vm-badge-limited { background: #4a3c00; color: #ffe066; }
 
+/* ---- Admission Intelligence ---- */
+.admission-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.admission-high { background: #d4edda; color: #155724; border: 1px solid #b1dfbb; }
+.admission-medium { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+.admission-low { background: #fde2d0; color: #8a4b1a; border: 1px solid #f5c6a0; }
+.admission-very-low { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+.admission-section {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.admission-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.75rem;
+}
+
+.admission-disclaimer {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    font-style: italic;
+}
+
+#admissionAccordion .accordion-button {
+    font-size: 0.82rem;
+    padding: 0.45rem 0.75rem;
+}
+
+[data-bs-theme="dark"] .admission-high { background: #1e4620; color: #a3d9a5; border-color: #2d6a30; }
+[data-bs-theme="dark"] .admission-medium { background: #4a3c00; color: #ffe066; border-color: #6b5700; }
+[data-bs-theme="dark"] .admission-low { background: #4a2c10; color: #f5c6a0; border-color: #6b4420; }
+[data-bs-theme="dark"] .admission-very-low { background: #4a1c1e; color: #f5a3a7; border-color: #6b2a2d; }
+
 /* ===================================================================
    AI Chat Panel
    =================================================================== */
