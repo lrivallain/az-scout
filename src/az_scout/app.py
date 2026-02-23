@@ -23,7 +23,6 @@ from az_scout import __version__, azure_api
 from az_scout.models.capacity_strategy import WorkloadProfileRequest
 from az_scout.models.deployment_plan import DeploymentIntentRequest
 from az_scout.scoring.deployment_confidence import (
-    DeploymentSignals,
     best_spot_label,
     compute_deployment_confidence,
     signals_from_sku,
@@ -355,9 +354,7 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
             status_code=400,
         )
 
-    evaluated_at = __import__("datetime").datetime.now(
-        __import__("datetime").UTC
-    ).isoformat()
+    evaluated_at = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
     results: list[dict] = []
     warnings: list[str] = []
     errors: list[str] = []
@@ -370,9 +367,7 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
             body.tenantId,
             "virtualMachines",
         )
-        azure_api.enrich_skus_with_quotas(
-            all_skus, body.region, body.subscriptionId, body.tenantId
-        )
+        azure_api.enrich_skus_with_quotas(all_skus, body.region, body.subscriptionId, body.tenantId)
         azure_api.enrich_skus_with_prices(all_skus, body.region, body.currencyCode)
 
         sku_map = {s["name"]: s for s in all_skus}

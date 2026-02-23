@@ -13,8 +13,9 @@ from az_scout.scoring.deployment_confidence import (
     DeploymentSignals,
     compute_deployment_confidence,
 )
-from az_scout.services.capacity_confidence import compute_capacity_confidence
-
+from az_scout.services.capacity_confidence import (
+    compute_capacity_confidence,
+)
 
 # Each tuple: (description, kwargs shared by both functions)
 # NOTE: the old function uses `zones_supported_count`; the canonical uses

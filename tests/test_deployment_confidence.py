@@ -182,9 +182,7 @@ class TestComputeDeploymentConfidence:
 
     def test_single_signal_below_min_signals(self):
         """Only one signal: below MIN_SIGNALS → Unknown."""
-        result = compute_deployment_confidence(
-            DeploymentSignals(zones_available_count=3)
-        )
+        result = compute_deployment_confidence(DeploymentSignals(zones_available_count=3))
         assert result.score == 0
         assert result.label == "Unknown"
         assert len(result.missingSignals) == 4
@@ -441,7 +439,11 @@ class TestUIRegression:
     def app_js_content(self) -> str:
         app_js = (
             pathlib.Path(__file__).resolve().parent.parent
-            / "src" / "az_scout" / "static" / "js" / "app.js"
+            / "src"
+            / "az_scout"
+            / "static"
+            / "js"
+            / "app.js"
         )
         return app_js.read_text(encoding="utf-8")
 
