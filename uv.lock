@@ -49,9 +49,11 @@ dependencies = [
     { name = "azure-identity" },
     { name = "click" },
     { name = "fastapi" },
+    { name = "fastapi-azure-auth" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "mcp", extra = ["cli"] },
+    { name = "python-dotenv" },
     { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -72,9 +74,11 @@ requires-dist = [
     { name = "azure-identity", specifier = ">=1.15" },
     { name = "click", specifier = ">=8.1" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi-azure-auth", specifier = ">=5.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.9" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "requests", specifier = ">=2.31" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
@@ -487,6 +491,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/48/47/75f6bea02e797abff1bca968d5997793898032d9923c1935ae2efdece642/fastapi-0.129.0.tar.gz", hash = "sha256:61315cebd2e65df5f97ec298c888f9de30430dd0612d59d6480beafbc10655af", size = 375450, upload-time = "2026-02-12T13:54:52.541Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9e/dd/d0ee25348ac58245ee9f90b6f3cbb666bf01f69be7e0911f9851bddbda16/fastapi-0.129.0-py3-none-any.whl", hash = "sha256:b4946880e48f462692b31c083be0432275cbfb6e2274566b1be91479cc1a84ec", size = 102950, upload-time = "2026-02-12T13:54:54.528Z" },
+]
+
+[[package]]
+name = "fastapi-azure-auth"
+version = "5.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pyjwt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6b/ee/b71456094ea84cbbf7079800b3933b9211cd6f1b70b89c3ce075ba785437/fastapi_azure_auth-5.2.0.tar.gz", hash = "sha256:8f86ef2c6d38cea12f343a0b18533026e6143c9df928ac8529a32cdbbdfe3991", size = 14620, upload-time = "2025-07-25T06:58:14.533Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/0a/1c087af39d72bb2a47e8617cf2dc6e525adfc372aaf80749d6c911eaedbb/fastapi_azure_auth-5.2.0-py3-none-any.whl", hash = "sha256:f2353ce005987b95c2f1ab82e77d44e3be6d419cb5e63b98ac4e17fdf2355b77", size = 14977, upload-time = "2025-07-25T06:58:13.175Z" },
 ]
 
 [[package]]

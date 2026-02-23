@@ -11,7 +11,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,6 +20,8 @@ from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from az_scout import __version__, azure_api
+from az_scout.auth.security import get_current_user
+from az_scout.auth.settings import settings as auth_settings
 from az_scout.models.capacity_strategy import WorkloadProfileRequest
 from az_scout.models.deployment_plan import DeploymentIntentRequest
 from az_scout.scoring.deployment_confidence import (
@@ -49,6 +51,11 @@ _PKG_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """Warm the tenant cache and start the MCP session manager."""
+    # Load OpenID config for Entra ID token validation
+    if auth_settings.auth_mode == "entra":
+        from az_scout.auth.security import azure_scheme
+
+        await azure_scheme.openid_config.load_config()
     t = threading.Thread(target=azure_api.preload_discovery, daemon=True)
     t.start()
     # The StreamableHTTP session manager needs a running task group;
@@ -58,6 +65,19 @@ async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     _ensure_fresh_session_manager()
     async with _mcp_server.session_manager.run():
         yield
+
+
+# ---------------------------------------------------------------------------
+# Swagger OAuth2 configuration (Entra ID Authorization Code flow)
+# ---------------------------------------------------------------------------
+
+_swagger_ui_init_oauth: dict[str, object] | None = None
+if auth_settings.auth_mode == "entra":
+    _swagger_ui_init_oauth = {
+        "usePkceWithAuthorizationCodeGrant": True,
+        "clientId": auth_settings.azure_client_id,
+        "scopes": auth_settings.azure_api_scope,
+    }
 
 
 app = FastAPI(
@@ -75,6 +95,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=_lifespan,
+    swagger_ui_init_oauth=_swagger_ui_init_oauth,
 )
 
 app.add_middleware(
@@ -152,8 +173,24 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Protected API router – all /api/* routes require authentication
+# ---------------------------------------------------------------------------
+
+api_router = APIRouter(
+    prefix="/api",
+    dependencies=[Depends(get_current_user)],
+)
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+@app.get("/health", tags=["Health"], summary="Health check")
+async def health() -> JSONResponse:
+    """Public health-check endpoint (no authentication required)."""
+    return JSONResponse({"status": "ok", "version": __version__})
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -172,7 +209,7 @@ async def index(request: Request) -> HTMLResponse:
     )
 
 
-@app.get("/api/tenants", tags=["Discovery"], summary="List Azure AD tenants")
+@api_router.get("/tenants", tags=["Discovery"], summary="List Azure AD tenants")
 async def list_tenants() -> JSONResponse:
     """Return Azure AD tenants accessible by the current credential.
 
@@ -186,7 +223,7 @@ async def list_tenants() -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
-@app.get("/api/subscriptions", tags=["Discovery"], summary="List enabled Azure subscriptions")
+@api_router.get("/subscriptions", tags=["Discovery"], summary="List enabled Azure subscriptions")
 async def list_subscriptions(
     tenantId: str | None = Query(  # noqa: N803
         None, description="Optional tenant ID to scope the query."
@@ -200,7 +237,7 @@ async def list_subscriptions(
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
-@app.get("/api/regions", tags=["Discovery"], summary="List AZ-enabled regions")
+@api_router.get("/regions", tags=["Discovery"], summary="List AZ-enabled regions")
 async def list_regions(
     subscriptionId: str | None = Query(  # noqa: N803
         None, description="Subscription ID. Auto-discovered if omitted."
@@ -217,7 +254,7 @@ async def list_regions(
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
-@app.get("/api/mappings", tags=["Mappings"], summary="Get zone mappings")
+@api_router.get("/mappings", tags=["Mappings"], summary="Get zone mappings")
 async def get_mappings(
     region: str | None = Query(None, description="Azure region name (e.g. eastus)."),
     subscriptions: str | None = Query(
@@ -240,7 +277,7 @@ async def get_mappings(
     return JSONResponse(azure_api.get_mappings(region, sub_ids, tenantId))
 
 
-@app.get("/api/skus", tags=["SKUs"], summary="Get SKU availability per zone")
+@api_router.get("/skus", tags=["SKUs"], summary="Get SKU availability per zone")
 async def get_skus(
     region: str | None = Query(None, description="Azure region name."),
     subscriptionId: str | None = Query(None, description="Subscription ID."),  # noqa: N803
@@ -335,8 +372,8 @@ class DeploymentConfidenceRequest(BaseModel):
     tenantId: str | None = None
 
 
-@app.post(
-    "/api/deployment-confidence",
+@api_router.post(
+    "/deployment-confidence",
     tags=["SKUs"],
     summary="Compute Deployment Confidence Scores (bulk)",
 )
@@ -440,7 +477,7 @@ class SpotScoresRequest(BaseModel):
     tenantId: str | None = None
 
 
-@app.post("/api/spot-scores", tags=["SKUs"], summary="Get Spot Placement Scores")
+@api_router.post("/spot-scores", tags=["SKUs"], summary="Get Spot Placement Scores")
 async def get_spot_scores(body: SpotScoresRequest) -> JSONResponse:
     """Return Spot Placement Scores for a list of VM sizes.
 
@@ -467,7 +504,7 @@ async def get_spot_scores(body: SpotScoresRequest) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
-@app.get("/api/sku-pricing", tags=["SKUs"], summary="Get detailed pricing for a SKU")
+@api_router.get("/sku-pricing", tags=["SKUs"], summary="Get detailed pricing for a SKU")
 async def get_sku_pricing(
     region: str = Query(..., description="Azure region name."),
     skuName: str = Query(..., description="ARM SKU name (e.g. Standard_D2s_v3)."),  # noqa: N803
@@ -503,8 +540,8 @@ async def get_sku_pricing(
 # ---------------------------------------------------------------------------
 
 
-@app.post(
-    "/api/deployment-plan",
+@api_router.post(
+    "/deployment-plan",
     tags=["Deployment"],
     summary="Generate a deployment plan",
 )
@@ -528,8 +565,8 @@ async def deployment_plan(body: DeploymentIntentRequest) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-@app.post(
-    "/api/capacity-strategy",
+@api_router.post(
+    "/capacity-strategy",
     tags=["Strategy"],
     summary="Compute a capacity deployment strategy",
 )
@@ -557,8 +594,8 @@ async def capacity_strategy(body: WorkloadProfileRequest) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-@app.get(
-    "/api/sku-admission",
+@api_router.get(
+    "/sku-admission",
     tags=["SKUs"],
     summary="Get Admission Intelligence for a SKU",
 )
@@ -724,8 +761,8 @@ class ChatRequest(BaseModel):
     subscription_id: str | None = None
 
 
-@app.post(
-    "/api/chat",
+@api_router.post(
+    "/chat",
     tags=["AI Chat"],
     summary="AI chat with Azure Scout tools",
     responses={503: {"description": "AI chat not configured"}},
@@ -756,3 +793,10 @@ async def chat(body: ChatRequest) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Register the protected API router
+# ---------------------------------------------------------------------------
+
+app.include_router(api_router)

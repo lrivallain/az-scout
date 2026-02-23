@@ -1,5 +1,10 @@
 """Shared test fixtures for az-scout tests."""
 
+import os
+
+# Set mock auth mode before any az_scout imports to avoid Entra ID validation
+os.environ.setdefault("AUTH_MODE", "mock")
+
 from unittest.mock import MagicMock, patch
 
 import pytest

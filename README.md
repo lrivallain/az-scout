@@ -488,6 +488,87 @@ Every result includes these disclaimers:
 `POST /api/deployment-confidence` accepts a list of SKU names and returns canonical confidence results for each. The frontend calls this endpoint after spot-score updates to refresh displayed scores.
 
 
+## Authentication
+
+az-scout supports two authentication modes controlled by the `AUTH_MODE` environment variable:
+
+| Mode | Description |
+|---|---|
+| `entra` | Real Entra ID authentication via `fastapi-azure-auth`. All `/api/*` endpoints require a valid bearer token. |
+| `mock` | Authentication is bypassed — all API calls succeed without a token. **For local development only.** |
+
+The `/health` endpoint is always public (no authentication required).
+
+### Quick start (mock mode)
+
+```bash
+# No Azure config needed
+AUTH_MODE=mock uv run uvicorn az_scout.app:app --reload
+# or
+make dev-mock
+```
+
+### Quick start (Entra ID mode)
+
+```bash
+# Set required environment variables (or use a .env file — see .env.example)
+export AUTH_MODE=entra
+export AZURE_TENANT_ID=<your-tenant-id>
+export AZURE_CLIENT_ID=<your-client-id>
+export AZURE_CLIENT_SECRET=<your-client-secret>
+export AZURE_API_SCOPE=api://<your-client-id>/access_as_user
+
+uv run uvicorn az_scout.app:app --reload
+# or
+make dev
+```
+
+Then open `http://localhost:8000/docs` and click **Authorize** to sign in via the Swagger UI.
+
+### Entra ID Setup
+
+1. **Create an App Registration** in the [Azure portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
+
+2. **Expose an API**
+   - Set the **Application ID URI** to `api://<client_id>`.
+   - Add a scope: `access_as_user` (type: Delegated, admin consent: as needed).
+   - See [Quickstart: Expose a web API](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-expose-web-apis).
+
+3. **Authentication**
+   - Add the **Web** platform.
+   - Add a Redirect URI: `http://localhost:8000/docs/oauth2-redirect`
+   - Enable **ID tokens** and **Access tokens**.
+
+4. **Create a Client Secret**
+   - Under **Certificates & secrets**, create a new client secret.
+   - Copy the **Value** (not the Secret ID) into `AZURE_CLIENT_SECRET`.
+
+5. **Grant Admin Consent** (if required by your organisation)
+   - Under **API permissions**, grant admin consent for the configured scopes.
+
+6. **Configure your `.env`** – copy `.env.example` and fill in the values.
+
+### On-Behalf-Of (OBO) Flow
+
+When `AUTH_MODE=entra`, the API can exchange the user's bearer token for an Azure Resource Manager token using the [OBO flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-on-behalf-of-flow). This allows downstream ARM calls to run with the signed-in user's identity and permissions.
+
+The OBO credential is provided by [`OnBehalfOfCredential`](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.onbehalfofcredential) from `azure-identity`.
+
+**Requirement:** `AZURE_CLIENT_SECRET` must be set for OBO to work.
+
+### MCP Compatibility
+
+When the MCP server is mounted in the same FastAPI process (`/mcp`), it shares the same authentication context. MCP clients connecting via Streamable HTTP should pass a bearer token in the `Authorization` header when Entra ID authentication is enabled.
+
+When the MCP server runs standalone (`az-scout mcp`), it uses `DefaultAzureCredential` directly (same as before).
+
+### Disclaimer
+
+- This API uses delegated user permissions via Entra ID.
+- Deployment signals are heuristic estimates.
+- No deployment success is guaranteed.
+
+
 ## License
 
 [MIT](LICENSE.txt)

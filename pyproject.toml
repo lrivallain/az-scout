@@ -30,6 +30,8 @@ dependencies = [
     "click>=8.1",
     "mcp[cli]>=1.9",
     "httpx>=0.28",
+    "fastapi-azure-auth>=5.0",
+    "python-dotenv>=1.0",
 ]
 
 [project.urls]
