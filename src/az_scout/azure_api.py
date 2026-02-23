@@ -267,6 +267,33 @@ def get_mappings(
     return results
 
 
+def _sku_name_matches(filter_val: str, sku_name: str) -> bool:
+    """Check if *filter_val* matches *sku_name* with fuzzy multi-part logic.
+
+    First tries a direct substring match.  If that fails and the filter
+    contains hyphens or underscores, it splits into parts and checks that all
+    parts appear in the SKU name in order.  This lets user-friendly names like
+    ``"FX48-v2"`` match ARM names like ``Standard_FX48mds_v2``.
+    """
+    if filter_val in sku_name:
+        return True
+    # Normalise separators and try again
+    normalised = filter_val.replace("-", "_")
+    if normalised in sku_name:
+        return True
+    # Multi-part: split on separators and check all parts appear in order
+    parts = [p for p in normalised.split("_") if p]
+    if len(parts) <= 1:
+        return False
+    pos = 0
+    for part in parts:
+        idx = sku_name.find(part, pos)
+        if idx == -1:
+            return False
+        pos = idx + len(part)
+    return True
+
+
 def get_skus(
     region: str,
     subscription_id: str,
@@ -324,8 +351,8 @@ def get_skus(
         if sku.get("resourceType") != resource_type:
             continue
 
-        # Name / family substring filters
-        if name_lower and name_lower not in (sku.get("name") or "").lower():
+        # Name / family substring filters (fuzzy multi-part matching)
+        if name_lower and not _sku_name_matches(name_lower, (sku.get("name") or "").lower()):
             continue
         if family_lower and family_lower not in (sku.get("family") or "").lower():
             continue
@@ -958,6 +985,31 @@ def _fetch_all_retail_prices(
         f"and serviceName eq 'Virtual Machines' "
         f"and armSkuName eq '{sku_name}'"
     )
+    items = _fetch_retail_prices_with_filter(odata_filter, currency_code)
+
+    # If exact match returned nothing, try a 'contains' query as fallback.
+    # This handles cases where the caller has a slightly wrong ARM name
+    # (e.g. "Standard_FX48_v2" instead of "Standard_FX48mds_v2").
+    if not items:
+        parts = sku_name.replace("-", "_").split("_")
+        # Use the most distinctive part (skip "Standard" prefix)
+        search_parts = [p for p in parts if p.lower() != "standard" and p]
+        if search_parts:
+            contains_filter = (
+                f"armRegionName eq '{region}' "
+                f"and serviceName eq 'Virtual Machines' "
+                f"and contains(armSkuName, '{search_parts[0]}')"
+            )
+            items = _fetch_retail_prices_with_filter(contains_filter, currency_code)
+
+    return items
+
+
+def _fetch_retail_prices_with_filter(
+    odata_filter: str,
+    currency_code: str = "USD",
+) -> list[dict]:
+    """Fetch retail price items matching an OData filter."""
     items: list[dict] = []
     url: str | None = RETAIL_PRICES_URL
     params: dict[str, str] | None = {
@@ -1053,6 +1105,14 @@ def get_sku_pricing_detail(
     except Exception:
         logger.warning("Failed to fetch detailed prices for %s in %s", sku_name, region)
         return result
+
+    # If the fuzzy fallback found items for a *different* armSkuName,
+    # update the result to reflect the actual matched SKU name.
+    if items:
+        actual_arm_name = items[0].get("armSkuName", sku_name)
+        if actual_arm_name != sku_name:
+            result["skuName"] = actual_arm_name
+            result["matchedFrom"] = sku_name
 
     for item in items:
         if not _is_linux(item):

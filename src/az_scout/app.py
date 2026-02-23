@@ -436,8 +436,10 @@ class ChatRequest(BaseModel):
     """Request body for the chat endpoint."""
 
     messages: list[ChatMessage]
+    mode: str = "discussion"
     tenant_id: str | None = None
     region: str | None = None
+    subscription_id: str | None = None
 
 
 @app.post(
@@ -462,7 +464,13 @@ async def chat(body: ChatRequest) -> StreamingResponse:
 
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     return StreamingResponse(
-        chat_stream(messages, tenant_id=body.tenant_id, region=body.region),
+        chat_stream(
+            messages,
+            tenant_id=body.tenant_id,
+            region=body.region,
+            subscription_id=body.subscription_id,
+            mode=body.mode,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

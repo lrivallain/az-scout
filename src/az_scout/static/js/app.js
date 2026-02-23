@@ -133,6 +133,9 @@ async function init() {
     // Restore column visibility preferences
     _restoreColumnPrefs();
 
+    // Restore chat state immediately (before any async work to avoid flash)
+    _restoreChatHistory();
+
     // Topology subscription filter
     document.getElementById("topo-sub-filter").addEventListener("input", e => renderTopoSubList(e.target.value));
 
@@ -177,11 +180,6 @@ async function init() {
 
     updateTopoLoadButton();
     updatePlannerLoadButton();
-
-    // Restore chat history if persistence is enabled
-    _restoreChatHistory();
-
-
 }
 
 // ---------------------------------------------------------------------------
@@ -2147,10 +2145,18 @@ let _chatHistoryIdx = -1;    // -1 = composing new message
 let _chatDraft = "";         // saved draft while navigating history
 let _chatPersist = false;    // whether to save chat history to localStorage
 let _chatPinned = false;     // whether chat is pinned to right side
+let _chatMode = "discussion"; // "discussion" | "planner"
 
 const _CHAT_STORAGE_KEY = "azm-chat-history";
 const _CHAT_PERSIST_KEY = "azm-chat-persist";
 const _CHAT_INPUT_HIST_KEY = "azm-chat-input-history";
+const _CHAT_MODE_KEY = "azm-chat-mode";
+
+// Per-mode conversation state: { discussion: {messages, inputHistory}, planner: {messages, inputHistory} }
+const _chatModeState = {
+    discussion: { messages: [], inputHistory: [] },
+    planner:   { messages: [], inputHistory: [] },
+};
 
 
 function toggleChatPanel() {
@@ -2164,6 +2170,72 @@ function toggleChatPanel() {
     if (panel.classList.contains("d-none") && _chatPinned) {
         _setChatPinned(false);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Chat mode switching  (Discussion ↔ Planner)
+// ---------------------------------------------------------------------------
+
+const _CHAT_WELCOME = {
+    discussion: `👋 Hi! I'm your Azure Scout assistant. Ask me about Azure regions, SKU availability, pricing, zone mappings, and more. I can query live Azure data for you.
+- [[Show me available VM sizes in this region]]
+- [[Compare zone mappings across my subscriptions]]
+- [[What are the cheapest spot VMs with 4 vCPUs?]]
+- [[List all regions with availability zones]]`,
+    planner: `🗺️ Welcome to the **VM Deployment Planner**! I can help you with one of these:
+- [[Find the best region for my VM workload]]
+- [[Find the right VM size in a specific region]]
+- [[Pick the best availability zone for a VM SKU]]`,
+};
+
+function switchChatMode(mode) {
+    if (mode === _chatMode || _chatStreaming) return;
+
+    // Save current mode's conversation state
+    _chatModeState[_chatMode].messages = [..._chatMessages];
+    _chatModeState[_chatMode].inputHistory = [..._chatInputHistory];
+
+    // Switch
+    _chatMode = mode;
+    try { localStorage.setItem(_CHAT_MODE_KEY, mode); } catch {}
+
+    // Update toggle UI
+    document.querySelectorAll("#chat-mode-toggle button").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.mode === mode);
+    });
+
+    // Restore target mode's conversation (or start fresh)
+    _chatMessages = [...(_chatModeState[mode].messages || [])];
+    _chatInputHistory = [...(_chatModeState[mode].inputHistory || [])];
+    _chatHistoryIdx = -1;
+    _chatDraft = "";
+
+    // Rebuild chat UI
+    const container = document.getElementById("chat-messages");
+    if (!container) return;
+    container.innerHTML = "";
+
+    // Show welcome message
+    const welcome = document.createElement("div");
+    welcome.className = "chat-message assistant";
+    welcome.innerHTML = `<div class="chat-bubble">${_renderMarkdown(_CHAT_WELCOME[mode])}</div>`;
+    container.appendChild(welcome);
+
+    // Replay stored messages
+    for (const msg of _chatMessages) {
+        _appendChatBubble(msg.role, msg.content);
+    }
+
+    // Update input placeholder
+    const input = document.getElementById("chat-input");
+    if (input) {
+        input.placeholder = mode === "planner"
+            ? "Describe your deployment needs…"
+            : "Ask about Azure SKUs, zones, pricing…";
+        input.focus();
+    }
+
+    _saveChatHistory();
 }
 
 function toggleChatPin() {
@@ -2226,8 +2298,12 @@ function toggleChatPersist() {
 function _saveChatHistory() {
     if (!_chatPersist) return;
     try {
-        localStorage.setItem(_CHAT_STORAGE_KEY, JSON.stringify(_chatMessages));
+        // Save per-mode state
+        _chatModeState[_chatMode].messages = [..._chatMessages];
+        _chatModeState[_chatMode].inputHistory = [..._chatInputHistory];
+        localStorage.setItem(_CHAT_STORAGE_KEY, JSON.stringify(_chatModeState));
         localStorage.setItem(_CHAT_INPUT_HIST_KEY, JSON.stringify(_chatInputHistory));
+        localStorage.setItem(_CHAT_MODE_KEY, _chatMode);
     } catch {}
 }
 
@@ -2236,32 +2312,64 @@ function _restoreChatHistory() {
         _chatPersist = localStorage.getItem(_CHAT_PERSIST_KEY) === "1";
         const btn = document.getElementById("chat-persist-btn");
         if (btn) btn.classList.toggle("active", _chatPersist);
-        if (!_chatPersist) return;
 
-        const saved = localStorage.getItem(_CHAT_STORAGE_KEY);
-        const savedInput = localStorage.getItem(_CHAT_INPUT_HIST_KEY);
-        if (!saved) return;
-
-        const msgs = JSON.parse(saved);
-        if (!Array.isArray(msgs) || !msgs.length) return;
-
-        _chatMessages = msgs;
-        if (savedInput) {
-            const inp = JSON.parse(savedInput);
-            if (Array.isArray(inp)) _chatInputHistory = inp;
+        // Restore saved mode
+        const savedMode = localStorage.getItem(_CHAT_MODE_KEY);
+        if (savedMode && (savedMode === "discussion" || savedMode === "planner")) {
+            _chatMode = savedMode;
+            document.querySelectorAll("#chat-mode-toggle button").forEach(b => {
+                b.classList.toggle("active", b.dataset.mode === _chatMode);
+            });
         }
 
-        // Rebuild the chat UI
+        let hasHistory = false;
+
+        if (_chatPersist) {
+            const saved = localStorage.getItem(_CHAT_STORAGE_KEY);
+            if (saved) {
+                const state = JSON.parse(saved);
+                // Support both old format (array) and new format (object with per-mode state)
+                if (Array.isArray(state)) {
+                    // Legacy: migrate old format into discussion mode
+                    _chatModeState.discussion.messages = state;
+                } else if (state && typeof state === "object") {
+                    // Support old "assistant" key for backward compat
+                    const disc = state.discussion || state.assistant;
+                    if (disc?.messages) _chatModeState.discussion = disc;
+                    if (state.planner?.messages) _chatModeState.planner = state.planner;
+                }
+
+                // Load current mode's state
+                _chatMessages = [...(_chatModeState[_chatMode].messages || [])];
+                _chatInputHistory = [...(_chatModeState[_chatMode].inputHistory || [])];
+                hasHistory = _chatMessages.length > 0;
+            }
+        }
+
+        // Build the chat UI in one pass (no flash)
         const container = document.getElementById("chat-messages");
         if (!container) return;
-        container.innerHTML = `<div class="chat-message assistant"><div class="chat-bubble">
-            \uD83D\uDC4B Hi! I'm your Azure Scout assistant. Ask me about Azure regions, SKU availability, pricing, zone mappings, and more. I can query live Azure data for you.
-        </div></div>
-        <div class="chat-message assistant"><div class="chat-bubble">
-            <em>Restored ${msgs.filter(m => m.role === "user").length} message(s) from previous session.</em>
-        </div></div>`;
-        for (const msg of msgs) {
-            _appendChatBubble(msg.role, msg.content);
+
+        const welcome = _renderMarkdown(_CHAT_WELCOME[_chatMode]);
+        container.innerHTML = `<div class="chat-message assistant"><div class="chat-bubble">${welcome}</div></div>`;
+
+        if (hasHistory) {
+            // Add restored-session notice then replay messages
+            const notice = document.createElement("div");
+            notice.className = "chat-message assistant";
+            notice.innerHTML = `<div class="chat-bubble"><em>Restored ${_chatMessages.filter(m => m.role === "user").length} message(s) from previous session.</em></div>`;
+            container.appendChild(notice);
+            for (const msg of _chatMessages) {
+                _appendChatBubble(msg.role, msg.content);
+            }
+        }
+
+        // Update placeholder
+        const input = document.getElementById("chat-input");
+        if (input) {
+            input.placeholder = _chatMode === "planner"
+                ? "Describe your deployment needs…"
+                : "Ask about Azure SKUs, zones, pricing…";
         }
     } catch {}
 }
@@ -2271,18 +2379,13 @@ function clearChat() {
     _chatInputHistory = [];
     _chatHistoryIdx = -1;
     _chatDraft = "";
+    _chatModeState[_chatMode].messages = [];
+    _chatModeState[_chatMode].inputHistory = [];
     _saveChatHistory();
     const container = document.getElementById("chat-messages");
     if (!container) return;
-    container.innerHTML = `<div class="chat-message assistant"><div class="chat-bubble">
-        👋 Hi! I'm your Azure Scout assistant. Ask me about Azure regions, SKU availability, pricing, zone mappings, and more. I can query live Azure data for you.
-        <div class="chat-suggestions">
-            <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">Show me available VM sizes in this region</button>
-            <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">Compare zone mappings across my subscriptions</button>
-            <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">What are the cheapest spot VMs with 4 vCPUs?</button>
-            <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">List all regions with availability zones</button>
-        </div>
-    </div></div>`;
+    const welcome = _renderMarkdown(_CHAT_WELCOME[_chatMode]);
+    container.innerHTML = `<div class="chat-message assistant"><div class="chat-bubble">${welcome}</div></div>`;
 }
 
 function handleChatKeydown(e) {
@@ -2314,8 +2417,10 @@ async function sendChatMessage() {
     _chatMessages.push({ role: "user", content: text });
     _saveChatHistory();
 
-    // Create assistant bubble for streaming
+    // Create assistant bubble with thinking indicator
     const assistantBubble = _appendChatBubble("assistant", "");
+    assistantBubble.innerHTML = '<span class="chat-thinking"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+    _scrollChatBottom();
     const sendBtn = document.getElementById("chat-send-btn");
     _chatStreaming = true;
     if (sendBtn) sendBtn.disabled = true;
@@ -2328,8 +2433,10 @@ async function sendChatMessage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 messages: _chatMessages,
+                mode: _chatMode,
                 tenant_id: tenantId || undefined,
                 region: regionId || undefined,
+                subscription_id: plannerSubscriptionId || undefined,
             }),
         });
 
@@ -2364,15 +2471,21 @@ async function sendChatMessage() {
                 if (payload.type === "delta") {
                     fullContent += payload.content;
                     assistantBubble.innerHTML = _renderMarkdown(fullContent);
+                    assistantBubble.closest(".chat-message")?.classList.remove("is-thinking");
                     _scrollChatBottom();
                 } else if (payload.type === "tool_call") {
-                    _appendToolStatus(assistantBubble, payload.name, "calling");
+                    _appendToolStatus(assistantBubble, payload.name, "calling", payload.arguments);
                     _scrollChatBottom();
                 } else if (payload.type === "tool_result") {
                     _updateToolStatus(assistantBubble, payload.name, "done");
                     _scrollChatBottom();
                 } else if (payload.type === "ui_action") {
                     _handleChatUiAction(payload);
+                } else if (payload.type === "status") {
+                    // Transient status message (e.g. rate-limit retry)
+                    assistantBubble.innerHTML = `<span class="text-muted"><em>${escapeHtml(payload.content)}</em></span>`;
+                    assistantBubble.closest(".chat-message")?.classList.remove("is-thinking");
+                    _scrollChatBottom();
                 } else if (payload.type === "error") {
                     fullContent = ""; // Don't store error as assistant message
                     assistantBubble.innerHTML = `<span class="text-danger"><strong>Error:</strong> ${escapeHtml(payload.content)}</span>`
@@ -2487,7 +2600,7 @@ function _navigateChatHistory(direction, e) {
     input.setSelectionRange(input.value.length, input.value.length);
 }
 
-function _appendToolStatus(bubble, toolName, status) {
+function _appendToolStatus(bubble, toolName, status, argsJson) {
     let toolsDiv = bubble.querySelector(".chat-tool-calls");
     if (!toolsDiv) {
         toolsDiv = document.createElement("div");
@@ -2499,6 +2612,17 @@ function _appendToolStatus(bubble, toolName, status) {
     badge.dataset.tool = toolName;
     const friendlyName = toolName.replace(/_/g, " ");
     badge.innerHTML = `<i class="bi bi-gear-fill spin"></i> ${escapeHtml(friendlyName)}`;
+    // Store arguments for tooltip
+    if (argsJson) {
+        try {
+            const parsed = typeof argsJson === "string" ? JSON.parse(argsJson) : argsJson;
+            const lines = Object.entries(parsed)
+                .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+                .join("\n");
+            badge.title = lines;
+            badge.style.cursor = "help";
+        } catch { /* ignore parse errors */ }
+    }
     toolsDiv.appendChild(badge);
 }
 

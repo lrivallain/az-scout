@@ -15,6 +15,11 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
   - Pin-to-side mode docks the chat as a resizable sidebar.
   - Tenant and region context auto-injected into tool calls; `switch_tenant`/`switch_region` tools update the UI.
   - Conversation persistence, input history (Up/Down arrows), error retry, and suggested prompts on start.
+- **Planner chat mode** – pill-style toggle in the chat panel header switches between *Assistant* (general Q&A)
+  and *Planner* (guided deployment advisor). The planner follows three independent planning paths
+  (region selection, SKU selection, zone selection) and relies on the model's built-in knowledge of
+  Azure VM families and best practices alongside live tool data.
+  - Per-mode conversation state (messages, input history) persisted independently to `localStorage`.
 - Numeric operator filters on SKU table columns (`>`, `>=`, `<`, `<=`, `=`, ranges).
 
 ## [2026.2.7] - 2026-02-20
