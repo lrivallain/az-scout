@@ -22,9 +22,11 @@ Or add to your MCP client config (e.g. Claude Desktop):
 import json
 import logging
 import os
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from pydantic import Field
 
 from az_scout import azure_api
 from az_scout.models.capacity_strategy import (
@@ -96,12 +98,12 @@ def list_tenants() -> str:
 
 
 @mcp.tool()
-def list_subscriptions(tenant_id: str | None = None) -> str:
+def list_subscriptions(
+    tenant_id: Annotated[
+        str | None, Field(description="Optional tenant ID to scope the query.")
+    ] = None,
+) -> str:
     """List enabled Azure subscriptions.
-
-    Args:
-        tenant_id: Optional tenant ID to scope the query. If omitted the
-                   default tenant from the current credential is used.
 
     Returns a JSON array of ``{"id": ..., "name": ...}`` objects sorted
     alphabetically.
@@ -112,15 +114,12 @@ def list_subscriptions(tenant_id: str | None = None) -> str:
 
 @mcp.tool()
 def list_regions(
-    subscription_id: str | None = None,
-    tenant_id: str | None = None,
+    subscription_id: Annotated[
+        str | None, Field(description="Subscription ID. Auto-discovered if omitted.")
+    ] = None,
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
 ) -> str:
     """List Azure regions that support Availability Zones.
-
-    Args:
-        subscription_id: Subscription to query. If omitted the first enabled
-                         subscription is auto-discovered.
-        tenant_id: Optional tenant ID to scope the query.
 
     Returns a JSON array of ``{"name": ..., "displayName": ...}`` for each
     AZ-enabled region.
@@ -131,9 +130,9 @@ def list_regions(
 
 @mcp.tool()
 def get_zone_mappings(
-    region: str,
-    subscription_ids: list[str],
-    tenant_id: str | None = None,
+    region: Annotated[str, Field(description="Azure region name (e.g. eastus).")],
+    subscription_ids: Annotated[list[str], Field(description="List of subscription IDs to query.")],
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
 ) -> str:
     """Get logical-to-physical Availability Zone mappings.
 
@@ -141,11 +140,6 @@ def get_zone_mappings(
     physical zone identifiers (e.g. ``eastus-az1``).  This is essential
     for understanding whether two subscriptions share the same physical
     zone when they reference the same logical zone number.
-
-    Args:
-        region: Azure region name (e.g. ``eastus``, ``westeurope``).
-        subscription_ids: List of subscription IDs to query.
-        tenant_id: Optional tenant ID to scope the query.
     """
     result = azure_api.get_mappings(region, subscription_ids, tenant_id)
     return json.dumps(result, indent=2)
@@ -153,23 +147,55 @@ def get_zone_mappings(
 
 @mcp.tool()
 def get_sku_availability(
-    region: str,
-    subscription_id: str,
-    tenant_id: str | None = None,
-    resource_type: str = "virtualMachines",
-    name: str | None = None,
-    family: str | None = None,
-    min_vcpus: int | None = None,
-    max_vcpus: int | None = None,
-    min_memory_gb: float | None = None,
-    max_memory_gb: float | None = None,
-    include_prices: bool = False,
-    currency_code: str = "USD",
+    region: Annotated[str, Field(description="Azure region name (e.g. eastus).")],
+    subscription_id: Annotated[str, Field(description="Subscription ID to query.")],
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
+    resource_type: Annotated[
+        str, Field(description="ARM resource type (default: virtualMachines).")
+    ] = "virtualMachines",
+    name: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Fuzzy filter on SKU name (case-insensitive). "
+                "Supports multi-part matching: 'FX48-v2' matches "
+                "Standard_FX48mds_v2. Use the shortest distinctive "
+                "prefix when unsure of the exact ARM name."
+            )
+        ),
+    ] = None,
+    family: Annotated[
+        str | None, Field(description="Substring filter on SKU family (case-insensitive).")
+    ] = None,
+    min_vcpus: Annotated[int | None, Field(description="Minimum vCPU count (inclusive).")] = None,
+    max_vcpus: Annotated[int | None, Field(description="Maximum vCPU count (inclusive).")] = None,
+    min_memory_gb: Annotated[
+        float | None, Field(description="Minimum memory in GB (inclusive).")
+    ] = None,
+    max_memory_gb: Annotated[
+        float | None, Field(description="Maximum memory in GB (inclusive).")
+    ] = None,
+    include_prices: Annotated[
+        bool,
+        Field(
+            description=(
+                "Include retail pricing (PAYGO, Spot). "
+                "Defaults to false — set to true whenever pricing information is needed."
+            )
+        ),
+    ] = False,
+    currency_code: Annotated[
+        str, Field(description="Currency code for prices (default: USD).")
+    ] = "USD",
 ) -> str:
     """Get VM SKU availability per zone for a region and subscription.
 
     Returns resource SKUs (VM sizes by default) with their zone availability,
-    zone restrictions and key capabilities (vCPUs, memory).
+    zone restrictions, key capabilities (vCPUs, memory), quotas, and a
+    deployment confidence score (0–100).
+
+    Set ``include_prices`` to ``True`` to also get retail pricing (PAYGO,
+    Spot) — **without this flag, NO pricing data is returned**.
 
     **Tip:** Use the filter parameters to reduce the output size – especially
     useful in conversational contexts. When no filters are provided, all SKUs
@@ -190,23 +216,6 @@ def get_sku_availability(
     - **paygo**: pay-as-you-go price per hour (or ``null``)
     - **spot**: Spot price per hour (or ``null``)
     - **currency**: the currency code used
-
-    Args:
-        region: Azure region name (e.g. ``eastus``).
-        subscription_id: Subscription ID to query.
-        tenant_id: Optional tenant ID to scope the query.
-        resource_type: ARM resource type to filter (default: ``virtualMachines``).
-                       Other examples: ``disks``, ``snapshots``.
-        name: Substring filter on SKU name (case-insensitive).
-              E.g. ``"D2s"`` matches ``Standard_D2s_v3``.
-        family: Substring filter on SKU family (case-insensitive).
-                E.g. ``"DSv3"`` matches ``standardDSv3Family``.
-        min_vcpus: Minimum number of vCPUs (inclusive).
-        max_vcpus: Maximum number of vCPUs (inclusive).
-        min_memory_gb: Minimum memory in GB (inclusive).
-        max_memory_gb: Maximum memory in GB (inclusive).
-        include_prices: Include retail pricing info (default: ``False``).
-        currency_code: Currency for prices (default: ``"USD"``).
     """
     result = azure_api.get_skus(
         region,
@@ -248,11 +257,13 @@ def get_sku_availability(
 
 @mcp.tool()
 def get_spot_scores(
-    region: str,
-    subscription_id: str,
-    vm_sizes: list[str],
-    instance_count: int = 1,
-    tenant_id: str | None = None,
+    region: Annotated[str, Field(description="Azure region name (e.g. eastus).")],
+    subscription_id: Annotated[str, Field(description="Subscription ID to query.")],
+    vm_sizes: Annotated[list[str], Field(description="List of VM size names.")],
+    instance_count: Annotated[
+        int, Field(description="Number of instances to evaluate (default: 1).")
+    ] = 1,
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
 ) -> str:
     """Get Spot Placement Scores for VM sizes in a region.
 
@@ -260,12 +271,8 @@ def get_spot_scores(
     indicating the likelihood of successful Spot VM allocation.
     This is **not** a measure of datacenter capacity.
 
-    Args:
-        region: Azure region name (e.g. ``eastus``).
-        subscription_id: Subscription ID to query.
-        vm_sizes: List of VM size names (e.g. ``["Standard_D2s_v3"]``).
-        instance_count: Number of instances to evaluate (default: 1).
-        tenant_id: Optional tenant ID to scope the query.
+    Works for **any** VM SKU — always call this tool when Spot is
+    discussed; never assume a SKU lacks Spot scores without checking.
     """
     result = azure_api.get_spot_placement_scores(
         region,
@@ -279,13 +286,30 @@ def get_spot_scores(
 
 @mcp.tool()
 def get_sku_pricing_detail(
-    region: str,
-    sku_name: str,
-    currency_code: str = "USD",
-    subscription_id: str | None = None,
-    tenant_id: str | None = None,
+    region: Annotated[str, Field(description="Azure region name (e.g. swedencentral).")],
+    sku_name: Annotated[
+        str,
+        Field(
+            description=(
+                "Exact ARM SKU name (e.g. Standard_M128s_v2). "
+                "Call get_sku_availability first to discover the correct name — "
+                "user-friendly names like 'M128' will NOT work."
+            )
+        ),
+    ],
+    currency_code: Annotated[str, Field(description="Currency code (default: USD).")] = "USD",
+    subscription_id: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Subscription ID — provide this to unlock the full VM profile "
+                "(capabilities, zones, restrictions). Without it, only pricing is returned."
+            )
+        ),
+    ] = None,
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
 ) -> str:
-    """Get detailed Linux pricing for a single VM SKU.
+    """Get detailed Linux pricing AND full technical profile for a single VM SKU.
 
     Returns per-hour prices for every pricing model: pay-as-you-go, Spot,
     Reserved Instance (1 Year / 3 Years) and Savings Plan (1 Year / 3 Years).
@@ -296,16 +320,15 @@ def get_sku_pricing_detail(
     ``profile`` object with full VM capabilities (compute, storage, network),
     deployment info (zones, restrictions, HyperV generation) and more.
 
-    Args:
-        region: Azure region name (e.g. ``swedencentral``).
-        sku_name: ARM SKU name (e.g. ``Standard_D2s_v5``).
-        currency_code: ISO 4217 currency code (default: ``"USD"``).
-        subscription_id: Optional subscription ID to include VM profile data.
-        tenant_id: Optional tenant ID to scope the profile query.
+    **Important:** ``sku_name`` must be the exact ARM SKU name
+    (e.g. ``Standard_M128s_v2``, **not** ``M128``). Call
+    ``get_sku_availability`` first to discover correct ARM names.
     """
     result = azure_api.get_sku_pricing_detail(region, sku_name, currency_code)
+    # Use the actual matched ARM name for profile lookup (fuzzy match may differ)
+    actual_name = result.get("skuName", sku_name)
     if subscription_id:
-        profile = azure_api.get_sku_profile(region, subscription_id, sku_name, tenant_id)
+        profile = azure_api.get_sku_profile(region, subscription_id, actual_name, tenant_id)
         if profile is not None:
             result["profile"] = profile
     return json.dumps(result, indent=2)
@@ -313,28 +336,51 @@ def get_sku_pricing_detail(
 
 @mcp.tool()
 def capacity_strategy(
-    workload_name: str,
-    subscription_id: str,
-    tenant_id: str | None = None,
-    sku: str | None = None,
-    instance_count: int = 1,
-    gpu_count_total: int | None = None,
-    data_residency: str | None = None,
-    allow_regions: list[str] | None = None,
-    deny_regions: list[str] | None = None,
-    require_zonal: bool = False,
-    max_inter_region_rtt_ms: int | None = None,
-    statefulness: str = "stateless",
-    cross_region_traffic: str = "low",
-    latency_sensitivity: str = "medium",
-    replication_mode: str = "unknown",
-    rpo_target_seconds: int | None = None,
-    rto_target_seconds: int | None = None,
-    deployment_urgency: str = "this_week",
-    deployment_window: str | None = None,
-    currency_code: str = "USD",
-    prefer_spot: bool = False,
-    max_hourly_budget: float | None = None,
+    workload_name: Annotated[str, Field(description="Human-readable name for the workload.")],
+    subscription_id: Annotated[str, Field(description="Subscription ID to query.")],
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
+    sku: Annotated[
+        str | None,
+        Field(description="Preferred VM SKU name (e.g. Standard_D2s_v3)."),
+    ] = None,
+    instance_count: Annotated[int, Field(description="Number of VM instances needed.")] = 1,
+    gpu_count_total: Annotated[
+        int | None, Field(description="Total GPU count needed (filters to GPU SKUs).")
+    ] = None,
+    data_residency: Annotated[str | None, Field(description="'FR', 'EU', or 'ANY'.")] = None,
+    allow_regions: Annotated[
+        list[str] | None, Field(description="Explicit list of candidate regions.")
+    ] = None,
+    deny_regions: Annotated[list[str] | None, Field(description="Regions to exclude.")] = None,
+    require_zonal: Annotated[bool, Field(description="Require zone-redundant deployment.")] = False,
+    max_inter_region_rtt_ms: Annotated[
+        int | None, Field(description="Maximum acceptable RTT between regions.")
+    ] = None,
+    statefulness: Annotated[
+        str, Field(description="'stateless', 'soft-state', or 'stateful'.")
+    ] = "stateless",
+    cross_region_traffic: Annotated[str, Field(description="'low', 'medium', or 'heavy'.")] = "low",
+    latency_sensitivity: Annotated[
+        str, Field(description="'low', 'medium', or 'high'.")
+    ] = "medium",
+    replication_mode: Annotated[
+        str, Field(description="'none', 'async', 'sync', 'multi-master', 'unknown'.")
+    ] = "unknown",
+    rpo_target_seconds: Annotated[
+        int | None, Field(description="Recovery Point Objective in seconds.")
+    ] = None,
+    rto_target_seconds: Annotated[
+        int | None, Field(description="Recovery Time Objective in seconds.")
+    ] = None,
+    deployment_urgency: Annotated[
+        str, Field(description="'now', 'today', or 'this_week'.")
+    ] = "this_week",
+    deployment_window: Annotated[
+        str | None, Field(description="'anytime', 'night_cet', or 'weekend'.")
+    ] = None,
+    currency_code: Annotated[str, Field(description="'USD' or 'EUR'.")] = "USD",
+    prefer_spot: Annotated[bool, Field(description="Prefer Spot VMs.")] = False,
+    max_hourly_budget: Annotated[float | None, Field(description="Maximum hourly budget.")] = None,
 ) -> str:
     """Compute a deterministic Azure deployment strategy based on capacity signals and latency.
 
@@ -348,30 +394,6 @@ def capacity_strategy(
     Strategies: single_region, active_active, active_passive,
     sharded_multi_region, burst_overflow, time_window_deploy,
     progressive_ramp.
-
-    Args:
-        workload_name: Human-readable name for the workload.
-        subscription_id: Subscription ID to query.
-        tenant_id: Optional tenant ID.
-        sku: Preferred VM SKU name (e.g. ``Standard_D2s_v3``).
-        instance_count: Number of VM instances needed.
-        gpu_count_total: Total GPU count needed (filters to GPU SKUs).
-        data_residency: ``"FR"``, ``"EU"``, or ``"ANY"``.
-        allow_regions: Explicit list of candidate regions.
-        deny_regions: Regions to exclude.
-        require_zonal: Require zone-redundant deployment.
-        max_inter_region_rtt_ms: Maximum acceptable RTT between regions.
-        statefulness: ``"stateless"``, ``"soft-state"``, or ``"stateful"``.
-        cross_region_traffic: ``"low"``, ``"medium"``, or ``"heavy"``.
-        latency_sensitivity: ``"low"``, ``"medium"``, or ``"high"``.
-        replication_mode: ``"none"``, ``"async"``, ``"sync"``, ``"multi-master"``, ``"unknown"``.
-        rpo_target_seconds: Recovery Point Objective in seconds.
-        rto_target_seconds: Recovery Time Objective in seconds.
-        deployment_urgency: ``"now"``, ``"today"``, or ``"this_week"``.
-        deployment_window: ``"anytime"``, ``"night_cet"``, or ``"weekend"``.
-        currency_code: ``"USD"`` or ``"EUR"``.
-        prefer_spot: Prefer Spot VMs.
-        max_hourly_budget: Maximum hourly budget.
     """
     profile = WorkloadProfileRequest(
         workloadName=workload_name,
@@ -411,17 +433,15 @@ def capacity_strategy(
 
 @mcp.tool()
 def region_latency(
-    source_region: str,
-    target_region: str,
+    source_region: Annotated[
+        str, Field(description="Source Azure region name (e.g. francecentral).")
+    ],
+    target_region: Annotated[str, Field(description="Target Azure region name (e.g. westeurope).")],
 ) -> str:
     """Return indicative RTT latency between two Azure regions.
 
     Uses Microsoft published statistics from:
     https://learn.microsoft.com/en-us/azure/networking/azure-network-latency
-
-    Args:
-        source_region: Source Azure region name (e.g. ``francecentral``).
-        target_region: Target Azure region name (e.g. ``westeurope``).
     """
     rtt = get_rtt_ms(source_region, target_region)
     result = {
@@ -438,10 +458,10 @@ def region_latency(
 
 @mcp.tool()
 def sku_admission_intelligence(
-    region: str,
-    sku_name: str,
-    subscription_id: str,
-    tenant_id: str | None = None,
+    region: Annotated[str, Field(description="Azure region name (e.g. francecentral).")],
+    sku_name: Annotated[str, Field(description="ARM SKU name (e.g. Standard_D2s_v3).")],
+    subscription_id: Annotated[str, Field(description="Subscription ID for quota/spot queries.")],
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
 ) -> str:
     """Return Admission Intelligence signals for a single VM SKU.
 
@@ -450,12 +470,6 @@ def sku_admission_intelligence(
 
     All metrics are heuristic estimates derived from publicly observable
     Azure signals – they do NOT represent internal Azure capacity data.
-
-    Args:
-        region: Azure region name (e.g. ``francecentral``).
-        sku_name: ARM SKU name (e.g. ``Standard_D2s_v3``).
-        subscription_id: Subscription ID for quota/spot queries.
-        tenant_id: Optional tenant ID.
     """
     import contextlib
 

@@ -423,7 +423,6 @@
         </div>
 
     </div><!-- /tab-content -->
-
 </div><!-- /container -->
 
 <!-- ===== Footer ===== -->
@@ -488,7 +487,11 @@
     <div class="chat-resize-handle" id="chat-resize-handle" title="Drag to resize"></div>
     <div class="chat-panel-header">
         <span class="d-flex align-items-center gap-2">
-            <i class="bi bi-robot"></i> Azure Scout Assistant
+            <i class="bi bi-robot"></i>
+            <div class="chat-mode-toggle" id="chat-mode-toggle">
+                <button type="button" class="active" data-mode="discussion" onclick="switchChatMode('discussion')">Discussion</button>
+                <button type="button" data-mode="planner" onclick="switchChatMode('planner')">Planner</button>
+            </div>
         </span>
         <div class="d-flex gap-1">
             <button type="button" class="btn btn-sm btn-link chat-header-btn" id="chat-pin-btn"
@@ -507,19 +510,7 @@
             </button>
         </div>
     </div>
-    <div class="chat-messages" id="chat-messages">
-        <div class="chat-message assistant">
-            <div class="chat-bubble">
-                👋 Hi! I'm your Azure Scout assistant. Ask me about Azure regions, SKU availability, pricing, zone mappings, and more. I can query live Azure data for you.
-                <div class="chat-suggestions">
-                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">Show me available VM sizes in this region</button>
-                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">Compare zone mappings across my subscriptions</button>
-                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">What are the cheapest spot VMs with 4 vCPUs?</button>
-                    <button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">List all regions with availability zones</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div class="chat-messages" id="chat-messages"></div>
     <div class="chat-input-area">
         <div class="input-group">
             <textarea class="form-control" id="chat-input" placeholder="Ask about Azure SKUs, zones, pricing…"
