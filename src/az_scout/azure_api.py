@@ -538,7 +538,7 @@ def enrich_skus_with_quotas(
 SPOT_API_VERSION = "2025-06-05"
 _SPOT_CACHE_TTL = 600  # 10 minutes
 _spot_cache: dict[str, tuple[float, dict[str, dict[str, str]]]] = {}
-_SPOT_BATCH_SIZE = 100
+_SPOT_BATCH_SIZE = 5  # Azure API limit: max 5 VM sizes per call
 
 
 def _spot_cache_key(
@@ -598,11 +598,19 @@ def _fetch_spot_batch(
             )
             time.sleep(retry_after)
             continue
+        if resp.status_code == 400:
+            body = resp.text[:500]
+            msg = (
+                f"Bad request (400) for spot placement scores on "
+                f"subscription {subscription_id} / region {region}: {body}"
+            )
+            logger.warning(msg)
+            raise ValueError(msg)
         if resp.status_code == 403:
             msg = (
                 f"Access denied (403) for spot placement scores on subscription "
-                f"{subscription_id}. Ensure the identity has Virtual Machine "
-                f"Contributor (or equivalent) role."
+                f"{subscription_id}. Ensure the identity has the "
+                f"'Compute Recommendations Role' RBAC role."
             )
             logger.warning(msg)
             raise PermissionError(msg)
