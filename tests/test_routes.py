@@ -1776,7 +1776,7 @@ class TestDeploymentConfidence:
         assert "score" in conf
         assert "label" in conf
         assert "breakdown" in conf
-        assert "missing" in conf
+        assert "missingSignals" in conf
 
     def test_confidence_without_prices(self, client):
         """Without pricing, pricePressure should be in the missing list."""
@@ -1788,9 +1788,9 @@ class TestDeploymentConfidence:
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         conf = resp.json()[0]["confidence"]
-        assert "pricePressure" in conf["missing"]
+        assert "pricePressure" in conf["missingSignals"]
         # Spot is also missing (server-side has no spot scores)
-        assert "spot" in conf["missing"]
+        assert "spot" in conf["missingSignals"]
 
     def test_confidence_with_prices(self, client):
         """With includePrices=true and pricing data, pricePressure is present."""
@@ -1823,8 +1823,8 @@ class TestDeploymentConfidence:
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1&includePrices=true")
 
         conf = resp.json()[0]["confidence"]
-        assert "pricePressure" not in conf["missing"]
-        signal_names = [b["signal"] for b in conf["breakdown"]]
+        assert "pricePressure" not in conf["missingSignals"]
+        signal_names = [b["name"] for b in conf["breakdown"]["components"]]
         assert "pricePressure" in signal_names
 
     def test_confidence_with_quota(self, client):
@@ -1838,8 +1838,8 @@ class TestDeploymentConfidence:
             resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
 
         conf = resp.json()[0]["confidence"]
-        assert "quota" not in conf["missing"]
-        signal_names = [b["signal"] for b in conf["breakdown"]]
+        assert "quota" not in conf["missingSignals"]
+        signal_names = [b["name"] for b in conf["breakdown"]["components"]]
         assert "quota" in signal_names
 
     def test_confidence_with_restrictions(self, client):

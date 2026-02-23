@@ -188,11 +188,18 @@ def _normalise_old(old_result: dict) -> dict:
     }
 
 
+_KNOWN_DIVERGENCES = {"no_signals", "only_spot"}
+"""Cases where MIN_SIGNALS=2 in the canonical module intentionally returns
+score=0 / label="Unknown" instead of computing a value from <2 signals."""
+
+
 class TestScoringIso:
     """For identical numeric inputs, old and new must produce the same output."""
 
     @pytest.mark.parametrize("desc,kwargs", _CASES, ids=[c[0] for c in _CASES])
     def test_score_matches(self, desc: str, kwargs: dict):
+        if desc in _KNOWN_DIVERGENCES:
+            pytest.xfail(f"[{desc}] intentional MIN_SIGNALS=2 divergence")
         old = _normalise_old(_call_old(kwargs))
         new = _call_new(kwargs)
         assert old["score"] == new["score"], (
@@ -201,6 +208,8 @@ class TestScoringIso:
 
     @pytest.mark.parametrize("desc,kwargs", _CASES, ids=[c[0] for c in _CASES])
     def test_label_matches(self, desc: str, kwargs: dict):
+        if desc in _KNOWN_DIVERGENCES:
+            pytest.xfail(f"[{desc}] intentional MIN_SIGNALS=2 divergence")
         old = _normalise_old(_call_old(kwargs))
         new = _call_new(kwargs)
         assert old["label"] == new["label"], (
