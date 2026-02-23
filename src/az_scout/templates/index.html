@@ -11,6 +11,17 @@
     <link href="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/style.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    {% if auth_mode == 'entra' %}
+    <script src="https://unpkg.com/@azure/msal-browser@2.38.4/lib/msal-browser.min.js"></script>
+    {% endif %}
+    <script>
+        const AUTH_CONFIG = {
+            mode: "{{ auth_mode }}",
+            clientId: "{{ auth_client_id }}",
+            tenantId: "{{ auth_tenant_id }}",
+            scope: "{{ auth_scope }}",
+        };
+    </script>
 </head>
 <body class="d-flex flex-column min-vh-100">
 
@@ -22,7 +33,17 @@
             <span>Azure Scout</span>
         </a>
         <div class="d-flex align-items-center gap-2">
-            {% if auth_user %}
+            {% if auth_mode == 'entra' %}
+            <span class="text-body-secondary small d-flex align-items-center gap-1 d-none" id="auth-user-display">
+                <i class="bi bi-person-circle"></i> <span id="auth-user-name"></span>
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-primary d-none" id="auth-login-btn" onclick="msalSignIn()" title="Sign in">
+                <i class="bi bi-box-arrow-in-right"></i> Sign in
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="auth-logout-btn" onclick="msalSignOut()" title="Sign out">
+                <i class="bi bi-box-arrow-right"></i>
+            </button>
+            {% elif auth_user %}
             <span class="text-body-secondary small d-flex align-items-center gap-1" title="Signed in as {{ auth_user }}">
                 <i class="bi bi-person-circle"></i> {{ auth_user }}
             </span>

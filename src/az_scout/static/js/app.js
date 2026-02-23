@@ -3,6 +3,125 @@
    =================================================================== */
 
 // ---------------------------------------------------------------------------
+// MSAL Authentication (Entra ID mode only)
+// ---------------------------------------------------------------------------
+let msalInstance = null;
+let msalAccount = null;
+
+/**
+ * Initialize MSAL. Returns true if the user is already authenticated
+ * or if auth is not needed (mock mode).
+ */
+function initMsal() {
+    if (typeof AUTH_CONFIG === "undefined" || AUTH_CONFIG.mode !== "entra") return true;
+    if (typeof msal === "undefined") {
+        console.warn("MSAL library not loaded yet");
+        _showLoginButton();
+        return false;
+    }
+    msalInstance = new msal.PublicClientApplication({
+        auth: {
+            clientId: AUTH_CONFIG.clientId,
+            authority: `https://login.microsoftonline.com/${AUTH_CONFIG.tenantId}`,
+            redirectUri: window.location.origin,
+        },
+        cache: { cacheLocation: "localStorage" },
+    });
+    // Check for existing session
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+        msalAccount = accounts[0];
+        _showAuthUser(msalAccount.name || msalAccount.username);
+        return true;
+    }
+    _showLoginButton();
+    return false;
+}
+
+async function msalSignIn() {
+    // Lazy-init MSAL if it wasn't ready at DOMContentLoaded
+    if (!msalInstance) initMsal();
+    if (!msalInstance) {
+        console.error("MSAL could not be initialized");
+        return;
+    }
+    try {
+        const resp = await msalInstance.loginPopup({
+            scopes: [AUTH_CONFIG.scope],
+        });
+        msalAccount = resp.account;
+        _showAuthUser(msalAccount.name || msalAccount.username);
+        // Now load data
+        await _loadData();
+    } catch (err) {
+        console.error("MSAL sign-in failed:", err);
+    }
+}
+
+function msalSignOut() {
+    if (!msalInstance) return;
+    msalInstance.logoutPopup({ account: msalAccount });
+    msalAccount = null;
+    _showLoginButton();
+}
+
+// Shared promise so concurrent callers reuse one in-flight MSAL request.
+let _pendingTokenRequest = null;
+
+async function _getAccessToken() {
+    if (!msalInstance || !msalAccount) return null;
+    // If a token request is already in flight, piggy-back on it.
+    if (_pendingTokenRequest) return _pendingTokenRequest;
+    _pendingTokenRequest = _doAcquireToken();
+    try {
+        return await _pendingTokenRequest;
+    } finally {
+        _pendingTokenRequest = null;
+    }
+}
+
+async function _doAcquireToken() {
+    try {
+        const resp = await msalInstance.acquireTokenSilent({
+            scopes: [AUTH_CONFIG.scope],
+            account: msalAccount,
+        });
+        return resp.accessToken;
+    } catch (err) {
+        // Silent failed — try interactive
+        try {
+            const resp = await msalInstance.acquireTokenPopup({
+                scopes: [AUTH_CONFIG.scope],
+            });
+            msalAccount = resp.account;
+            return resp.accessToken;
+        } catch (popupErr) {
+            console.error("Token acquisition failed:", popupErr);
+            return null;
+        }
+    }
+}
+
+function _showAuthUser(name) {
+    const display = document.getElementById("auth-user-display");
+    const nameEl = document.getElementById("auth-user-name");
+    const loginBtn = document.getElementById("auth-login-btn");
+    const logoutBtn = document.getElementById("auth-logout-btn");
+    if (display) { display.classList.remove("d-none"); nameEl.textContent = name; }
+    if (loginBtn) loginBtn.classList.add("d-none");
+    if (logoutBtn) logoutBtn.classList.remove("d-none");
+}
+
+function _showLoginButton() {
+    const display = document.getElementById("auth-user-display");
+    const loginBtn = document.getElementById("auth-login-btn");
+    const logoutBtn = document.getElementById("auth-logout-btn");
+    if (display) display.classList.add("d-none");
+    if (loginBtn) loginBtn.classList.remove("d-none");
+    if (logoutBtn) logoutBtn.classList.add("d-none");
+}
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 let subscriptions = [];                     // [{id, name}] – all subs for current tenant
@@ -116,6 +235,9 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+    // Initialize MSAL — if entra mode and not authenticated, stop here
+    const authReady = initMsal();
+
     // Restore column visibility preferences
     _restoreColumnPrefs();
 
@@ -165,12 +287,16 @@ async function init() {
     // Init strategy subscription combobox
     initStratSubCombobox();
 
-    // Load tenants
+    // Only load data if authenticated (or in mock mode)
+    if (authReady) {
+        await _loadData();
+    }
+}
+
+/** Fetch tenants, regions, subscriptions — called after auth is confirmed. */
+async function _loadData() {
     await fetchTenants();
-
-    // Load regions + subscriptions in parallel
     await Promise.all([fetchRegions(), fetchSubscriptions()]);
-
     updateTopoLoadButton();
     updatePlannerLoadButton();
 }
@@ -189,7 +315,19 @@ function getActiveTabFromHash() {
 // API helpers
 // ---------------------------------------------------------------------------
 async function apiFetch(url) {
-    const resp = await fetch(url);
+    const headers = {};
+    let token = await _getAccessToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    let resp = await fetch(url, { headers });
+    // On 401, force a fresh token and retry once
+    if (resp.status === 401 && msalInstance) {
+        _pendingTokenRequest = null;
+        token = await _getAccessToken();
+        if (token) {
+            headers["Authorization"] = `Bearer ${token}`;
+            resp = await fetch(url, { headers });
+        }
+    }
     if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${resp.status}`);
@@ -198,11 +336,23 @@ async function apiFetch(url) {
 }
 
 async function apiPost(url, body) {
-    const resp = await fetch(url, {
+    const headers = { "Content-Type": "application/json" };
+    let token = await _getAccessToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    let resp = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(body),
     });
+    // On 401, force a fresh token and retry once
+    if (resp.status === 401 && msalInstance) {
+        _pendingTokenRequest = null;
+        token = await _getAccessToken();
+        if (token) {
+            headers["Authorization"] = `Bearer ${token}`;
+            resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+        }
+    }
     if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${resp.status}`);

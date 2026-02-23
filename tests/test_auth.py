@@ -66,11 +66,11 @@ class TestSettingsValidation:
     def test_entra_mode_requires_tenant_and_client_id(self):
         from az_scout.auth.settings import AuthSettings
 
-        with pytest.raises(Exception, match="AZURE_TENANT_ID"):
+        with pytest.raises(Exception, match="AUTH_TENANT_ID"):
             AuthSettings(
                 auth_mode="entra",
-                azure_tenant_id="",
-                azure_client_id="",
+                auth_tenant_id="",
+                auth_client_id="",
                 _env_file=None,
             )
 
@@ -79,8 +79,8 @@ class TestSettingsValidation:
 
         s = AuthSettings(
             auth_mode="mock",
-            azure_tenant_id="",
-            azure_client_id="",
+            auth_tenant_id="",
+            auth_client_id="",
             _env_file=None,
         )
         assert s.auth_mode == "mock"

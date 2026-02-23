@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "13110913782615244126"
+      "templateHash": "15564184320055158932"
     }
   },
   "parameters": {
@@ -76,25 +76,18 @@
         "description": "Assign Virtual Machine Contributor role for Spot Placement Scores. Set to false if you don't need spot scores."
       }
     },
-    "enableAuth": {
-      "type": "bool",
-      "defaultValue": false,
-      "metadata": {
-        "description": "Enable Entra ID authentication (EasyAuth) on the Container App."
-      }
-    },
     "authClientId": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Entra ID App Registration Client ID (required when enableAuth is true)."
+        "description": "Entra ID App Registration Client ID (required when authMode is \"entra\" or \"easyauth\")."
       }
     },
     "authClientSecret": {
       "type": "securestring",
       "defaultValue": "",
       "metadata": {
-        "description": "Entra ID App Registration Client Secret (required when enableAuth is true)."
+        "description": "Entra ID App Registration Client Secret (required when authMode is \"entra\" or \"easyauth\")."
       }
     },
     "authTenantId": {
@@ -102,6 +95,25 @@
       "defaultValue": "[tenant().tenantId]",
       "metadata": {
         "description": "Entra ID tenant ID for authentication. Defaults to the deployment tenant."
+      }
+    },
+    "authMode": {
+      "type": "string",
+      "defaultValue": "none",
+      "allowedValues": [
+        "none",
+        "entra",
+        "easyauth"
+      ],
+      "metadata": {
+        "description": "Authentication mode for the application: \"entra\" (fastapi-azure-auth + MSAL.js) or \"easyauth\" (platform-level). When \"none\", authentication is disabled."
+      }
+    },
+    "authApiScope": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "API scope URI exposed by the App Registration (e.g. api://<clientId>/access_as_user). Required when authMode is \"entra\"."
       }
     }
   },
@@ -166,7 +178,7 @@
             "allowInsecure": false
           },
           "registries": [],
-          "secrets": "[if(parameters('enableAuth'), createArray(createObject('name', 'microsoft-provider-authentication-secret', 'value', parameters('authClientSecret'))), createArray())]"
+          "secrets": "[if(equals(parameters('authMode'), 'easyauth'), createArray(createObject('name', 'microsoft-provider-authentication-secret', 'value', parameters('authClientSecret'))), if(equals(parameters('authMode'), 'entra'), createArray(createObject('name', 'auth-client-secret', 'value', parameters('authClientSecret'))), createArray()))]"
         },
         "template": {
           "containers": [
@@ -177,12 +189,7 @@
                 "cpu": "[json(parameters('containerCpu'))]",
                 "memory": "[parameters('containerMemory')]"
               },
-              "env": [
-                {
-                  "name": "AZURE_CLIENT_ID",
-                  "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('baseName'))), '2023-01-31').clientId]"
-                }
-              ]
+              "env": "[union(createArray(createObject('name', 'AZURE_CLIENT_ID', 'value', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('baseName'))), '2023-01-31').clientId)), if(equals(parameters('authMode'), 'entra'), createArray(createObject('name', 'AUTH_MODE', 'value', 'entra'), createObject('name', 'AUTH_TENANT_ID', 'value', parameters('authTenantId')), createObject('name', 'AUTH_CLIENT_ID', 'value', parameters('authClientId')), createObject('name', 'AUTH_API_SCOPE', 'value', parameters('authApiScope')), createObject('name', 'AUTH_CLIENT_SECRET', 'secretRef', 'auth-client-secret')), createArray(createObject('name', 'AUTH_MODE', 'value', 'mock'))))]"
             }
           ],
           "scale": {
@@ -207,7 +214,7 @@
       ]
     },
     {
-      "condition": "[parameters('enableAuth')]",
+      "condition": "[equals(parameters('authMode'), 'easyauth')]",
       "type": "Microsoft.App/containerApps/authConfigs",
       "apiVersion": "2024-03-01",
       "name": "[format('{0}/{1}', parameters('baseName'), 'current')]",

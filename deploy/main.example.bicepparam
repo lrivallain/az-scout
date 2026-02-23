@@ -32,8 +32,17 @@ param readerSubscriptionIds = [
 // Optional: disable the Virtual Machine Contributor role for Spot Placement Scores
 // param enableSpotScoreRole = false
 
-// Optional: enable Entra ID authentication (EasyAuth)
-// param enableAuth = true
+// Optional: enable Entra ID authentication
+//
+// Mode "entra" uses fastapi-azure-auth (app-level) + MSAL.js in the browser:
+// param authMode = 'entra'
+// param authClientId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+// param authClientSecret = '<secret-from-az-ad-app-credential-reset>'
+// param authApiScope = 'api://xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/access_as_user'
+// param authTenantId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+//
+// Mode "easyauth" uses platform-level Container Apps authentication:
+// param authMode = 'easyauth'
 // param authClientId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 // param authClientSecret = '<secret-from-az-ad-app-credential-reset>'
 // param authTenantId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'

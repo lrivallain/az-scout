@@ -75,8 +75,8 @@ _swagger_ui_init_oauth: dict[str, object] | None = None
 if auth_settings.auth_mode == "entra":
     _swagger_ui_init_oauth = {
         "usePkceWithAuthorizationCodeGrant": True,
-        "clientId": auth_settings.azure_client_id,
-        "scopes": auth_settings.azure_api_scope,
+        "clientId": auth_settings.auth_client_id,
+        "scopes": auth_settings.auth_api_scope,
     }
 
 
@@ -204,6 +204,10 @@ async def index(request: Request) -> HTMLResponse:
         {
             "version": __version__,
             "auth_user": auth_user,
+            "auth_mode": auth_settings.auth_mode,
+            "auth_client_id": auth_settings.auth_client_id,
+            "auth_tenant_id": auth_settings.auth_tenant_id,
+            "auth_scope": auth_settings.auth_api_scope,
             "chat_enabled": is_chat_enabled(),
         },
     )

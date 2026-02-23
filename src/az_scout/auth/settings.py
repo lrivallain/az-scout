@@ -26,10 +26,10 @@ class AuthSettings(BaseSettings):
 
     auth_mode: Literal["entra", "mock"] = "entra"
 
-    azure_tenant_id: str = ""
-    azure_client_id: str = ""
-    azure_client_secret: str = ""
-    azure_api_scope: str = ""
+    auth_tenant_id: str = ""
+    auth_client_id: str = ""
+    auth_client_secret: str = ""
+    auth_api_scope: str = ""
 
     host: str = "0.0.0.0"
     port: int = 8000
@@ -40,10 +40,10 @@ class AuthSettings(BaseSettings):
     def _validate_entra_vars(self) -> "AuthSettings":
         if self.auth_mode == "entra":
             missing: list[str] = []
-            if not self.azure_tenant_id:
-                missing.append("AZURE_TENANT_ID")
-            if not self.azure_client_id:
-                missing.append("AZURE_CLIENT_ID")
+            if not self.auth_tenant_id:
+                missing.append("AUTH_TENANT_ID")
+            if not self.auth_client_id:
+                missing.append("AUTH_CLIENT_ID")
             if missing:
                 raise ValueError(
                     f"AUTH_MODE=entra requires {', '.join(missing)} to be set. "

@@ -513,10 +513,10 @@ make dev-mock
 ```bash
 # Set required environment variables (or use a .env file — see .env.example)
 export AUTH_MODE=entra
-export AZURE_TENANT_ID=<your-tenant-id>
-export AZURE_CLIENT_ID=<your-client-id>
-export AZURE_CLIENT_SECRET=<your-client-secret>
-export AZURE_API_SCOPE=api://<your-client-id>/access_as_user
+export AUTH_TENANT_ID=<your-tenant-id>
+export AUTH_CLIENT_ID=<your-client-id>
+export AUTH_CLIENT_SECRET=<your-client-secret>
+export AUTH_API_SCOPE=api://<your-client-id>/access_as_user
 
 uv run uvicorn az_scout.app:app --reload
 # or
@@ -541,7 +541,7 @@ Then open `http://localhost:8000/docs` and click **Authorize** to sign in via th
 
 4. **Create a Client Secret**
    - Under **Certificates & secrets**, create a new client secret.
-   - Copy the **Value** (not the Secret ID) into `AZURE_CLIENT_SECRET`.
+   - Copy the **Value** (not the Secret ID) into `AUTH_CLIENT_SECRET`.
 
 5. **Grant Admin Consent** (if required by your organisation)
    - Under **API permissions**, grant admin consent for the configured scopes.
@@ -554,7 +554,7 @@ When `AUTH_MODE=entra`, the API can exchange the user's bearer token for an Azur
 
 The OBO credential is provided by [`OnBehalfOfCredential`](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.onbehalfofcredential) from `azure-identity`.
 
-**Requirement:** `AZURE_CLIENT_SECRET` must be set for OBO to work.
+**Requirement:** `AUTH_CLIENT_SECRET` must be set for OBO to work.
 
 ### MCP Compatibility
 

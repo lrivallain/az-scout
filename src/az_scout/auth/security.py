@@ -34,9 +34,10 @@ if settings.auth_mode == "entra":
     from fastapi_azure_auth import SingleTenantAzureAuthorizationCodeBearer
 
     azure_scheme = SingleTenantAzureAuthorizationCodeBearer(
-        app_client_id=settings.azure_client_id,
-        tenant_id=settings.azure_tenant_id,
-        scopes={settings.azure_api_scope: "Access API"},
+        app_client_id=settings.auth_client_id,
+        tenant_id=settings.auth_tenant_id,
+        scopes={settings.auth_api_scope: "Access API"},
+        allow_guest_users=True,
     )
 
     async def get_current_user(
