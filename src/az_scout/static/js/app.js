@@ -556,8 +556,8 @@ function renderGraph(data) {
 
     // Measure text widths
     const measurer = d3.select(container).append("svg").attr("class", "measurer").style("position", "absolute").style("visibility", "hidden");
-    const measureText = (txt, fontSize) => {
-        const t = measurer.append("text").attr("font-size", fontSize).attr("font-weight", 500)
+    const measureText = (txt, fontSize, fontWeight = 500) => {
+        const t = measurer.append("text").attr("font-size", fontSize).attr("font-weight", fontWeight)
             .attr("font-family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif").text(txt);
         const w = t.node().getComputedTextLength();
         t.remove();
@@ -568,7 +568,7 @@ function renderGraph(data) {
     const subLabels = validData.map(d => truncate(getSubName(d.subscriptionId), 22));
     const maxLZText = Math.max(100, ...lzLabels.map(l => measureText(l, 13)));
     const maxPZText = Math.max(100, ...pzLabels.map(l => measureText(l, 13)));
-    const maxSubText = Math.max(100, ...subLabels.map(l => measureText(l, 12)));
+    const maxSubText = Math.max(100, ...subLabels.map(l => measureText(l, 12, 600)));
     measurer.remove();
 
     const nodePadX = 24;
