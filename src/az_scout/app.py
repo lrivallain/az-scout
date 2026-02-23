@@ -22,9 +22,14 @@ from starlette.responses import StreamingResponse
 from az_scout import __version__, azure_api
 from az_scout.models.capacity_strategy import WorkloadProfileRequest
 from az_scout.models.deployment_plan import DeploymentIntentRequest
+from az_scout.scoring.deployment_confidence import (
+    DeploymentSignals,
+    best_spot_label,
+    compute_deployment_confidence,
+    signals_from_sku,
+)
 from az_scout.services.admission_confidence import compute_admission_confidence
 from az_scout.services.ai_chat import is_chat_enabled
-from az_scout.services.capacity_confidence import compute_capacity_confidence
 from az_scout.services.capacity_strategy_engine import recommend_capacity_strategy
 from az_scout.services.deployment_planner import plan_deployment
 from az_scout.services.eviction_rate import get_spot_eviction_rate
@@ -301,29 +306,128 @@ async def get_skus(
         if includePrices:
             azure_api.enrich_skus_with_prices(skus, region, currencyCode)
 
-        # Compute Deployment Confidence Score for each SKU
+        # Compute Deployment Confidence Score for each SKU (canonical module)
         for sku in skus:
-            caps = sku.get("capabilities", {})
-            quota = sku.get("quota", {})
-            pricing = sku.get("pricing", {})
-            try:
-                vcpus = int(caps.get("vCPUs", 0))
-            except (TypeError, ValueError):
-                vcpus = None
-            remaining = quota.get("remaining")
-            sku["confidence"] = compute_capacity_confidence(
-                vcpus=vcpus,
-                zones_supported_count=len(sku.get("zones", [])),
-                restrictions_present=len(sku.get("restrictions", [])) > 0,
-                quota_remaining_vcpu=remaining,
-                paygo_price=pricing.get("paygo") if pricing else None,
-                spot_price=pricing.get("spot") if pricing else None,
-            )
+            sig = signals_from_sku(sku)
+            sku["confidence"] = compute_deployment_confidence(sig).model_dump()
 
         return JSONResponse(skus)
     except Exception as exc:
         logger.exception("Failed to fetch SKUs")
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/deployment-confidence  (canonical bulk scoring)
+# ---------------------------------------------------------------------------
+
+
+class DeploymentConfidenceRequest(BaseModel):
+    """Request body for the deployment confidence endpoint."""
+
+    subscriptionId: str
+    region: str
+    currencyCode: str = "USD"
+    preferSpot: bool = False
+    instanceCount: int = 1
+    skus: list[str]
+    includeSignals: bool = True
+    includeProvenance: bool = True
+    tenantId: str | None = None
+
+
+@app.post(
+    "/api/deployment-confidence",
+    tags=["SKUs"],
+    summary="Compute Deployment Confidence Scores (bulk)",
+)
+async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONResponse:
+    """Compute the canonical Deployment Confidence Score for a set of SKUs.
+
+    Fetches all required signals (quotas, zones, restrictions, pricing,
+    spot scores) server-side and returns a deterministic score for each
+    SKU.  This is the **single source of truth** – the same module is
+    used by the web UI, the MCP server, and this endpoint.
+    """
+    if not body.region or not body.subscriptionId or not body.skus:
+        return JSONResponse(
+            {"error": "'region', 'subscriptionId' and 'skus' are required"},
+            status_code=400,
+        )
+
+    evaluated_at = __import__("datetime").datetime.now(
+        __import__("datetime").UTC
+    ).isoformat()
+    results: list[dict] = []
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    try:
+        # Fetch SKU data (zones, restrictions, capabilities, quota)
+        all_skus = azure_api.get_skus(
+            body.region,
+            body.subscriptionId,
+            body.tenantId,
+            "virtualMachines",
+        )
+        azure_api.enrich_skus_with_quotas(
+            all_skus, body.region, body.subscriptionId, body.tenantId
+        )
+        azure_api.enrich_skus_with_prices(all_skus, body.region, body.currencyCode)
+
+        sku_map = {s["name"]: s for s in all_skus}
+
+        # Optionally fetch spot placement scores
+        spot_scores: dict[str, dict[str, str]] = {}
+        if body.preferSpot:
+            try:
+                spot_result = azure_api.get_spot_placement_scores(
+                    body.region,
+                    body.subscriptionId,
+                    body.skus,
+                    body.instanceCount,
+                    body.tenantId,
+                )
+                spot_scores = spot_result.get("scores", {})
+            except Exception:
+                logger.warning("Spot placement score fetch failed; continuing without spot")
+                warnings.append("Spot placement scores unavailable")
+
+        for sku_name in body.skus:
+            sku_data = sku_map.get(sku_name)
+            if sku_data is None:
+                errors.append(f"SKU '{sku_name}' not found in region '{body.region}'")
+                continue
+
+            spot_label = best_spot_label(spot_scores.get(sku_name, {}))
+            sig = signals_from_sku(sku_data, spot_score_label=spot_label)
+            result = compute_deployment_confidence(sig)
+
+            entry: dict = {
+                "sku": sku_name,
+                "deploymentConfidence": result.model_dump(
+                    exclude={"provenance"} if not body.includeProvenance else set()
+                ),
+            }
+            if body.includeSignals:
+                entry["rawSignals"] = sig.model_dump()
+
+            results.append(entry)
+
+    except Exception as exc:
+        logger.exception("Failed to compute deployment confidence")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    return JSONResponse(
+        {
+            "region": body.region,
+            "subscriptionId": body.subscriptionId,
+            "evaluatedAtUtc": evaluated_at,
+            "results": results,
+            "warnings": warnings,
+            "errors": errors,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,10 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from az_scout import azure_api
-from az_scout.services.capacity_confidence import compute_capacity_confidence
+from az_scout.scoring.deployment_confidence import (
+    DeploymentSignals,
+    compute_deployment_confidence,
+)
 from az_scout.services.signal_store import record_signals_batch
 
 logger = logging.getLogger(__name__)
@@ -268,14 +271,16 @@ def _fetch_signals(
         logger.warning("Collector: failed to fetch quota for %s/%s", region, sku_name)
 
     # --- Confidence score ---
-    conf = compute_capacity_confidence(
-        vcpus=vcpus,
-        zones_supported_count=zones_supported_count,
-        restrictions_present=restrictions_present,
-        quota_remaining_vcpu=quota_remaining,
-        spot_score_label=spot_score,
-        paygo_price=paygo_price,
-        spot_price=spot_price,
+    conf = compute_deployment_confidence(
+        DeploymentSignals(
+            vcpus=vcpus,
+            zones_available_count=zones_supported_count,
+            restrictions_present=restrictions_present,
+            quota_remaining_vcpu=quota_remaining,
+            spot_score_label=spot_score,
+            paygo_price=paygo_price,
+            spot_price=spot_price,
+        )
     )
 
     return {
@@ -286,7 +291,7 @@ def _fetch_signals(
         "spot_price": spot_price,
         "zones_supported_count": zones_supported_count,
         "restrictions_present": restrictions_present,
-        "confidence_score": conf["score"],
+        "confidence_score": conf.score,
     }
 
 

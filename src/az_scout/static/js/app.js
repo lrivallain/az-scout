@@ -23,11 +23,52 @@ let _skuFilterState = {};                   // {headerText: filterValue} – per
 let _admissionCache = {};                   // {skuName: admissionData} – cached admission intelligence
 
 // ---------------------------------------------------------------------------
-// Deployment Confidence Score – client-side recomputation
+// Deployment Confidence – scores are computed server-side only.
+// The frontend NEVER recomputes confidence; it displays what the API returns.
+// Use refreshDeploymentConfidence() to fetch updated scores from the backend.
 // ---------------------------------------------------------------------------
-const _CONF_WEIGHTS = { quota: 0.25, spot: 0.35, zones: 0.15, restrictions: 0.15, pricePressure: 0.10 };
-const _CONF_LABELS = [[80, "High"], [60, "Medium"], [40, "Low"], [0, "Very Low"]];
+const _REGION_SCORE_LABELS = [[80, "High"], [60, "Medium"], [40, "Low"], [0, "Very Low"]];
 
+/**
+ * Fetch canonical Deployment Confidence scores from the backend for the
+ * given SKU names.  Updates ``lastSkuData[].confidence`` in place and
+ * re-renders the table + region summary.
+ */
+async function refreshDeploymentConfidence(skuNames) {
+    const region = document.getElementById("region-select").value;
+    const subscriptionId = plannerSubscriptionId;
+    if (!region || !subscriptionId || !skuNames || !skuNames.length) return;
+
+    const currency = document.getElementById("planner-currency")?.value || "USD";
+    const payload = {
+        subscriptionId,
+        region,
+        currencyCode: currency,
+        preferSpot: true,
+        instanceCount: 1,
+        skus: skuNames,
+        includeSignals: false,
+        includeProvenance: false,
+    };
+    const tenant = document.getElementById("tenant-select").value;
+    if (tenant) payload.tenantId = tenant;
+
+    try {
+        const result = await apiPost("/api/deployment-confidence", payload);
+        if (result.results) {
+            for (const r of result.results) {
+                const sku = (lastSkuData || []).find(s => s.name === r.sku);
+                if (sku && r.deploymentConfidence) {
+                    sku.confidence = r.deploymentConfidence;
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Failed to refresh deployment confidence:", err);
+    }
+}
+
+/** Pick the best Spot Placement Score label from per-zone data (display helper). */
 function _bestSpotLabel(zoneScores) {
     const order = { high: 3, medium: 2, low: 1 };
     let best = null;
@@ -36,62 +77,6 @@ function _bestSpotLabel(zoneScores) {
         if (rank > (order[(best || "").toLowerCase()] || 0)) best = s;
     }
     return best || null;
-}
-
-function recomputeConfidence(sku) {
-    const caps = sku.capabilities || {};
-    const quota = sku.quota || {};
-    const pricing = sku.pricing || {};
-    const vcpus = parseInt(caps.vCPUs, 10) || 0;
-    const remaining = quota.remaining;
-    const zones = sku.zones || [];
-    const restrictions = sku.restrictions || [];
-    const zoneScores = (lastSpotScores?.scores || {})[sku.name] || {};
-
-    const signals = {};
-    if (remaining != null) {
-        if (remaining <= 0) signals.quota = 0;
-        else signals.quota = Math.min((remaining / Math.max(vcpus, 1)) / 10, 1) * 100;
-    }
-    // Spot score: average per-zone scores across 3 zones (non-scorable = 0)
-    if (Object.keys(zoneScores).length > 0) {
-        const spotMap = { high: 100, medium: 60, low: 25 };
-        let total = 0;
-        for (const z of ["1", "2", "3"]) {
-            const raw = (zoneScores[z] || "").toLowerCase();
-            total += spotMap[raw] || 0;
-        }
-        signals.spot = Math.round(total / 3 * 10) / 10;
-    }
-    const availableZones = zones.filter(z => !restrictions.includes(z));
-    signals.zones = Math.min(availableZones.length / 3, 1) * 100;
-    signals.restrictions = restrictions.length > 0 ? 0 : 100;
-    if (pricing.paygo != null && pricing.spot != null && pricing.paygo > 0) {
-        const ratio = pricing.spot / pricing.paygo;
-        signals.pricePressure = Math.max(0, Math.min(1, (0.8 - ratio) / 0.6)) * 100;
-    }
-
-    const breakdown = [];
-    const missing = [];
-    let totalWeight = 0;
-    for (const [k, w] of Object.entries(_CONF_WEIGHTS)) {
-        if (signals[k] != null) totalWeight += w;
-        else missing.push(k);
-    }
-    let weightedSum = 0;
-    for (const [k, w] of Object.entries(_CONF_WEIGHTS)) {
-        if (signals[k] == null) continue;
-        const ew = totalWeight > 0 ? w / totalWeight : 0;
-        const contrib = signals[k] * ew;
-        weightedSum += contrib;
-        breakdown.push({ signal: k, score: Math.round(signals[k] * 10) / 10, weight: Math.round(ew * 1000) / 1000, contribution: Math.round(contrib * 10) / 10 });
-    }
-    const score = totalWeight > 0 ? Math.round(weightedSum) : 0;
-    let label = "Very Low";
-    for (const [th, lbl] of _CONF_LABELS) {
-        if (score >= th) { label = lbl; break; }
-    }
-    sku.confidence = { score, label, breakdown, missing };
 }
 
 // ---------------------------------------------------------------------------
@@ -1066,8 +1051,7 @@ async function loadSkus() {
         if (skuResult.error) throw new Error(skuResult.error);
 
         lastSkuData = skuResult;
-        // Compute confidence scores
-        for (const sku of lastSkuData) recomputeConfidence(sku);
+        // Confidence scores are already computed server-side in GET /api/skus
 
         showPanel("planner", "results");
         try { renderRegionSummary(lastSkuData); } catch (e) { console.error("renderRegionSummary failed:", e); }
@@ -1124,9 +1108,9 @@ async function fetchSpotFromPanel() {
         }
         if (result.errors?.length) lastSpotScores.errors.push(...result.errors);
 
-        // Recompute confidence for all SKUs
+        // Refresh confidence from the backend (canonical source of truth)
         if (lastSkuData) {
-            for (const sku of lastSkuData) recomputeConfidence(sku);
+            await refreshDeploymentConfidence([skuName]);
             renderRegionSummary(lastSkuData);
             renderSkuTable(lastSkuData);
         }
@@ -1209,9 +1193,9 @@ async function confirmSpotScore() {
         }
         resultEl.classList.remove("d-none");
 
-        // Recompute confidence and re-render
+        // Refresh confidence from the backend (canonical source of truth)
         if (lastSkuData) {
-            for (const sku of lastSkuData) recomputeConfidence(sku);
+            await refreshDeploymentConfidence([skuName]);
             renderRegionSummary(lastSkuData);
             renderSkuTable(lastSkuData);
         }
@@ -1303,13 +1287,13 @@ function renderPricingDetail(data, openAccordionIds) {
 
     const confSku = (lastSkuData || []).find(s => s.name === _pricingModalSku);
 
-    // Feed modal pricing into SKU so Price Pressure signal can be computed
+    // Update local pricing data (for display) – confidence is NOT recomputed
+    // here; it comes from the backend (canonical source of truth).
     if (confSku && (data.paygo != null || data.spot != null)) {
         if (!confSku.pricing) confSku.pricing = {};
         if (data.paygo != null) confSku.pricing.paygo = data.paygo;
         if (data.spot != null) confSku.pricing.spot = data.spot;
         confSku.pricing.currency = currency;
-        recomputeConfidence(confSku);
     }
 
     // Build sections in order: Confidence → Admission → VM Profile → Zone Availability → Quota → Pricing
@@ -1461,10 +1445,11 @@ function renderVmProfile(profile) {
 function renderZoneAvailability(profile, confidence) {
     const zones = profile.zones || [];
     const restrictions = profile.restrictions || [];
-    const zoneSignal = confidence?.breakdown?.find(b => b.signal === "zones");
-    const zoneScore = zoneSignal?.score;
-    const spotSignal = confidence?.breakdown?.find(b => b.signal === "spot");
-    const spotScore = spotSignal?.score;
+    const _components = confidence?.breakdown?.components || [];
+    const zoneSignal = _components.find(b => b.name === "zones");
+    const zoneScore = zoneSignal?.score100;
+    const spotSignal = _components.find(b => b.name === "spot");
+    const spotScore = spotSignal?.score100;
     const physicalZoneMap = getPlannerPhysicalZoneMap();
     const spotZoneScores = (lastSpotScores?.scores || {})[_pricingModalSku] || {};
 
@@ -1608,8 +1593,9 @@ function renderQuotaPanel(quota, vcpus, confidence) {
     const deployable = (remaining != null && vcpus > 0) ? Math.floor(remaining / vcpus) : null;
 
     // Extract the quota signal from the confidence breakdown
-    const quotaSignal = confidence?.breakdown?.find(b => b.signal === "quota");
-    const quotaScore = quotaSignal?.score;
+    const _qComponents = confidence?.breakdown?.components || [];
+    const quotaSignal = _qComponents.find(b => b.name === "quota");
+    const quotaScore = quotaSignal?.score100;
 
     function row(label, value) {
         return `<div class="vm-profile-row"><span class="vm-profile-label">${escapeHtml(label)}</span><span>${value}</span></div>`;
@@ -1677,27 +1663,36 @@ function renderQuotaPanel(quota, vcpus, confidence) {
 function renderConfidenceBreakdown(conf) {
     const lbl = (conf.label || "").toLowerCase().replace(/\s+/g, "-");
     let html = '<div class="confidence-section">';
-    html += `<h4 class="confidence-title">Deployment Confidence <span class="confidence-badge confidence-${lbl}">${conf.score} ${escapeHtml(conf.label || "")}</span> <i class="bi bi-info-circle text-body-secondary confidence-info-icon" data-bs-toggle="tooltip" data-bs-title="Composite score (0\u2013100) predicting deployment success based on weighted signals. Higher is better."></i></h4>`;
-    if (conf.breakdown?.length) {
+    html += `<h4 class="confidence-title">Deployment Confidence <span class="confidence-badge confidence-${lbl}">${conf.score} ${escapeHtml(conf.label || "")}</span> <i class="bi bi-info-circle text-body-secondary confidence-info-icon" data-bs-toggle="tooltip" data-bs-title="Composite score (0\u2013100) predicting deployment success based on weighted signals. Higher is better. Scoring version: ${escapeHtml(conf.scoringVersion || '')}"></i></h4>`;
+    const components = conf.breakdown?.components || conf.breakdown || [];
+    const usedComponents = components.filter(c => c.status === "used");
+    if (usedComponents.length) {
         html += '<table class="table table-sm confidence-breakdown-table"><thead><tr><th>Signal</th><th>Score</th><th>Weight</th><th>Contribution</th></tr></thead><tbody>';
         const signalLabels = { quota: "Quota Headroom", spot: "Spot Placement", zones: "Zone Breadth", restrictions: "Restrictions", pricePressure: "Price Pressure" };
         const signalDescriptions = {
             quota: "Remaining quota relative to vCPU count. Low quota means deployments may be blocked.",
-            spot: "Average per-zone spot score across 3 zones. Accounts for both zone coverage and eviction risk.",
-            zones: "Number of availability zones where the SKU is offered (out of 3).",
+            spot: "Best per-zone Spot Placement Score (Azure API). Higher means better spot allocation likelihood.",
+            zones: "Number of available (non-restricted) availability zones where the SKU is offered (out of 3).",
             restrictions: "Whether any subscription or zone-level restrictions apply to this SKU.",
             pricePressure: "Spot-to-PAYGO price ratio. A lower ratio indicates better spot savings."
         };
-        conf.breakdown.forEach(b => {
-            const desc = signalDescriptions[b.signal] || "";
-            html += `<tr><td>${escapeHtml(signalLabels[b.signal] || b.signal)} <i class="bi bi-info-circle text-body-secondary" data-bs-toggle="tooltip" data-bs-title="${escapeHtml(desc)}"></i></td><td>${b.score}</td><td>${(b.weight * 100).toFixed(1)}%</td><td>${b.contribution.toFixed(1)}</td></tr>`;
+        usedComponents.forEach(b => {
+            const name = b.name || b.signal || "";
+            const desc = signalDescriptions[name] || "";
+            const score = b.score100 != null ? b.score100 : b.score;
+            const contribution = b.contribution != null ? (b.contribution * 100).toFixed(1) : "0.0";
+            html += `<tr><td>${escapeHtml(signalLabels[name] || name)} <i class="bi bi-info-circle text-body-secondary" data-bs-toggle="tooltip" data-bs-title="${escapeHtml(desc)}"></i></td><td>${score}</td><td>${(b.weight * 100).toFixed(1)}%</td><td>${contribution}</td></tr>`;
         });
         html += '</tbody></table>';
     }
-    if (conf.missing?.length) {
+    const missingSignals = conf.missingSignals || conf.missing || [];
+    if (missingSignals.length) {
         const signalLabels = { quota: "Quota Headroom", spot: "Spot Placement", zones: "Zone Breadth", restrictions: "Restrictions", pricePressure: "Price Pressure" };
-        const names = conf.missing.map(m => signalLabels[m] || m).join(", ");
+        const names = missingSignals.map(m => signalLabels[m] || m).join(", ");
         html += `<p class="confidence-missing"><i class="bi bi-exclamation-circle"></i> Missing signals (excluded from score): ${escapeHtml(names)}</p>`;
+    }
+    if (conf.disclaimers?.length) {
+        html += '<p class="confidence-disclaimer text-body-secondary small fst-italic mt-1 mb-0">' + escapeHtml(conf.disclaimers[0]) + '</p>';
     }
     html += '</div>';
     return html;
@@ -1829,7 +1824,7 @@ function _computeRegionScores(skus) {
 }
 
 function _scoreLabel(score) {
-    for (const [th, lbl] of _CONF_LABELS) {
+    for (const [th, lbl] of _REGION_SCORE_LABELS) {
         if (score >= th) return lbl;
     }
     return "Very Low";

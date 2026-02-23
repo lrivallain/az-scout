@@ -444,6 +444,49 @@ The backend calls the Azure Resource Manager REST API to fetch:
 - **Compute Usages**: vCPU quota per VM family from `/subscriptions/{id}/providers/Microsoft.Compute/locations/{region}/usages` endpoint (cached for 10 minutes, with retry on throttling and graceful handling of 403)
 - **Spot Placement Scores**: likelihood indicators for Spot VM allocation from `/subscriptions/{id}/providers/Microsoft.Compute/locations/{region}/placementScores/spot/generate` endpoint (batched in chunks of 100, sequential execution with retry/back-off, cached for 10 minutes). Note: these scores reflect the probability of obtaining a Spot VM allocation, not datacenter capacity.
 
+## Deployment Confidence Score
+
+The **Deployment Confidence Score** is a heuristic 0–100 estimate of how likely a VM SKU deployment is to succeed in a given region/subscription. It is computed **exclusively on the backend** by the canonical module `src/az_scout/scoring/deployment_confidence.py` — the frontend displays what the API returns and never recomputes locally.
+
+### Scoring version
+
+The current scoring version is **v1** (`SCORING_VERSION = "v1"`). Every API response includes a `scoringVersion` field. Bump the version when weights or normalisation rules change.
+
+### Signals & weights
+
+| Signal | Weight | Source | Normalisation |
+|---|---|---|---|
+| `quota` | 0.25 | Compute Usages API | `remaining_vcpus / vcpus_per_vm / 10`, capped at 1.0 |
+| `spot` | 0.35 | Spot Placement Scores API | High → 1.0, Medium → 0.6, Low → 0.25 |
+| `zones` | 0.15 | Resource SKUs API | `available_zones / 3`, capped at 1.0 |
+| `restrictions` | 0.15 | Resource SKUs API | No restrictions → 1.0, any → 0.0 |
+| `pricePressure` | 0.10 | Retail Prices API | `(0.8 − spot/paygo) / 0.6`, clamped 0–1 |
+
+### Missing signals & renormalisation
+
+When a signal is unavailable (e.g. Spot score not fetched), it is excluded and the remaining weights are renormalised so they sum to 1.0. If fewer than **2** signals are available, the result is `label="Unknown", score=0`.
+
+### Label mapping
+
+| Threshold | Label |
+|---|---|
+| ≥ 80 | High |
+| ≥ 60 | Medium |
+| ≥ 40 | Low |
+| < 40 | Very Low |
+
+### Disclaimers
+
+Every result includes these disclaimers:
+
+1. This is a heuristic estimate, not a guarantee of deployment success.
+2. Signals are derived from Azure APIs and may change at any time.
+3. No Microsoft guarantee is expressed or implied.
+
+### Bulk endpoint
+
+`POST /api/deployment-confidence` accepts a list of SKU names and returns canonical confidence results for each. The frontend calls this endpoint after spot-score updates to refresh displayed scores.
+
 
 ## License
 

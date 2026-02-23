@@ -20,7 +20,10 @@ from az_scout.models.capacity_strategy import (
     TechnicalView,
     WorkloadProfileRequest,
 )
-from az_scout.services.capacity_confidence import compute_capacity_confidence
+from az_scout.scoring.deployment_confidence import (
+    DeploymentSignals,
+    compute_deployment_confidence,
+)
 from az_scout.services.region_latency import get_rtt_ms
 
 logger = logging.getLogger(__name__)
@@ -240,14 +243,16 @@ def _evaluate_region_skus(
         sku_spot = spot_scores.get(name, {})
         spot_label = _best_spot_label(sku_spot)
 
-        conf = compute_capacity_confidence(
-            vcpus=vcpus,
-            zones_supported_count=len(zones),
-            restrictions_present=len(restrictions) > 0,
-            quota_remaining_vcpu=remaining,
-            spot_score_label=spot_label if spot_label != "Unknown" else None,
-            paygo_price=pricing.get("paygo"),
-            spot_price=pricing.get("spot"),
+        conf = compute_deployment_confidence(
+            DeploymentSignals(
+                vcpus=vcpus,
+                zones_available_count=len(zones),
+                restrictions_present=len(restrictions) > 0,
+                quota_remaining_vcpu=remaining,
+                spot_score_label=spot_label if spot_label != "Unknown" else None,
+                paygo_price=pricing.get("paygo"),
+                spot_price=pricing.get("spot"),
+            )
         )
 
         evals.append(
@@ -261,8 +266,8 @@ def _evaluate_region_skus(
                 spot_label=spot_label,
                 paygo=pricing.get("paygo"),
                 spot_price=pricing.get("spot"),
-                confidence_score=conf["score"],
-                confidence_label=conf["label"],
+                confidence_score=conf.score,
+                confidence_label=conf.label,
                 family=sku.get("family", ""),
             )
         )

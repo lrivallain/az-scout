@@ -38,8 +38,11 @@ from az_scout.models.capacity_strategy import (
     WorkloadConstraints,
     WorkloadProfileRequest,
 )
+from az_scout.scoring.deployment_confidence import (
+    compute_deployment_confidence,
+    signals_from_sku,
+)
 from az_scout.services.admission_confidence import compute_admission_confidence
-from az_scout.services.capacity_confidence import compute_capacity_confidence
 from az_scout.services.capacity_strategy_engine import recommend_capacity_strategy
 from az_scout.services.eviction_rate import get_spot_eviction_rate
 from az_scout.services.fragmentation import (
@@ -233,24 +236,10 @@ def get_sku_availability(
     if include_prices:
         azure_api.enrich_skus_with_prices(result, region, currency_code)
 
-    # Compute Deployment Confidence Score for each SKU
+    # Compute Deployment Confidence Score for each SKU (canonical module)
     for sku in result:
-        caps = sku.get("capabilities", {})
-        quota = sku.get("quota", {})
-        pricing = sku.get("pricing", {})
-        try:
-            vcpus = int(caps.get("vCPUs", 0))
-        except (TypeError, ValueError):
-            vcpus = None
-        remaining = quota.get("remaining")
-        sku["confidence"] = compute_capacity_confidence(
-            vcpus=vcpus,
-            zones_supported_count=len(sku.get("zones", [])),
-            restrictions_present=len(sku.get("restrictions", [])) > 0,
-            quota_remaining_vcpu=remaining,
-            paygo_price=pricing.get("paygo") if pricing else None,
-            spot_price=pricing.get("spot") if pricing else None,
-        )
+        sig = signals_from_sku(sku)
+        sku["confidence"] = compute_deployment_confidence(sig).model_dump()
 
     return json.dumps(result, indent=2)
 

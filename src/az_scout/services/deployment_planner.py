@@ -28,7 +28,10 @@ from az_scout.models.deployment_plan import (
     TechnicalView,
     VerdictEvaluation,
 )
-from az_scout.services.capacity_confidence import compute_capacity_confidence
+from az_scout.scoring.deployment_confidence import (
+    DeploymentSignals,
+    compute_deployment_confidence,
+)
 from az_scout.services.intent_parser import derive_requirements
 
 logger = logging.getLogger(__name__)
@@ -233,19 +236,21 @@ def _evaluate_sku(
 
     # Confidence
     conf_spot_label = spot_label if spot_label != "Unknown" else None
-    confidence_result = compute_capacity_confidence(
-        vcpus=vcpu_per_vm,
-        zones_supported_count=zones_count,
-        restrictions_present=restrictions_present,
-        quota_remaining_vcpu=remaining,
-        spot_score_label=conf_spot_label,
-        paygo_price=pricing_data.get("paygo"),
-        spot_price=pricing_data.get("spot"),
+    confidence_result = compute_deployment_confidence(
+        DeploymentSignals(
+            vcpus=vcpu_per_vm,
+            zones_available_count=zones_count,
+            restrictions_present=restrictions_present,
+            quota_remaining_vcpu=remaining,
+            spot_score_label=conf_spot_label,
+            paygo_price=pricing_data.get("paygo"),
+            spot_price=pricing_data.get("spot"),
+        )
     )
     confidence_eval = ConfidenceEvaluation(
-        score=confidence_result["score"],
-        label=confidence_result["label"],
-        missingInputs=confidence_result["missing"],
+        score=confidence_result.score,
+        label=confidence_result.label,
+        missingInputs=confidence_result.missingSignals,
     )
 
     # Verdict
