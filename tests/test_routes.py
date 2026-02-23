@@ -1885,3 +1885,190 @@ class TestDeploymentConfidence:
         conf1 = resp1.json()[0]["confidence"]
         conf3 = resp3.json()[0]["confidence"]
         assert conf3["score"] >= conf1["score"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/sku-admission
+# ---------------------------------------------------------------------------
+
+
+class TestSkuAdmission:
+    """Tests for the /api/sku-admission endpoint."""
+
+    @staticmethod
+    def _mock_sku_response():
+        """Return a minimal SKU list response for mocking get_skus."""
+        return [
+            {
+                "name": "Standard_D2s_v3",
+                "zones": ["1", "2", "3"],
+                "restrictions": [],
+                "capabilities": {"vCPUs": "2", "MemoryGB": "8"},
+                "quota": {"limit": 100, "used": 10, "remaining": 90},
+            }
+        ]
+
+    def test_returns_admission_intelligence(self, client):
+        """Happy path: all sub-services return data."""
+        with (
+            patch(
+                "az_scout.app.azure_api.get_skus",
+                return_value=self._mock_sku_response(),
+            ),
+            patch(
+                "az_scout.app.azure_api.get_spot_placement_scores",
+                return_value={"scores": {"Standard_D2s_v3": {"1": "High", "2": "High"}}},
+            ),
+            patch(
+                "az_scout.app.azure_api.get_retail_prices",
+                return_value={"Standard_D2s_v3": {"paygo": 0.10, "spot": 0.03}},
+            ),
+            patch(
+                "az_scout.app.compute_volatility",
+                return_value={
+                    "label": "low",
+                    "sampleCount": 10,
+                    "timeInLowPercent": 0.0,
+                    "spotScoreChangeRatePerDay": 0.0,
+                    "priceVolatilityPercent": 0.0,
+                },
+            ),
+            patch(
+                "az_scout.app.get_spot_eviction_rate",
+                return_value={
+                    "evictionRate": "0-5%",
+                    "normalizedScore": 0.95,
+                    "status": "Lowest band",
+                    "disclaimer": "Heuristic",
+                },
+            ),
+        ):
+            resp = client.get(
+                "/api/sku-admission",
+                params={
+                    "region": "eastus",
+                    "sku": "Standard_D2s_v3",
+                    "subscriptionId": "sub-1",
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "admissionConfidence" in data
+        assert "fragmentationRisk" in data
+        assert "volatility24h" in data
+        assert "volatility7d" in data
+        assert "evictionRate" in data
+        ac = data["admissionConfidence"]
+        assert "score" in ac
+        assert "label" in ac
+        assert "breakdown" in ac
+        assert "disclaimers" in ac
+
+    def test_returns_400_without_required_params(self, client):
+        resp = client.get("/api/sku-admission")
+        assert resp.status_code == 422  # FastAPI validation error
+
+    def test_handles_all_services_failing_gracefully(self, client):
+        """When SKU lookup, spot, and pricing all fail, route still returns a response."""
+        with (
+            patch(
+                "az_scout.app.azure_api.get_skus",
+                side_effect=Exception("SKU lookup failed"),
+            ),
+            patch(
+                "az_scout.app.azure_api.get_spot_placement_scores",
+                side_effect=Exception("Spot failed"),
+            ),
+            patch(
+                "az_scout.app.azure_api.get_retail_prices",
+                side_effect=Exception("Pricing failed"),
+            ),
+            patch(
+                "az_scout.app.compute_volatility",
+                return_value={
+                    "label": "unknown",
+                    "sampleCount": 0,
+                    "timeInLowPercent": None,
+                    "spotScoreChangeRatePerDay": None,
+                    "priceVolatilityPercent": None,
+                },
+            ),
+            patch(
+                "az_scout.app.get_spot_eviction_rate",
+                return_value={
+                    "evictionRate": None,
+                    "normalizedScore": None,
+                    "status": "unavailable",
+                    "disclaimer": "No data",
+                },
+            ),
+        ):
+            resp = client.get(
+                "/api/sku-admission",
+                params={
+                    "region": "eastus",
+                    "sku": "Standard_D2s_v3",
+                    "subscriptionId": "sub-1",
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # Should still return all keys even with degraded signals
+        assert "admissionConfidence" in data
+        assert "fragmentationRisk" in data
+
+    def test_tenant_id_forwarded(self, client):
+        """tenantId query parameter is forwarded to Azure API calls."""
+        with (
+            patch(
+                "az_scout.app.azure_api.get_skus",
+                return_value=[],
+            ) as mock_skus,
+            patch(
+                "az_scout.app.azure_api.get_spot_placement_scores",
+                return_value={"scores": {}},
+            ),
+            patch(
+                "az_scout.app.azure_api.get_retail_prices",
+                return_value={},
+            ),
+            patch(
+                "az_scout.app.compute_volatility",
+                return_value={
+                    "label": "unknown",
+                    "sampleCount": 0,
+                    "timeInLowPercent": None,
+                    "spotScoreChangeRatePerDay": None,
+                    "priceVolatilityPercent": None,
+                },
+            ),
+            patch(
+                "az_scout.app.get_spot_eviction_rate",
+                return_value={
+                    "evictionRate": None,
+                    "normalizedScore": None,
+                    "status": "unavailable",
+                    "disclaimer": "No data",
+                },
+            ),
+        ):
+            resp = client.get(
+                "/api/sku-admission",
+                params={
+                    "region": "westeurope",
+                    "sku": "Standard_D2s_v3",
+                    "subscriptionId": "sub-1",
+                    "tenantId": "tenant-42",
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_skus.assert_called_once_with(
+            "westeurope",
+            "sub-1",
+            "tenant-42",
+            "virtualMachines",
+            name="Standard_D2s_v3",
+        )

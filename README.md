@@ -19,6 +19,7 @@ Scout Azure regions for VM availability, zone mappings, pricing, spot scores, an
 - **Spot Placement Scores** – evaluate the likelihood of Spot VM allocation (High / Medium / Low) per SKU for a given region and instance count, powered by the Azure Compute RP.
 - **Deployment Confidence Score** – a composite 0–100 score per SKU estimating deployment success probability, synthesised from quota headroom, Spot Placement Score, availability zone breadth, restrictions, and price pressure signals. Missing signals are automatically excluded with weight renormalisation. The score updates live when Spot Placement Scores arrive.
 - **Deployment Plan** – agent-ready `POST /api/deployment-plan` endpoint that evaluates (region, SKU) combinations against zones, quotas, spot scores, pricing, and restrictions. Returns a deterministic, ranked plan with business and technical views (no LLM, no invention — missing data is flagged explicitly).
+- **Capacity Strategy Advisor** – a multi-region strategy recommendation engine that goes beyond single-region planning. Given a workload profile (instances, constraints, statefulness, latency sensitivity, budget), it evaluates candidate regions against zones, quotas, restrictions, spot scores, pricing, confidence and inter-region latency to recommend a deployment strategy: `single_region`, `active_active`, `active_passive`, `sharded_multi_region`, `burst_overflow`, `time_window_deploy`, or `progressive_ramp`. Includes business justification, technical allocations, latency matrix, and warnings. No LLM — all decisions are deterministic and traceable.
 - **AI Chat Assistant** *(optional)* – interactive chat panel powered by Azure OpenAI with streaming responses, tool calling (zones, SKUs, pricing, spot scores), and markdown rendering. Supports pin-to-side mode, conversation persistence, input history, clickable choice chips, and error retry. Requires Azure OpenAI environment variables (see below).
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
 
@@ -207,6 +208,8 @@ An [MCP](https://modelcontextprotocol.io/) server is included, allowing AI agent
 | `get_sku_availability` | Get VM SKU availability per zone with restrictions, capabilities, and vCPU quota per family |
 | `get_spot_scores` | Get Spot Placement Scores (High / Medium / Low) for a list of VM sizes in a region |
 | `get_sku_pricing_detail` | Get detailed Linux pricing (PayGo, Spot, RI 1Y/3Y, SP 1Y/3Y) and VM profile for a single SKU |
+| `capacity_strategy` | Compute a deterministic multi-region deployment strategy based on capacity signals and latency |
+| `region_latency` | Return indicative RTT latency between two Azure regions (Microsoft published statistics) |
 
 `get_sku_availability` supports optional filters to reduce output size:
 `name`, `family`, `min_vcpus`, `max_vcpus`, `min_memory_gb`, `max_memory_gb`.
@@ -329,6 +332,109 @@ The `POST /api/deployment-plan` endpoint provides a deterministic decision engin
 
 > **Note:** Spot placement scores are probabilistic and not a guarantee of allocation. Quota values are dynamic and may change between planning and actual deployment.
 
+### Capacity Strategy Advisor API
+
+The `POST /api/capacity-strategy` endpoint is a multi-region strategy recommendation engine. It evaluates candidate (region, SKU) combinations against zones, quotas, restrictions, spot scores, pricing, deployment confidence, and inter-region latency to recommend a deployment strategy. No LLM — every decision is deterministic and traceable.
+
+#### Latency data source
+
+Inter-region RTT values come from [Microsoft published network latency statistics](https://learn.microsoft.com/en-us/azure/networking/azure-network-latency). These are indicative and must be validated with in-tenant measurements (e.g. Azure Connection Monitor).
+
+#### Request
+
+```json
+{
+  "workloadName": "inference-cluster",
+  "subscriptionId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "scale": {
+    "sku": "Standard_NC24ads_A100_v4",
+    "instanceCount": 48,
+    "gpuCountTotal": 48
+  },
+  "constraints": {
+    "dataResidency": "EU",
+    "requireZonal": true,
+    "maxInterRegionRttMs": 50
+  },
+  "usage": {
+    "statefulness": "stateless",
+    "crossRegionTraffic": "medium",
+    "latencySensitivity": "high"
+  },
+  "pricing": {
+    "currencyCode": "EUR",
+    "preferSpot": true,
+    "maxHourlyBudget": 100.0
+  },
+  "timing": {
+    "deploymentUrgency": "this_week"
+  }
+}
+```
+
+#### Response (abbreviated)
+
+```json
+{
+  "summary": {
+    "workloadName": "inference-cluster",
+    "strategy": "sharded_multi_region",
+    "totalInstances": 48,
+    "regionCount": 3,
+    "estimatedHourlyCost": 82.56,
+    "currency": "EUR",
+    "overallConfidence": 72,
+    "overallConfidenceLabel": "Medium"
+  },
+  "businessView": {
+    "keyMessage": "Recommended strategy: Sharded multi-region ...",
+    "justification": ["Insufficient quota in any single region; ..."],
+    "risks": ["Quota is insufficient or low in some regions."],
+    "mitigations": ["Request quota increase via Azure portal."]
+  },
+  "technicalView": {
+    "allocations": [
+      {
+        "region": "swedencentral",
+        "role": "primary",
+        "sku": "Standard_NC24ads_A100_v4",
+        "instanceCount": 20,
+        "zones": ["1", "2", "3"],
+        "confidenceScore": 78
+      }
+    ],
+    "latencyMatrix": {
+      "swedencentral": { "swedencentral": 0, "westeurope": 29, "francecentral": 32 }
+    },
+    "evaluatedAt": "2025-01-15T14:30:00+00:00"
+  },
+  "warnings": ["Spot placement score is probabilistic and not a guarantee."],
+  "missingInputs": [],
+  "errors": [],
+  "disclaimer": "This tool is not affiliated with Microsoft. ..."
+}
+```
+
+#### Strategy types
+
+| Strategy | When selected |
+|---|---|
+| `single_region` | Enough capacity in one region, or only one candidate available |
+| `active_active` | Stateless workload with multi-region benefit |
+| `active_passive` | Stateful workload requiring a failover region |
+| `sharded_multi_region` | Quota insufficient in any single region — instances split across regions |
+| `progressive_ramp` | Partial quota available — start in primary, overflow to secondary |
+| `time_window_deploy` | Spot preference but current spot score is low — wait for better window |
+| `burst_overflow` | Burst-capable workload with a dedicated overflow region |
+
+#### Agent usage examples
+
+Via the MCP `capacity_strategy` tool:
+
+- *"Deploy 48 GPUs across EU regions with max 50ms latency"*
+- *"Multi-region inference architecture for Standard_NC24ads_A100_v4 with spot pricing"*
+- *"Active/passive failover for stateful workload in France with EUR budget cap"*
+
 
 ## Under the hood
 
@@ -342,3 +448,8 @@ The backend calls the Azure Resource Manager REST API to fetch:
 ## License
 
 [MIT](LICENSE.txt)
+
+
+## Disclaimer
+
+> **This tool is not affiliated with Microsoft.** All capacity, pricing, and latency information are indicative and not a guarantee of deployment success. Spot placement scores are probabilistic. Quota values and pricing are dynamic and may change between planning and actual deployment. Latency values are based on [Microsoft published statistics](https://learn.microsoft.com/en-us/azure/networking/azure-network-latency) and must be validated with in-tenant measurements.

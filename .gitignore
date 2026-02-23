@@ -8,6 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+.vscode/
+!.vscode/tasks.json
 
 # Tool caches
 .mypy_cache/

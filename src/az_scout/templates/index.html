@@ -82,6 +82,12 @@
                 <i class="bi bi-grid-3x3-gap"></i> Deployment Planner
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="strategy-tab" data-bs-toggle="tab" data-bs-target="#tab-strategy"
+                    type="button" role="tab" aria-controls="tab-strategy" aria-selected="false">
+                <i class="bi bi-compass"></i> Strategy Advisor
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content" id="mainTabContent">
@@ -241,6 +247,176 @@
                     <div id="planner-results" class="d-none">
                         <div id="region-summary" class="d-none"></div>
                         <div id="sku-table-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== Strategy Advisor Tab ====== -->
+        <div class="tab-pane fade" id="tab-strategy" role="tabpanel" aria-labelledby="strategy-tab">
+            <div class="card border-top-0 rounded-top-0">
+                <div class="card-body">
+                    <form id="strategy-form" onsubmit="submitStrategy(event)">
+                        <div class="row g-3">
+                            <!-- Workload name -->
+                            <div class="col-md-4">
+                                <label for="strat-workload-name" class="form-label form-label-sm">Workload name</label>
+                                <input type="text" class="form-control form-control-sm" id="strat-workload-name"
+                                       placeholder="e.g. inference-cluster" required>
+                            </div>
+                            <!-- Subscription -->
+                            <div class="col-md-4">
+                                <label for="strat-sub-search" class="form-label form-label-sm">
+                                    <i class="bi bi-collection"></i> Subscription
+                                </label>
+                                <div class="position-relative" id="strat-sub-combobox">
+                                    <input type="search" class="form-control form-control-sm" id="strat-sub-search"
+                                           placeholder="Select subscription…" autocomplete="off" spellcheck="false">
+                                    <input type="hidden" id="strat-sub-select" value="">
+                                    <ul class="dropdown-menu w-100" id="strat-sub-dropdown"></ul>
+                                </div>
+                            </div>
+                            <!-- SKU -->
+                            <div class="col-md-4">
+                                <label for="strat-sku" class="form-label form-label-sm">Preferred SKU (optional)</label>
+                                <input type="text" class="form-control form-control-sm" id="strat-sku"
+                                       placeholder="e.g. Standard_D2s_v3">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-2">
+                                <label for="strat-instances" class="form-label form-label-sm">Instances</label>
+                                <input type="number" class="form-control form-control-sm" id="strat-instances" value="1" min="1">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-gpu" class="form-label form-label-sm">Total GPUs</label>
+                                <input type="number" class="form-control form-control-sm" id="strat-gpu" min="0" placeholder="0">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-residency" class="form-label form-label-sm">Data residency</label>
+                                <select class="form-select form-select-sm" id="strat-residency">
+                                    <option value="">ANY</option>
+                                    <option value="FR">FR</option>
+                                    <option value="EU">EU</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-statefulness" class="form-label form-label-sm">Statefulness</label>
+                                <select class="form-select form-select-sm" id="strat-statefulness">
+                                    <option value="stateless" selected>Stateless</option>
+                                    <option value="soft-state">Soft-state</option>
+                                    <option value="stateful">Stateful</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-latency-sens" class="form-label form-label-sm">Latency sensitivity</label>
+                                <select class="form-select form-select-sm" id="strat-latency-sens">
+                                    <option value="low">Low</option>
+                                    <option value="medium" selected>Medium</option>
+                                    <option value="high">High</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-cross-traffic" class="form-label form-label-sm">Cross-region traffic</label>
+                                <select class="form-select form-select-sm" id="strat-cross-traffic">
+                                    <option value="low" selected>Low</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="heavy">Heavy</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-2">
+                                <label for="strat-urgency" class="form-label form-label-sm">Urgency</label>
+                                <select class="form-select form-select-sm" id="strat-urgency">
+                                    <option value="this_week" selected>This week</option>
+                                    <option value="today">Today</option>
+                                    <option value="now">Now</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-currency" class="form-label form-label-sm">Currency</label>
+                                <select class="form-select form-select-sm" id="strat-currency">
+                                    <option value="USD" selected>USD</option>
+                                    <option value="EUR">EUR</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="strat-prefer-spot">
+                                    <label class="form-check-label small" for="strat-prefer-spot">Prefer Spot</label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-budget" class="form-label form-label-sm">Max hourly budget</label>
+                                <input type="number" class="form-control form-control-sm" id="strat-budget" min="0" step="0.01" placeholder="None">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strat-max-rtt" class="form-label form-label-sm">Max RTT (ms)</label>
+                                <input type="number" class="form-control form-control-sm" id="strat-max-rtt" min="0" placeholder="None">
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="strat-require-zonal">
+                                    <label class="form-check-label small" for="strat-require-zonal">Require zonal</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm" id="strat-submit-btn">
+                                <i class="bi bi-compass"></i> Generate Strategy
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Error -->
+                    <div id="strategy-error" class="alert alert-danger alert-sm d-none mt-3" role="alert"></div>
+
+                    <!-- Loading -->
+                    <div id="strategy-loading" class="text-center py-5 d-none">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-body-secondary">Computing capacity strategy…</p>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="strategy-results" class="d-none mt-3">
+                        <!-- Summary cards -->
+                        <div class="row g-3 mb-3" id="strategy-summary-cards"></div>
+
+                        <!-- Business explanation -->
+                        <div class="card mb-3">
+                            <div class="card-header"><i class="bi bi-briefcase"></i> Business View</div>
+                            <div class="card-body" id="strategy-business"></div>
+                        </div>
+
+                        <!-- Technical details -->
+                        <div class="accordion" id="strategy-tech-accordion">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="#strategy-tech-body">
+                                        <i class="bi bi-gear me-2"></i> Technical Details
+                                    </button>
+                                </h2>
+                                <div id="strategy-tech-body" class="accordion-collapse collapse">
+                                    <div class="accordion-body" id="strategy-technical"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Warnings -->
+                        <div id="strategy-warnings" class="mt-3"></div>
+
+                        <!-- Disclaimer -->
+                        <div class="alert alert-secondary mt-3 small" role="alert">
+                            <i class="bi bi-info-circle"></i>
+                            This tool is not affiliated with Microsoft.
+                            All capacity, pricing and latency information are indicative
+                            and not a guarantee of deployment success.
+                        </div>
                     </div>
                 </div>
             </div>

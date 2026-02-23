@@ -206,8 +206,8 @@ class TestMcpToOpenaiConversion:
         assert "switch_tenant" in names
 
     def test_total_tool_count(self):
-        """Should have 7 MCP tools + 2 chat-only = 9 total."""
-        assert len(TOOL_DEFINITIONS) == 9
+        """Should have 10 MCP tools + 2 chat-only = 12 total."""
+        assert len(TOOL_DEFINITIONS) == 12
 
     def test_schema_strips_titles(self):
         """The converter should strip Pydantic 'title' fields from parameters."""

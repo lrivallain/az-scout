@@ -20,6 +20,7 @@ let lastSkuData = null;                     // cached SKU list
 let lastSpotScores = null;                  // {scores: {sku: {zone: label}}, errors: []}
 let _skuDataTable = null;                   // Simple-DataTables instance
 let _skuFilterState = {};                   // {headerText: filterValue} – persists across re-renders
+let _admissionCache = {};                   // {skuName: admissionData} – cached admission intelligence
 
 // ---------------------------------------------------------------------------
 // Deployment Confidence Score – client-side recomputation
@@ -162,7 +163,8 @@ async function init() {
     if (tabEl) {
         tabEl.addEventListener('shown.bs.tab', (e) => {
             const target = e.target.getAttribute('data-bs-target');
-            window.history.replaceState(null, '', target === '#tab-planner' ? '#planner' : '#topology');
+            const hashMap = { '#tab-planner': '#planner', '#tab-strategy': '#strategy' };
+            window.history.replaceState(null, '', hashMap[target] || '#topology');
         });
     }
     // Activate tab from hash
@@ -170,7 +172,13 @@ async function init() {
     if (hash === '#planner') {
         const plannerTab = document.getElementById('planner-tab');
         if (plannerTab) new bootstrap.Tab(plannerTab).show();
+    } else if (hash === '#strategy') {
+        const stratTab = document.getElementById('strategy-tab');
+        if (stratTab) new bootstrap.Tab(stratTab).show();
     }
+
+    // Init strategy subscription combobox
+    initStratSubCombobox();
 
     // Load tenants
     await fetchTenants();
@@ -186,7 +194,10 @@ async function init() {
 // URL hash helper  (only stores active tab, no query params)
 // ---------------------------------------------------------------------------
 function getActiveTabFromHash() {
-    return window.location.hash === "#planner" ? "planner" : "topology";
+    const h = window.location.hash;
+    if (h === "#planner") return "planner";
+    if (h === "#strategy") return "strategy";
+    return "topology";
 }
 
 // ---------------------------------------------------------------------------
@@ -1237,6 +1248,23 @@ function refreshPricingModal() {
     if (_pricingModalSku) fetchPricingDetail();
 }
 
+async function fetchAdmissionIntelligence(skuName) {
+    const region = document.getElementById("region-select").value;
+    if (!region || !plannerSubscriptionId) return null;
+    try {
+        const params = new URLSearchParams({ region, sku: skuName, subscriptionId: plannerSubscriptionId });
+        const tqs = tenantQS("&");
+        const data = await apiFetch(`/api/sku-admission?${params}${tqs}`);
+        if (data && !data.error) {
+            _admissionCache[skuName] = data;
+            return data;
+        }
+    } catch (err) {
+        console.warn("Admission intelligence fetch failed for", skuName, err);
+    }
+    return null;
+}
+
 async function fetchPricingDetail() {
     const skuName = _pricingModalSku;
     if (!skuName) return;
@@ -1251,8 +1279,13 @@ async function fetchPricingDetail() {
         const params = new URLSearchParams({ region, skuName, currencyCode: currency });
         if (plannerSubscriptionId) params.set("subscriptionId", plannerSubscriptionId);
         const tqs = tenantQS("&");
-        const data = await apiFetch(`/api/sku-pricing?${params}${tqs}`);
+        const [data] = await Promise.all([
+            apiFetch(`/api/sku-pricing?${params}${tqs}`),
+            fetchAdmissionIntelligence(skuName),
+        ]);
         renderPricingDetail(data);
+        // Update admission column in table if data was cached
+        if (_admissionCache[skuName] && lastSkuData) renderSkuTable(lastSkuData);
     } catch (err) {
         const content = document.getElementById("pricing-modal-content");
         content.innerHTML = `<p class="text-danger small">Failed to load pricing: ${escapeHtml(err.message)}</p>`;
@@ -1279,9 +1312,11 @@ function renderPricingDetail(data, openAccordionIds) {
         recomputeConfidence(confSku);
     }
 
-    // Build sections in order: Confidence → VM Profile → Zone Availability → Quota → Pricing
+    // Build sections in order: Confidence → Admission → VM Profile → Zone Availability → Quota → Pricing
     let html = "";
     if (confSku?.confidence) html += renderConfidenceBreakdown(confSku.confidence);
+    const admData = _admissionCache[_pricingModalSku];
+    html += renderAdmissionIntelligence(admData);
     if (data.profile) html += renderVmProfile(data.profile);
     if (data.profile) html += renderZoneAvailability(data.profile, confSku?.confidence);
     const vcpus = parseInt(confSku?.capabilities?.vCPUs, 10) || 0;
@@ -1668,6 +1703,97 @@ function renderConfidenceBreakdown(conf) {
     return html;
 }
 
+function renderAdmissionIntelligence(admData) {
+    if (!admData) return "";
+    const ac = admData.admissionConfidence || {};
+    const frag = admData.fragmentationRisk || {};
+    const vol24 = admData.volatility24h || {};
+    const vol7d = admData.volatility7d || {};
+    const evict = admData.evictionRate || {};
+
+    function admBadge(score, label) {
+        if (score == null) return '<span class="vm-badge vm-badge-unknown">\u2014</span>';
+        const cls = score >= 80 ? "admission-high" : score >= 60 ? "admission-medium" : score >= 40 ? "admission-low" : "admission-very-low";
+        return `<span class="admission-badge ${cls}">${score} ${escapeHtml(label || "")}</span>`;
+    }
+    function admRow(label, value) {
+        return `<div class="vm-profile-row"><span class="vm-profile-label">${escapeHtml(label)}</span><span>${value}</span></div>`;
+    }
+    function signalBadge(label) {
+        if (!label) return '<span class="vm-badge vm-badge-unknown">\u2014</span>';
+        const lower = label.toLowerCase();
+        const cls = lower === "low" ? "admission-high" : lower === "moderate" || lower === "medium" ? "admission-medium" : lower === "high" ? "admission-low" : lower === "critical" || lower === "very high" ? "admission-very-low" : "";
+        return cls ? `<span class="admission-badge ${cls}">${escapeHtml(label)}</span>` : escapeHtml(label);
+    }
+
+    let html = '<div class="admission-section">';
+    html += '<h4 class="vm-profile-title">Admission Intelligence</h4>';
+    html += '<div class="admission-grid">';
+
+    // Left column: Admission Confidence card
+    html += '<div class="vm-profile-card">';
+    html += '<div class="vm-profile-card-title">Admission Confidence</div>';
+    html += admRow("Score", admBadge(ac.score, ac.label));
+    html += admRow("Signals Available", ac.signalsAvailable != null ? String(ac.signalsAvailable) : "\u2014");
+
+    if (ac.breakdown?.length) {
+        html += '<div class="confidence-breakdown-table mt-2"><table class="table table-sm mb-0"><thead><tr><th>Signal</th><th>Raw</th><th>Norm</th><th>Weight</th><th>Contrib</th></tr></thead><tbody>';
+        ac.breakdown.forEach(b => {
+            const rawStr = b.rawValue != null ? escapeHtml(String(b.rawValue)) : "\u2014";
+            const normStr = b.normalizedScore != null ? b.normalizedScore.toFixed(2) : "\u2014";
+            const weightStr = b.weight != null ? b.weight.toFixed(2) : "\u2014";
+            const contribStr = b.contribution != null ? b.contribution.toFixed(1) : "\u2014";
+            html += `<tr><td>${escapeHtml(b.signal || "")}</td><td>${rawStr}</td><td>${normStr}</td><td>${weightStr}</td><td>${contribStr}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+    }
+
+    if (ac.missingInputs?.length) {
+        html += `<div class="confidence-missing mt-2"><i class="bi bi-exclamation-triangle me-1"></i>Missing: ${ac.missingInputs.map(m => escapeHtml(m)).join(", ")}</div>`;
+    }
+    html += '</div>';
+
+    // Right column: Signals card
+    html += '<div class="vm-profile-card">';
+    html += '<div class="vm-profile-card-title">Signals</div>';
+    html += admRow("Fragmentation Risk", signalBadge(frag.label));
+    if (frag.factors?.length) {
+        html += `<div class="small text-body-secondary ms-2 mb-2">${frag.factors.map(f => escapeHtml(f)).join("; ")}</div>`;
+    }
+    html += admRow("Volatility (24h)", signalBadge(vol24.label));
+    if (vol24.sampleCount != null) {
+        html += `<div class="small text-body-secondary ms-2 mb-1">Samples: ${vol24.sampleCount}`;
+        if (vol24.timeInLowPercent != null) html += ` | Time in Low: ${vol24.timeInLowPercent.toFixed(0)}%`;
+        html += '</div>';
+    }
+    html += admRow("Volatility (7d)", signalBadge(vol7d.label));
+    if (vol7d.sampleCount != null) {
+        html += `<div class="small text-body-secondary ms-2 mb-1">Samples: ${vol7d.sampleCount}`;
+        if (vol7d.timeInLowPercent != null) html += ` | Time in Low: ${vol7d.timeInLowPercent.toFixed(0)}%`;
+        html += '</div>';
+    }
+    html += admRow("Eviction Rate", evict.evictionRate ? escapeHtml(evict.evictionRate) : "\u2014");
+    if (evict.status) html += `<div class="small text-body-secondary ms-2 mb-1">${escapeHtml(evict.status)}</div>`;
+    html += '</div>';
+
+    html += '</div>'; // .admission-grid
+
+    html += '<div class="admission-disclaimer mt-2"><i class="bi bi-info-circle me-1"></i>Estimated signals derived from public APIs and collected history. Not a deployment guarantee.</div>';
+
+    html += '<div class="accordion mt-2" id="admissionAccordion">';
+    html += '<div class="accordion-item">';
+    html += '<h2 class="accordion-header">';
+    html += '<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#admissionJsonPanel" aria-expanded="false" aria-controls="admissionJsonPanel">';
+    html += '<i class="bi bi-code-slash me-2"></i>Breakdown JSON';
+    html += '</button></h2>';
+    html += '<div id="admissionJsonPanel" class="accordion-collapse collapse" data-bs-parent="#admissionAccordion">';
+    html += `<div class="accordion-body p-2"><pre class="mb-0 small" style="max-height:300px;overflow:auto">${escapeHtml(JSON.stringify(admData, null, 2))}</pre></div>`;
+    html += '</div></div></div>';
+
+    html += '</div>'; // .admission-section
+    return html;
+}
+
 // ---------------------------------------------------------------------------
 // Render SKU table  (powered by Simple-DataTables)
 // ---------------------------------------------------------------------------
@@ -1809,6 +1935,7 @@ function renderSkuTable(skus) {
         "Quota Limit", "Quota Used", "Quota Remaining"];
     if (showSpot) headers.push("Spot Score");
     headers.push("Confidence");
+    headers.push("Admission");
     if (showPricing) {
         headers.push(`PAYGO ${priceCurrency}/h`, `Spot ${priceCurrency}/h`);
     }
@@ -1859,6 +1986,17 @@ function renderSkuTable(skus) {
             html += '<td data-sort="-1">\u2014</td>';
         }
 
+        // Admission
+        const adm = _admissionCache[sku.name];
+        if (adm?.admissionConfidence?.score != null) {
+            const admScore = adm.admissionConfidence.score;
+            const admLabel = adm.admissionConfidence.label || "";
+            const admClass = admScore >= 80 ? "admission-high" : admScore >= 60 ? "admission-medium" : admScore >= 40 ? "admission-low" : "admission-very-low";
+            html += `<td data-sort="${admScore}"><span class="admission-badge ${admClass}" data-bs-toggle="tooltip" data-bs-title="Heuristic admission confidence estimate (not a guarantee)">${admScore} ${escapeHtml(admLabel)}</span></td>`;
+        } else {
+            html += '<td data-sort="-1">\u2014</td>';
+        }
+
         // Prices
         if (showPricing) {
             const pricing = sku.pricing || {};
@@ -1880,13 +2018,15 @@ function renderSkuTable(skus) {
     container.innerHTML = html;
 
     // Column type configuration for proper numeric sorting
-    // Columns: SKU(0) Family(1) vCPUs(2) Mem(3) QLimit(4) QUsed(5) QRem(6) [Spot(7)] Conf(7|8) [PAYGO Spot]
+    // Columns: SKU(0) Family(1) vCPUs(2) Mem(3) QLimit(4) QUsed(5) QRem(6) [Spot(7)] Conf(7|8) Adm(8|9) [PAYGO Spot]
     const confCol = showSpot ? 8 : 7;
+    const admCol = confCol + 1;
     const colConfig = [
         { select: [2, 3, 4, 5, 6], type: "number" },   // vCPUs, Memory, Quota
         { select: confCol, type: "number" },              // Confidence (uses data-sort attr)
+        { select: admCol, type: "number" },               // Admission (uses data-sort attr)
     ];
-    let nextCol = confCol + 1;
+    let nextCol = admCol + 1;
     if (showPricing) {
         colConfig.push({ select: [nextCol, nextCol + 1], type: "number" });
         nextCol += 2;
@@ -1898,7 +2038,7 @@ function renderSkuTable(skus) {
     // Build per-column header filter config
     // Only text-filterable columns get an input; Zone columns are excluded
     const filterableCols = [];
-    for (let i = 0; i <= confCol; i++) filterableCols.push(i);
+    for (let i = 0; i <= admCol; i++) filterableCols.push(i);
     if (showPricing) { filterableCols.push(nextCol - 2, nextCol - 1); }
 
     _skuDataTable = new simpleDatatables.DataTable(tableEl, {
@@ -1912,7 +2052,7 @@ function renderSkuTable(skus) {
     });
 
     // Numeric column indices (for operator-aware filtering: >5, <32, 4-16, etc.)
-    const numericCols = new Set([2, 3, 4, 5, 6, confCol]);
+    const numericCols = new Set([2, 3, 4, 5, 6, confCol, admCol]);
     if (showPricing) { numericCols.add(nextCol - 2); numericCols.add(nextCol - 1); }
 
     // Build per-column filter row in thead
@@ -2114,9 +2254,10 @@ function exportSkuCSV() {
     const zoneHeaders = allLogicalZones.map((lz, i) => `Zone ${lz}\n${physicalZones[i]}`);
     const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)",
         "Quota Limit", "Quota Used", "Quota Remaining", "Spot Score",
-        "Confidence Score", "Confidence Label", ...priceHeaders, ...zoneHeaders];
+        "Confidence Score", "Confidence Label", "Admission Score", "Admission Label", ...priceHeaders, ...zoneHeaders];
     const rows = lastSkuData.map(sku => {
         const quota = sku.quota || {};
+        const adm = _admissionCache[sku.name];
         const zoneCols = allLogicalZones.map(lz => {
             if (sku.restrictions.includes(lz)) return "Restricted";
             if (sku.zones.includes(lz)) return "Available";
@@ -2127,6 +2268,7 @@ function exportSkuCSV() {
             quota.limit ?? "", quota.used ?? "", quota.remaining ?? "",
             Object.entries((lastSpotScores?.scores || {})[sku.name] || {}).sort(([a], [b]) => a.localeCompare(b)).map(([z, s]) => `Z${z}:${s}`).join(" ") || "",
             sku.confidence?.score ?? "", sku.confidence?.label || "",
+            adm?.admissionConfidence?.score ?? "", adm?.admissionConfidence?.label || "",
             ...(hasPricing ? [sku.pricing?.paygo ?? "", sku.pricing?.spot ?? ""] : []),
             ...zoneCols
         ];
@@ -2769,6 +2911,254 @@ function _renderMarkdownTables(html) {
         result.push(`<table class="table table-sm table-bordered chat-table"><thead>${tableRows[0]}</thead><tbody>${tableRows.slice(1).join("")}</tbody></table>`);
     }
     return result.join("\n");
+}
+
+// =========================================================================
+// STRATEGY ADVISOR TAB
+// =========================================================================
+let _stratSubscriptionId = null;
+
+function initStratSubCombobox() {
+    const searchInput = document.getElementById("strat-sub-search");
+    const dropdown = document.getElementById("strat-sub-dropdown");
+    if (!searchInput || !dropdown) return;
+
+    searchInput.addEventListener("focus", () => {
+        searchInput.select();
+        renderStratSubDropdown(searchInput.value.includes("(") ? "" : searchInput.value);
+        dropdown.classList.add("show");
+    });
+    searchInput.addEventListener("input", () => {
+        document.getElementById("strat-sub-select").value = "";
+        _stratSubscriptionId = null;
+        renderStratSubDropdown(searchInput.value);
+        dropdown.classList.add("show");
+    });
+    searchInput.addEventListener("keydown", (e) => {
+        const items = dropdown.querySelectorAll("li");
+        const active = dropdown.querySelector("li.active");
+        let idx = [...items].indexOf(active);
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (!dropdown.classList.contains("show")) dropdown.classList.add("show");
+            if (active) active.classList.remove("active");
+            idx = (idx + 1) % items.length;
+            items[idx]?.classList.add("active");
+            items[idx]?.scrollIntoView({ block: "nearest" });
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (active) active.classList.remove("active");
+            idx = idx <= 0 ? items.length - 1 : idx - 1;
+            items[idx]?.classList.add("active");
+            items[idx]?.scrollIntoView({ block: "nearest" });
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (active) _selectStratSub(active.dataset.value);
+            else if (items.length === 1) _selectStratSub(items[0].dataset.value);
+        } else if (e.key === "Escape") {
+            dropdown.classList.remove("show");
+            searchInput.blur();
+        }
+    });
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest("#strat-sub-combobox")) dropdown.classList.remove("show");
+    });
+}
+
+function renderStratSubDropdown(filter) {
+    const dropdown = document.getElementById("strat-sub-dropdown");
+    if (!dropdown) return;
+    const lc = (filter || "").toLowerCase();
+    const matches = lc
+        ? subscriptions.filter(s => s.name.toLowerCase().includes(lc) || s.id.toLowerCase().includes(lc))
+        : subscriptions;
+    dropdown.innerHTML = matches.map(s =>
+        `<li class="dropdown-item" data-value="${s.id}">${escapeHtml(s.name)} <span class="region-name">(${s.id.slice(0, 8)}\u2026)</span></li>`
+    ).join("");
+    dropdown.querySelectorAll("li").forEach(li => {
+        li.addEventListener("click", () => _selectStratSub(li.dataset.value));
+    });
+    const searchInput = document.getElementById("strat-sub-search");
+    if (subscriptions.length > 0 && searchInput) {
+        searchInput.placeholder = "Type to search subscriptions\u2026";
+        searchInput.disabled = false;
+    }
+}
+
+function _selectStratSub(id) {
+    const s = subscriptions.find(s => s.id === id);
+    if (!s) return;
+    _stratSubscriptionId = id;
+    document.getElementById("strat-sub-select").value = id;
+    document.getElementById("strat-sub-search").value = s.name;
+    document.getElementById("strat-sub-dropdown").classList.remove("show");
+}
+
+async function submitStrategy(e) {
+    e.preventDefault();
+
+    const subId = _stratSubscriptionId;
+    if (!subId) { showError("strategy-error", "Please select a subscription."); return; }
+
+    hideError("strategy-error");
+    document.getElementById("strategy-results").classList.add("d-none");
+    document.getElementById("strategy-loading").classList.remove("d-none");
+    document.getElementById("strat-submit-btn").disabled = true;
+
+    const body = {
+        workloadName: document.getElementById("strat-workload-name").value.trim(),
+        subscriptionId: subId,
+        tenantId: document.getElementById("tenant-select")?.value || undefined,
+        scale: {
+            sku: document.getElementById("strat-sku").value.trim() || undefined,
+            instanceCount: parseInt(document.getElementById("strat-instances").value, 10) || 1,
+            gpuCountTotal: parseInt(document.getElementById("strat-gpu").value, 10) || undefined,
+        },
+        constraints: {
+            dataResidency: document.getElementById("strat-residency").value || undefined,
+            requireZonal: document.getElementById("strat-require-zonal").checked,
+            maxInterRegionRttMs: parseInt(document.getElementById("strat-max-rtt").value, 10) || undefined,
+        },
+        usage: {
+            statefulness: document.getElementById("strat-statefulness").value,
+            crossRegionTraffic: document.getElementById("strat-cross-traffic").value,
+            latencySensitivity: document.getElementById("strat-latency-sens").value,
+        },
+        data: {},
+        timing: {
+            deploymentUrgency: document.getElementById("strat-urgency").value,
+        },
+        pricing: {
+            currencyCode: document.getElementById("strat-currency").value,
+            preferSpot: document.getElementById("strat-prefer-spot").checked,
+            maxHourlyBudget: parseFloat(document.getElementById("strat-budget").value) || undefined,
+        },
+    };
+
+    try {
+        const result = await apiPost("/api/capacity-strategy", body);
+        renderStrategyResults(result);
+    } catch (err) {
+        showError("strategy-error", "Strategy computation failed: " + err.message);
+    } finally {
+        document.getElementById("strategy-loading").classList.add("d-none");
+        document.getElementById("strat-submit-btn").disabled = false;
+    }
+}
+
+function renderStrategyResults(data) {
+    const container = document.getElementById("strategy-results");
+    container.classList.remove("d-none");
+
+    // Summary cards
+    const summary = data.summary || {};
+    const cards = document.getElementById("strategy-summary-cards");
+    const confLbl = (summary.overallConfidenceLabel || "unknown").toLowerCase().replace(/\s+/g, "-");
+    const stratLabel = (summary.strategy || "").replace(/_/g, " ");
+    const costStr = summary.estimatedHourlyCost != null
+        ? `${formatNum(summary.estimatedHourlyCost, 2)} ${escapeHtml(summary.currency || "USD")}/h`
+        : "\u2014";
+    cards.innerHTML = `
+        <div class="col-md-3"><div class="card text-center p-3">
+            <div class="text-body-secondary small">Strategy</div>
+            <div class="fw-bold text-capitalize">${escapeHtml(stratLabel)}</div>
+        </div></div>
+        <div class="col-md-3"><div class="card text-center p-3">
+            <div class="text-body-secondary small">Regions</div>
+            <div class="fw-bold">${summary.regionCount ?? "\u2014"}</div>
+        </div></div>
+        <div class="col-md-3"><div class="card text-center p-3">
+            <div class="text-body-secondary small">Instances</div>
+            <div class="fw-bold">${summary.totalInstances ?? "\u2014"}</div>
+        </div></div>
+        <div class="col-md-3"><div class="card text-center p-3">
+            <div class="text-body-secondary small">Confidence</div>
+            <div><span class="confidence-badge confidence-${confLbl}">${summary.overallConfidence ?? "\u2014"} ${escapeHtml(summary.overallConfidenceLabel || "")}</span></div>
+        </div></div>
+    `;
+
+    // Business view
+    const biz = data.businessView || {};
+    const bizEl = document.getElementById("strategy-business");
+    let bizHtml = `<p class="fw-bold">${escapeHtml(biz.keyMessage || "")}</p>`;
+    if (biz.justification?.length) {
+        bizHtml += "<h6>Justification</h6><ul>" + biz.justification.map(j => `<li>${escapeHtml(j)}</li>`).join("") + "</ul>";
+    }
+    if (biz.risks?.length) {
+        bizHtml += '<h6>Risks</h6><ul class="text-warning">' + biz.risks.map(r => `<li>${escapeHtml(r)}</li>`).join("") + "</ul>";
+    }
+    if (biz.mitigations?.length) {
+        bizHtml += '<h6>Mitigations</h6><ul class="text-success">' + biz.mitigations.map(m => `<li>${escapeHtml(m)}</li>`).join("") + "</ul>";
+    }
+    bizHtml += `<p class="text-body-secondary small mt-2">Estimated cost: ${costStr}</p>`;
+    bizEl.innerHTML = bizHtml;
+
+    // Technical view
+    const tech = data.technicalView || {};
+    const techEl = document.getElementById("strategy-technical");
+    let techHtml = "";
+
+    // Allocations table
+    if (tech.allocations?.length) {
+        techHtml += '<h6>Region Allocations</h6><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr>';
+        techHtml += "<th>Region</th><th>Role</th><th>SKU</th><th>Instances</th><th>Zones</th><th>Quota Rem.</th><th>Spot</th><th>Confidence</th><th>RTT (ms)</th><th>PAYGO/h</th><th>Spot/h</th>";
+        techHtml += "</tr></thead><tbody>";
+        tech.allocations.forEach(a => {
+            const aConfLbl = (a.confidenceLabel || "").toLowerCase().replace(/\s+/g, "-");
+            techHtml += "<tr>";
+            techHtml += `<td>${escapeHtml(a.region)}</td>`;
+            techHtml += `<td><span class="badge bg-secondary">${escapeHtml(a.role)}</span></td>`;
+            techHtml += `<td>${escapeHtml(a.sku)}</td>`;
+            techHtml += `<td>${a.instanceCount}</td>`;
+            techHtml += `<td>${a.zones?.length ? a.zones.join(", ") : "\u2014"}</td>`;
+            techHtml += `<td>${a.quotaRemaining ?? "\u2014"}</td>`;
+            techHtml += `<td>${a.spotScore ? `<span class="spot-badge spot-${a.spotScore.toLowerCase()}">${escapeHtml(a.spotScore)}</span>` : "\u2014"}</td>`;
+            techHtml += `<td>${a.confidenceScore != null ? `<span class="confidence-badge confidence-${aConfLbl}">${a.confidenceScore}</span>` : "\u2014"}</td>`;
+            techHtml += `<td>${a.rttFromPrimaryMs ?? "\u2014"}</td>`;
+            techHtml += `<td class="price-cell">${a.paygoPerHour != null ? formatNum(a.paygoPerHour, 4) : "\u2014"}</td>`;
+            techHtml += `<td class="price-cell">${a.spotPerHour != null ? formatNum(a.spotPerHour, 4) : "\u2014"}</td>`;
+            techHtml += "</tr>";
+        });
+        techHtml += "</tbody></table></div>";
+    }
+
+    // Latency matrix
+    if (tech.latencyMatrix && Object.keys(tech.latencyMatrix).length > 1) {
+        const regions = Object.keys(tech.latencyMatrix).sort();
+        techHtml += '<h6 class="mt-3">Inter-region Latency (ms)</h6><div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th></th>';
+        regions.forEach(r => { techHtml += `<th>${escapeHtml(r)}</th>`; });
+        techHtml += "</tr></thead><tbody>";
+        regions.forEach(src => {
+            techHtml += `<tr><td class="fw-bold">${escapeHtml(src)}</td>`;
+            regions.forEach(dst => {
+                const v = tech.latencyMatrix[src]?.[dst];
+                techHtml += `<td class="text-center">${v != null ? v : "\u2014"}</td>`;
+            });
+            techHtml += "</tr>";
+        });
+        techHtml += "</tbody></table></div>";
+    }
+
+    if (tech.evaluatedAt) {
+        techHtml += `<p class="text-body-secondary small">Evaluated at: ${escapeHtml(tech.evaluatedAt)}</p>`;
+    }
+    techEl.innerHTML = techHtml || '<p class="text-body-secondary">No technical details available.</p>';
+
+    // Warnings
+    const warnEl = document.getElementById("strategy-warnings");
+    const allWarnings = [...(data.warnings || []), ...(data.missingInputs || [])];
+    if (allWarnings.length) {
+        warnEl.innerHTML = allWarnings.map(w =>
+            `<div class="alert alert-warning alert-sm py-1 px-2 mb-1"><i class="bi bi-exclamation-triangle"></i> ${escapeHtml(w)}</div>`
+        ).join("");
+    } else {
+        warnEl.innerHTML = "";
+    }
+
+    // Errors
+    if (data.errors?.length) {
+        showError("strategy-error", data.errors.join("; "));
+    }
 }
 
 // ---------------------------------------------------------------------------
