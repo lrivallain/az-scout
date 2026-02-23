@@ -43,13 +43,6 @@
             <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="auth-logout-btn" onclick="msalSignOut()" title="Sign out">
                 <i class="bi bi-box-arrow-right"></i>
             </button>
-            {% elif auth_user %}
-            <span class="text-body-secondary small d-flex align-items-center gap-1" title="Signed in as {{ auth_user }}">
-                <i class="bi bi-person-circle"></i> {{ auth_user }}
-            </span>
-            <a href="/.auth/logout" class="btn btn-sm btn-outline-secondary" title="Sign out">
-                <i class="bi bi-box-arrow-right"></i>
-            </a>
             {% endif %}
             <button type="button" class="btn btn-sm btn-outline-secondary" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
                 <i class="bi bi-moon-fill" id="icon-dark"></i>

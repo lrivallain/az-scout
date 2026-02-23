@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "15564184320055158932"
+      "templateHash": "12649536864963370631"
     }
   },
   "parameters": {
@@ -80,14 +80,14 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Entra ID App Registration Client ID (required when authMode is \"entra\" or \"easyauth\")."
+        "description": "Entra ID App Registration Client ID (required when authMode is \"entra\")."
       }
     },
     "authClientSecret": {
       "type": "securestring",
       "defaultValue": "",
       "metadata": {
-        "description": "Entra ID App Registration Client Secret (required when authMode is \"entra\" or \"easyauth\")."
+        "description": "Entra ID App Registration Client Secret (required when authMode is \"entra\")."
       }
     },
     "authTenantId": {
@@ -102,11 +102,10 @@
       "defaultValue": "none",
       "allowedValues": [
         "none",
-        "entra",
-        "easyauth"
+        "entra"
       ],
       "metadata": {
-        "description": "Authentication mode for the application: \"entra\" (fastapi-azure-auth + MSAL.js) or \"easyauth\" (platform-level). When \"none\", authentication is disabled."
+        "description": "Authentication mode: \"entra\" (fastapi-azure-auth + MSAL.js) or \"none\" (no authentication)."
       }
     },
     "authApiScope": {
@@ -178,7 +177,7 @@
             "allowInsecure": false
           },
           "registries": [],
-          "secrets": "[if(equals(parameters('authMode'), 'easyauth'), createArray(createObject('name', 'microsoft-provider-authentication-secret', 'value', parameters('authClientSecret'))), if(equals(parameters('authMode'), 'entra'), createArray(createObject('name', 'auth-client-secret', 'value', parameters('authClientSecret'))), createArray()))]"
+          "secrets": "[if(equals(parameters('authMode'), 'entra'), createArray(createObject('name', 'auth-client-secret', 'value', parameters('authClientSecret'))), createArray())]"
         },
         "template": {
           "containers": [
@@ -211,44 +210,6 @@
       "dependsOn": [
         "[resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('baseName')))]",
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('baseName')))]"
-      ]
-    },
-    {
-      "condition": "[equals(parameters('authMode'), 'easyauth')]",
-      "type": "Microsoft.App/containerApps/authConfigs",
-      "apiVersion": "2024-03-01",
-      "name": "[format('{0}/{1}', parameters('baseName'), 'current')]",
-      "properties": {
-        "platform": {
-          "enabled": true
-        },
-        "globalValidation": {
-          "unauthenticatedClientAction": "RedirectToLoginPage"
-        },
-        "identityProviders": {
-          "azureActiveDirectory": {
-            "registration": {
-              "clientId": "[parameters('authClientId')]",
-              "clientSecretSettingName": "microsoft-provider-authentication-secret",
-              "openIdIssuer": "[format('{0}{1}/', environment().authentication.loginEndpoint, parameters('authTenantId'))]"
-            },
-            "validation": {
-              "allowedAudiences": [
-                "[format('api://{0}', parameters('authClientId'))]",
-                "[parameters('authClientId')]"
-              ],
-              "defaultAuthorizationPolicy": {
-                "allowedApplications": [
-                  "[parameters('authClientId')]",
-                  "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
-                ]
-              }
-            }
-          }
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.App/containerApps', parameters('baseName'))]"
       ]
     },
     {

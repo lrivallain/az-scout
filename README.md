@@ -152,9 +152,11 @@ The deployment creates:
 
 > **Note:** The `Virtual Machine Contributor` role is required for querying Spot Placement Scores (POST endpoint). Set `enableSpotScoreRole=false` to skip this if you don't need spot scores or prefer to manage permissions manually.
 
-#### Enable Entra ID authentication (EasyAuth)
+#### Enable Entra ID authentication
 
-For a complete walkthrough (App Registration creation, client secret, user assignment, troubleshooting), see [`deploy/EASYAUTH.md`](deploy/EASYAUTH.md).
+Authentication uses **fastapi-azure-auth** (backend token validation + OBO flow) and **MSAL.js** (frontend sign-in popup). When enabled, all API endpoints require a valid bearer token and ARM calls use the signed-in user's identity.
+
+For a complete walkthrough — App Registration creation, API scope, client secret, redirect URIs, deployment, and troubleshooting — see [`deploy/AUTHENTICATION.md`](deploy/AUTHENTICATION.md).
 
 ## Usage
 
@@ -270,7 +272,7 @@ Add to your MCP client configuration:
 
 > **Hosted deployment:** When running as a Container App (or any hosted web server), the MCP endpoint is automatically available at `/mcp` alongside the web UI — no separate server needed. Point your MCP client to `https://<your-app-url>/mcp`.
 >
-> **EasyAuth:** If your Container App has EasyAuth enabled, MCP clients must pass a bearer token in the `Authorization` header. See the [EasyAuth guide](deploy/EASYAUTH.md#7-connect-mcp-clients-through-easyauth) for detailed instructions.
+> **Entra ID auth:** If authentication is enabled (`authMode=entra`), MCP clients must pass a bearer token in the `Authorization` header. See the [authentication guide](deploy/AUTHENTICATION.md#10-mcp-client-authentication) for details.
 
 ### API
 

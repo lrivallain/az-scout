@@ -40,9 +40,4 @@ param readerSubscriptionIds = [
 // param authClientSecret = '<secret-from-az-ad-app-credential-reset>'
 // param authApiScope = 'api://xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/access_as_user'
 // param authTenantId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-//
-// Mode "easyauth" uses platform-level Container Apps authentication:
-// param authMode = 'easyauth'
-// param authClientId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-// param authClientSecret = '<secret-from-az-ad-app-credential-reset>'
-// param authTenantId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+

@@ -33,13 +33,12 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ### Added
 
-- Adds **Container App deployment** with optional Entra ID authentication (EasyAuth), a one-click "Deploy to Azure" portal experience, GHCR container CI, and supporting documentation.
+- Adds **Container App deployment** with optional Entra ID authentication, a one-click "Deploy to Azure" portal experience, GHCR container CI, and supporting documentation.
   - Dockerfile + GHCR publish workflow
-    - Bicep template with managed identity, Reader + VM Contributor roles, optional EasyAuth
+    - Bicep template with managed identity, Reader + VM Contributor roles, optional Entra ID auth
     - Custom portal form (createUiDefinition.json) with multi-select subscription picker
-    - EASYAUTH.md: full setup guide
   - Pre-commit hook to keep ARM JSON in sync with Bicep
-  - EasyAuth user info in navbar
+  - Entra ID user info in navbar (MSAL.js)
   - Single-tenant UI polish
 
 ## [2026.2.5] - 2026-02-19

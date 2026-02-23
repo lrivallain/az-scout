@@ -137,13 +137,13 @@
       },
       {
         "name": "authentication",
-        "label": "Authentication (EasyAuth)",
+        "label": "Authentication (Entra ID)",
         "elements": [
           {
             "name": "enableAuth",
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable Entra ID authentication",
-            "toolTip": "Protect the app with Microsoft Entra ID login (EasyAuth)."
+            "toolTip": "Protect the app with Microsoft Entra ID login (MSAL.js + fastapi-azure-auth)."
           },
           {
             "name": "authClientId",
@@ -185,6 +185,17 @@
               "regex": "^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$",
               "validationMessage": "Must be a valid GUID or empty."
             }
+          },
+          {
+            "name": "authApiScope",
+            "type": "Microsoft.Common.TextBox",
+            "label": "API Scope URI",
+            "defaultValue": "",
+            "toolTip": "API scope URI exposed by the App Registration (e.g. api://<clientId>/access_as_user).",
+            "visible": "[steps('authentication').enableAuth]",
+            "constraints": {
+              "required": "[steps('authentication').enableAuth]"
+            }
           }
         ]
       }
@@ -199,10 +210,11 @@
       "maxReplicas": "[steps('container').maxReplicas]",
       "readerSubscriptionIds": "[steps('permissions').readerSubscriptionIds]",
       "enableSpotScoreRole": "[steps('permissions').enableSpotScoreRole]",
-      "enableAuth": "[steps('authentication').enableAuth]",
+      "authMode": "[if(steps('authentication').enableAuth, 'entra', 'none')]",
       "authClientId": "[if(steps('authentication').enableAuth, steps('authentication').authClientId, '')]",
       "authClientSecret": "[if(steps('authentication').enableAuth, steps('authentication').authClientSecret, '')]",
-      "authTenantId": "[if(and(steps('authentication').enableAuth, not(empty(steps('authentication').authTenantId))), steps('authentication').authTenantId, '')]"
+      "authTenantId": "[if(and(steps('authentication').enableAuth, not(empty(steps('authentication').authTenantId))), steps('authentication').authTenantId, '')]",
+      "authApiScope": "[if(steps('authentication').enableAuth, steps('authentication').authApiScope, '')]"
     }
   }
 }

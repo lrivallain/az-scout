@@ -196,14 +196,11 @@ async def health() -> JSONResponse:
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def index(request: Request) -> HTMLResponse:
     """Serve the main page."""
-    # EasyAuth injects the authenticated user's display name via this header.
-    auth_user = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME", "")
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "version": __version__,
-            "auth_user": auth_user,
             "auth_mode": auth_settings.auth_mode,
             "auth_client_id": auth_settings.auth_client_id,
             "auth_tenant_id": auth_settings.auth_tenant_id,
