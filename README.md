@@ -73,6 +73,42 @@ docker run --rm -p 8000:8000 \
   ghcr.io/lrivallain/az-scout:latest
 ```
 
+### Dev Container
+
+The repository includes a [Dev Container](https://containers.dev/) configuration for a one-click development environment with all tools pre-installed.
+
+#### Prerequisites
+
+- [Docker](https://www.docker.com/) running locally
+- [VS Code](https://code.visualstudio.com/) with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension
+
+#### Getting started
+
+1. Clone the repository and open it in VS Code.
+2. When prompted, click **"Reopen in Container"** — or run the command **Dev Containers: Reopen in Container** from the Command Palette (`Ctrl+Shift+P`).
+3. Wait for the container to build and dependencies to install (first time only).
+4. Start the server:
+
+   ```bash
+   # Via VS Code task (Terminal → Run Task → "Backend: run")
+   # Or from the terminal:
+   uv run az-scout web --host 0.0.0.0 --port 5001 --reload --no-open -v
+   ```
+
+5. Open http://localhost:5001 in your browser.
+
+#### What's included
+
+| Category | Details |
+|---|---|
+| **Python** | 3.12 + `uv` package manager |
+| **System tools** | git, curl, jq, make, unzip, ripgrep |
+| **Azure CLI** | Pre-installed via devcontainer feature |
+| **VS Code extensions** | Python, Pylance, Ruff, Docker, Azure, GitLens, Copilot |
+| **Tasks** | `Backend: run`, `Backend: test`, `Backend: lint`, `Dev: run all checks` |
+
+> **Note:** Azure authentication is **not required** to build or run tests. Use `az login` inside the container when you need to query live Azure data.
+
 ### Azure Container App
 
 It is also possible to deploy az-scout as a web app in Azure using the provided Bicep template (see [Deploy to Azure](#deploy-to-azure-container-app) section below).
