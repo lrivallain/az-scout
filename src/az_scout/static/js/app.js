@@ -263,9 +263,13 @@ async function fetchTenants() {
         tenants = result.tenants || [];
         const defaultTid = result.defaultTenantId || "";
         const authTenants = tenants.filter(t => t.authenticated);
+        const hiddenCount = tenants.length - authTenants.length;
+        const hiddenOpt = hiddenCount > 0
+            ? `<option disabled>+${hiddenCount} tenant${hiddenCount > 1 ? "s" : ""} hidden (no valid auth)</option>`
+            : "";
         if (authTenants.length <= 1) {
             if (authTenants.length === 1) {
-                select.innerHTML = `<option value="${authTenants[0].id}">${escapeHtml(authTenants[0].name)}</option>`;
+                select.innerHTML = `<option value="${authTenants[0].id}">${escapeHtml(authTenants[0].name)}</option>${hiddenOpt}`;
                 select.value = authTenants[0].id;
                 select.disabled = true;
                 select.classList.add("no-arrow");
@@ -274,14 +278,11 @@ async function fetchTenants() {
             }
             return;
         }
-        select.innerHTML = tenants.map(t => {
-            const disabled = t.authenticated ? "" : "disabled";
-            const label = t.authenticated
-                ? `${escapeHtml(t.name)} (${t.id.slice(0, 8)}\u2026)`
-                : `${escapeHtml(t.name)} \u2014 no valid auth`;
-            return `<option value="${t.id}" ${disabled}>${label}</option>`;
-        }).join("");
-        if (defaultTid && tenants.some(t => t.id === defaultTid && t.authenticated)) {
+        select.innerHTML = authTenants.map(t => {
+            const label = `${escapeHtml(t.name)} (${t.id.slice(0, 8)}\u2026)`;
+            return `<option value="${t.id}">${label}</option>`;
+        }).join("") + hiddenOpt;
+        if (defaultTid && authTenants.some(t => t.id === defaultTid)) {
             select.value = defaultTid;
         }
     } catch {
