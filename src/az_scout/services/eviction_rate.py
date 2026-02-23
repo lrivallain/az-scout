@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 import requests
 
@@ -191,8 +191,8 @@ def get_spot_eviction_rate(
             _eviction_cache[cache_key] = (time.monotonic(), result)
             return result
 
-        data = resp.json()
-        rows = data.get("data", {}).get("rows", [])
+        resp_data: dict[str, Any] = resp.json()
+        rows = resp_data.get("data", {}).get("rows", [])
         if not rows:
             result = EvictionRateResult(
                 evictionRate=None,

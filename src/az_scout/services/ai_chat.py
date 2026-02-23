@@ -83,6 +83,15 @@ subscription. When discussing zone recommendations, **always** call \
 `get_zone_mappings` to also show the physical zone mapping and present both \
 (e.g. "logical zone 2 → physical zone 1"). This avoids confusion since the same \
 logical number points to different physical zones across subscriptions.
+- **Capacity reservation:** When the conversation concludes on a specific VM \
+SKU recommendation, proactively suggest **Azure Capacity Reservations** as a \
+way to secure guaranteed capacity in the target region and zone. Mention that \
+capacity reservations ensure VM allocation even during high-demand periods, and \
+that they can be created for a specific SKU, region, and zone combination. Note \
+that capacity reservations are billed at the PAYG rate whether or not VMs are \
+deployed — but this cost is offset when VMs are running. Recommend capacity \
+reservations especially when: the workload is critical, the SKU shows \
+restrictions in some zones, or the confidence score is below High (< 80).
 """
 
 # ---------------------------------------------------------------------------
@@ -216,6 +225,14 @@ Steps:
 - **Spot scores:** Never assume a VM SKU lacks Spot Placement Scores. The \
   `get_spot_scores` tool works for any SKU. Always call it when discussing \
   Spot VMs rather than guessing availability.
+- **Capacity reservation:** When concluding with a SKU recommendation, \
+  proactively suggest **Azure Capacity Reservations** to secure guaranteed \
+  capacity in the target region and zone. Capacity reservations ensure VM \
+  allocation even during high-demand periods and can be created for a specific \
+  SKU, region, and zone combination. They are billed at the PAYG rate whether \
+  or not VMs are deployed (cost is offset when VMs run). Recommend them \
+  especially when: the workload is critical, the SKU shows restrictions in \
+  some zones, or the confidence score is below High (< 80).
 - If the user deviates or asks a side question, answer it briefly, then steer back.
 - When done, present a clear summary of the recommendation.
 """
@@ -287,6 +304,8 @@ def _mcp_schema_to_openai(params: dict[str, Any]) -> dict[str, Any]:
             real_types = [t for t in schema["anyOf"] if t.get("type") != "null"]
             if real_types:
                 prop["type"] = real_types[0]["type"]
+                if "items" in real_types[0]:
+                    prop["items"] = real_types[0]["items"]
         else:
             if "type" in schema:
                 prop["type"] = schema["type"]
