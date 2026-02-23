@@ -32,6 +32,9 @@ WORKDIR /app
 COPY --from=builder /build/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 
+# Create the data directory for the signal store (SQLite)
+RUN mkdir -p /app/.az-scout && chown scout:scout /app/.az-scout
+
 USER scout
 
 EXPOSE 8000
