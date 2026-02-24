@@ -48,15 +48,21 @@ def _suppress_stderr() -> Generator[None]:
         os.close(original_fd)
 
 
-def _get_headers(tenant_id: str | None = None) -> dict[str, str]:
-    """Return authorization headers using *DefaultAzureCredential*.
+def _get_headers(
+    tenant_id: str | None = None,
+    cred: DefaultAzureCredential | None = None,
+) -> dict[str, str]:
+    """Return authorization headers using the given or default credential.
 
     When *tenant_id* is provided the token is scoped to that tenant.
+    When *cred* is provided it is used instead of the module-level credential
+    (e.g. an ``OnBehalfOfCredential`` from the OBO flow).
     """
+    effective = cred or credential
     kwargs: dict[str, str] = {}
     if tenant_id:
         kwargs["tenant_id"] = tenant_id
-    token = credential.get_token(f"{AZURE_MGMT_URL}/.default", **kwargs)
+    token = effective.get_token(f"{AZURE_MGMT_URL}/.default", **kwargs)
     return {
         "Authorization": f"Bearer {token.token}",
         "Content-Type": "application/json",

@@ -22,6 +22,8 @@ Scout Azure regions for VM availability, zone mappings, pricing, spot scores, an
 - **Capacity Strategy Advisor** – a multi-region strategy recommendation engine that goes beyond single-region planning. Given a workload profile (instances, constraints, statefulness, latency sensitivity, budget), it evaluates candidate regions against zones, quotas, restrictions, spot scores, pricing, confidence and inter-region latency to recommend a deployment strategy: `single_region`, `active_active`, `active_passive`, `sharded_multi_region`, `burst_overflow`, `time_window_deploy`, or `progressive_ramp`. Includes business justification, technical allocations, latency matrix, and warnings. No LLM — all decisions are deterministic and traceable.
 - **AI Chat Assistant** *(optional)* – interactive chat panel powered by Azure OpenAI with streaming responses, tool calling (zones, SKUs, pricing, spot scores), and markdown rendering. Supports pin-to-side mode, conversation persistence, input history, clickable choice chips, and error retry. Requires Azure OpenAI environment variables (see below).
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
+- **Public Signals mode** – no-login capacity planning using only public Azure data (retail pricing, latency matrix, capacity strategy advisor). See [Public Signals mode](#public-signals-mode).
+- **Plugin system** – modular architecture allowing external packages to contribute routes, MCP tools, UI tabs, and chat modes. See [Plugin system](#plugin-system).
 
 
 ## Quick start
@@ -152,9 +154,11 @@ The deployment creates:
 
 > **Note:** The `Virtual Machine Contributor` role is required for querying Spot Placement Scores (POST endpoint). Set `enableSpotScoreRole=false` to skip this if you don't need spot scores or prefer to manage permissions manually.
 
-#### Enable Entra ID authentication (EasyAuth)
+#### Enable Entra ID authentication
 
-For a complete walkthrough (App Registration creation, client secret, user assignment, troubleshooting), see [`deploy/EASYAUTH.md`](deploy/EASYAUTH.md).
+Authentication uses **fastapi-azure-auth** (backend token validation + OBO flow) and **MSAL.js** (frontend sign-in popup). When enabled, all API endpoints require a valid bearer token and ARM calls use the signed-in user's identity.
+
+For a complete walkthrough — App Registration creation, API scope, client secret, redirect URIs, deployment, and troubleshooting — see [`deploy/AUTHENTICATION.md`](deploy/AUTHENTICATION.md).
 
 ## Usage
 
@@ -270,7 +274,7 @@ Add to your MCP client configuration:
 
 > **Hosted deployment:** When running as a Container App (or any hosted web server), the MCP endpoint is automatically available at `/mcp` alongside the web UI — no separate server needed. Point your MCP client to `https://<your-app-url>/mcp`.
 >
-> **EasyAuth:** If your Container App has EasyAuth enabled, MCP clients must pass a bearer token in the `Authorization` header. See the [EasyAuth guide](deploy/EASYAUTH.md#7-connect-mcp-clients-through-easyauth) for detailed instructions.
+> **Entra ID auth:** If authentication is enabled (`authMode=entra`), MCP clients must pass a bearer token in the `Authorization` header. See the [authentication guide](deploy/AUTHENTICATION.md#10-mcp-client-authentication) for details.
 
 ### API
 
@@ -486,6 +490,178 @@ Every result includes these disclaimers:
 ### Bulk endpoint
 
 `POST /api/deployment-confidence` accepts a list of SKU names and returns canonical confidence results for each. The frontend calls this endpoint after spot-score updates to refresh displayed scores.
+
+
+## Authentication
+
+az-scout supports two authentication modes controlled by the `AUTH_MODE` environment variable:
+
+| Mode | Description |
+|---|---|
+| `entra` | Real Entra ID authentication via `fastapi-azure-auth`. All `/api/*` endpoints require a valid bearer token. |
+| `mock` | Authentication is bypassed — all API calls succeed without a token. **For local development only.** |
+
+The `/health` endpoint is always public (no authentication required).
+
+### Quick start (mock mode)
+
+```bash
+# No Azure config needed
+AUTH_MODE=mock uv run uvicorn az_scout.app:app --reload
+# or
+make dev-mock
+```
+
+### Quick start (Entra ID mode)
+
+```bash
+# Set required environment variables (or use a .env file — see .env.example)
+export AUTH_MODE=entra
+export AUTH_TENANT_ID=<your-tenant-id>
+export AUTH_CLIENT_ID=<your-client-id>
+export AUTH_CLIENT_SECRET=<your-client-secret>
+export AUTH_API_SCOPE=api://<your-client-id>/access_as_user
+
+uv run uvicorn az_scout.app:app --reload
+# or
+make dev
+```
+
+Then open `http://localhost:8000/docs` and click **Authorize** to sign in via the Swagger UI.
+
+### Entra ID Setup
+
+1. **Create an App Registration** in the [Azure portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
+
+2. **Expose an API**
+   - Set the **Application ID URI** to `api://<client_id>`.
+   - Add a scope: `access_as_user` (type: Delegated, admin consent: as needed).
+   - See [Quickstart: Expose a web API](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-expose-web-apis).
+
+3. **Authentication**
+   - Add the **Web** platform.
+   - Add a Redirect URI: `http://localhost:8000/docs/oauth2-redirect`
+   - Enable **ID tokens** and **Access tokens**.
+
+4. **Create a Client Secret**
+   - Under **Certificates & secrets**, create a new client secret.
+   - Copy the **Value** (not the Secret ID) into `AUTH_CLIENT_SECRET`.
+
+5. **Grant Admin Consent** (if required by your organisation)
+   - Under **API permissions**, grant admin consent for the configured scopes.
+
+6. **Configure your `.env`** – copy `.env.example` and fill in the values.
+
+### On-Behalf-Of (OBO) Flow
+
+When `AUTH_MODE=entra`, the API can exchange the user's bearer token for an Azure Resource Manager token using the [OBO flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-on-behalf-of-flow). This allows downstream ARM calls to run with the signed-in user's identity and permissions.
+
+The OBO credential is provided by [`OnBehalfOfCredential`](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.onbehalfofcredential) from `azure-identity`.
+
+**Requirement:** `AUTH_CLIENT_SECRET` must be set for OBO to work.
+
+### MCP Compatibility
+
+When the MCP server is mounted in the same FastAPI process (`/mcp`), it shares the same authentication context. MCP clients connecting via Streamable HTTP should pass a bearer token in the `Authorization` header when Entra ID authentication is enabled.
+
+When the MCP server runs standalone (`az-scout mcp`), it uses `DefaultAzureCredential` directly (same as before).
+
+### Disclaimer
+
+- This API uses delegated user permissions via Entra ID.
+- Deployment signals are heuristic estimates.
+- No deployment success is guaranteed.
+
+
+## Public Signals mode
+
+The **Public Signals** tab provides capacity planning insights that require **no Azure login** and **no subscription context**. It uses only unauthenticated, publicly available data sources:
+
+| Signal | Source | Notes |
+|---|---|---|
+| **Retail pricing** | [Azure Retail Prices API](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices) | Published list prices; may differ from negotiated EA/CSP rates |
+| **Inter-region latency** | [Azure network round-trip latency statistics](https://learn.microsoft.com/en-us/azure/networking/azure-network-latency) | Static dataset embedded in az-scout; indicative only |
+
+### What's included
+
+- **Pricing lookup** – filter VM SKUs by region, name, or family with on-demand and spot prices.
+- **Latency matrix** – round-trip latency between Azure regions for multi-region planning.
+- **Capacity strategy advisor** – given a workload profile (instances, budget, statefulness, latency constraints), recommends a deployment strategy (`single_region`, `active_active`, `active_passive`, etc.) with per-region allocations and business justification.
+
+### What's **not** included
+
+The following signals are unavailable without authentication and are explicitly flagged as missing in all responses:
+
+- Subscription context, vCPU quota / headroom
+- Policy restrictions (zone restrictions, SKU restrictions)
+- Spot Placement Scores, eviction rates
+- Fragmentation index
+
+### Disclaimer
+
+All Public Signals results carry disclaimers. Retail prices are published list prices. Spot pricing is volatile. Latency values are indicative. No subscription, quota, or policy signals are available in public mode.
+
+## Plugin system
+
+az-scout uses a **plugin architecture** that separates core functionality from feature modules. Each plugin can contribute:
+
+- **API routes** (FastAPI router)
+- **MCP tools** (for AI agents)
+- **UI tabs** (with static JS/CSS)
+- **Chat modes** (with custom system prompts and welcome messages)
+
+### Built-in plugins
+
+| Plugin | ID | Auth required | Description |
+|---|---|---|---|
+| Public Signals | `public` | No | Retail pricing, latency matrix, capacity strategy (unauthenticated) |
+
+### Writing a plugin
+
+A plugin is any Python class that satisfies the `AzScoutPlugin` protocol (see `src/az_scout/plugins/api.py`):
+
+```python
+from az_scout.plugins.api import AzScoutPlugin, PluginCapabilities
+
+class MyPlugin:
+    plugin_id: str = "my-plugin"
+    name: str = "My Plugin"
+    version: str = "0.1.0"
+    priority: int = 100  # lower = loaded first
+
+    def get_capabilities(self) -> PluginCapabilities:
+        return PluginCapabilities(mode="tenant_obo", requires_auth=True)
+
+    # Return None for any capability you don't need:
+    def get_router(self): return None
+    def get_mcp_tools(self): return None
+    def get_static_dir(self): return None
+    def get_tabs(self): return None
+    def get_chat_modes(self): return None
+
+    async def startup(self, app_state): ...
+    async def shutdown(self, app_state): ...
+```
+
+### Registering an external plugin
+
+External plugins are discovered via the `az_scout.plugins` entry-point group. In your plugin's `pyproject.toml`:
+
+```toml
+[project.entry-points."az_scout.plugins"]
+my-plugin = "my_package:MyPlugin"
+```
+
+Install the plugin package into the same environment as az-scout and it will be discovered automatically at startup.
+
+### Namespacing
+
+All plugin contributions are namespaced by `plugin_id` to prevent collisions:
+
+- Routes are mounted at `/plugins/{plugin_id}/...`
+- MCP tools are registered as `{plugin_id}.{tool_name}`
+- Tab DOM IDs use `plugin-{plugin_id}-{tab_id}`
+- Chat mode IDs use `{plugin_id}.{mode_id}`
 
 
 ## License

@@ -10,7 +10,23 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/style.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    {% for ptab in plugin_tabs %}
+    {% for css in ptab.definition.css_entries %}
+    <link rel="stylesheet" href="/plugins/{{ ptab.plugin_id }}/static/{{ css }}?v={{ ptab.plugin_version }}">
+    {% endfor %}
+    {% endfor %}
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    {% if auth_mode == 'entra' %}
+    <script src="https://unpkg.com/@azure/msal-browser@2.38.4/lib/msal-browser.min.js"></script>
+    {% endif %}
+    <script>
+        const AUTH_CONFIG = {
+            mode: "{{ auth_mode }}",
+            clientId: "{{ auth_client_id }}",
+            tenantId: "{{ auth_tenant_id }}",
+            scope: "{{ auth_scope }}",
+        };
+    </script>
 </head>
 <body class="d-flex flex-column min-vh-100">
 
@@ -22,13 +38,16 @@
             <span>Azure Scout</span>
         </a>
         <div class="d-flex align-items-center gap-2">
-            {% if auth_user %}
-            <span class="text-body-secondary small d-flex align-items-center gap-1" title="Signed in as {{ auth_user }}">
-                <i class="bi bi-person-circle"></i> {{ auth_user }}
+            {% if auth_mode == 'entra' %}
+            <span class="text-body-secondary small d-flex align-items-center gap-1 d-none" id="auth-user-display">
+                <i class="bi bi-person-circle"></i> <span id="auth-user-name"></span>
             </span>
-            <a href="/.auth/logout" class="btn btn-sm btn-outline-secondary" title="Sign out">
+            <button type="button" class="btn btn-sm btn-outline-primary d-none" id="auth-login-btn" onclick="msalSignIn()" title="Sign in">
+                <i class="bi bi-box-arrow-in-right"></i> Sign in
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="auth-logout-btn" onclick="msalSignOut()" title="Sign out">
                 <i class="bi bi-box-arrow-right"></i>
-            </a>
+            </button>
             {% endif %}
             <button type="button" class="btn btn-sm btn-outline-secondary" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
                 <i class="bi bi-moon-fill" id="icon-dark"></i>
@@ -88,6 +107,15 @@
                 <i class="bi bi-compass"></i> Strategy Advisor
             </button>
         </li>
+        {% for ptab in plugin_tabs %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="{{ ptab.trigger_id }}" data-bs-toggle="tab"
+                    data-bs-target="#{{ ptab.dom_id }}" type="button" role="tab"
+                    aria-controls="{{ ptab.dom_id }}" aria-selected="false">
+                <i class="bi {{ ptab.definition.icon }}"></i> {{ ptab.definition.label }}
+            </button>
+        </li>
+        {% endfor %}
     </ul>
 
     <div class="tab-content" id="mainTabContent">
@@ -422,6 +450,100 @@
             </div>
         </div>
 
+        {% for ptab in plugin_tabs %}
+        <!-- ====== Plugin Tab: {{ ptab.definition.label }} ====== -->
+        <div class="tab-pane fade" id="{{ ptab.dom_id }}" role="tabpanel" aria-labelledby="{{ ptab.trigger_id }}">
+            <div class="card border-top-0 rounded-top-0">
+                <div class="card-body">
+                    {% if ptab.plugin_id == 'public' and ptab.definition.id == 'public-signals' %}
+                    {# Inline HTML for the built-in public-signals tab #}
+                    <form id="pub-strategy-form">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label for="pub-sku" class="form-label form-label-sm">SKU name</label>
+                                <input type="text" class="form-control form-control-sm" id="pub-sku"
+                                       placeholder="e.g. Standard_D4s_v5" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="pub-instances" class="form-label form-label-sm">Instances</label>
+                                <input type="number" class="form-control form-control-sm" id="pub-instances" value="3" min="1">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="pub-currency" class="form-label form-label-sm">Currency</label>
+                                <select class="form-select form-select-sm" id="pub-currency">
+                                    <option value="USD" selected>USD</option>
+                                    <option value="EUR">EUR</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="pub-max-regions" class="form-label form-label-sm">Max regions</label>
+                                <input type="number" class="form-control form-control-sm" id="pub-max-regions" value="5" min="1" max="10">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="pub-regions" class="form-label form-label-sm">Regions (optional, comma-sep)</label>
+                                <input type="text" class="form-control form-control-sm" id="pub-regions"
+                                       placeholder="e.g. westeurope,eastus">
+                            </div>
+                        </div>
+                        <div class="row g-2 mt-1 align-items-end">
+                            <div class="col-md-3">
+                                <label for="pub-countries" class="form-label form-label-sm">Target countries (optional)</label>
+                                <input type="text" class="form-control form-control-sm" id="pub-countries"
+                                       placeholder="e.g. FR,DE or EU">
+                            </div>
+                            <div class="col-auto">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="pub-prefer-spot">
+                                    <label class="form-check-label small" for="pub-prefer-spot">Prefer Spot</label>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="pub-latency-sens">
+                                    <label class="form-check-label small" for="pub-latency-sens">Latency sensitive</label>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <button type="submit" class="btn btn-primary btn-sm" id="pub-submit-btn">
+                                    <i class="bi bi-graph-up"></i> Analyse (Public)
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Error -->
+                    <div id="pub-error" class="alert alert-danger alert-sm d-none mt-3" role="alert"></div>
+
+                    <!-- Empty state -->
+                    <div id="pub-empty" class="text-center text-body-secondary py-5">
+                        <i class="bi bi-graph-up fs-1 d-block mb-2"></i>
+                        <p>Enter a SKU name and click <strong>Analyse (Public)</strong>.</p>
+                        <p class="small">No Azure subscription required – uses public pricing &amp; latency data only.</p>
+                    </div>
+
+                    <!-- Loading -->
+                    <div id="pub-loading" class="text-center py-5 d-none">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-body-secondary">Computing public capacity strategy…</p>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="pub-results" class="d-none mt-3">
+                        <div class="row g-3 mb-3" id="pub-summary-cards"></div>
+                        <div id="pub-recommendations"></div>
+                        <div id="pub-disclaimers"></div>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-body-secondary py-5">
+                        <i class="bi {{ ptab.definition.icon }} fs-1 d-block mb-2"></i>
+                        <p>{{ ptab.definition.label }} – plugin content loading…</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
     </div><!-- /tab-content -->
 </div><!-- /container -->
 
@@ -491,6 +613,9 @@
             <div class="chat-mode-toggle" id="chat-mode-toggle">
                 <button type="button" class="active" data-mode="discussion" onclick="switchChatMode('discussion')">Discussion</button>
                 <button type="button" data-mode="planner" onclick="switchChatMode('planner')">Planner</button>
+                {% for cm in plugin_chat_modes %}
+                <button type="button" data-mode="{{ cm.global_id }}" onclick="switchChatMode('{{ cm.global_id }}')">{{ cm.definition.label }}</button>
+                {% endfor %}
             </div>
         </span>
         <div class="d-flex gap-1">
@@ -527,5 +652,18 @@
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
+{% if plugin_chat_modes %}
+<script>
+{% for cm in plugin_chat_modes %}
+_chatModeState["{{ cm.global_id }}"] = { messages: [], inputHistory: [] };
+_CHAT_WELCOME["{{ cm.global_id }}"] = {{ cm.definition.welcome_message | tojson }};
+{% endfor %}
+</script>
+{% endif %}
+{% for ptab in plugin_tabs %}
+{% for js in ptab.definition.js_entries %}
+<script src="/plugins/{{ ptab.plugin_id }}/static/{{ js }}?v={{ ptab.plugin_version }}"></script>
+{% endfor %}
+{% endfor %}
 </body>
 </html>

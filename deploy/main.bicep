@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Azure Scout – Container App deployment with optional EasyAuth
+// Azure Scout – Container App deployment with optional authentication
 // ---------------------------------------------------------------------------
 //
 // Deploys:
@@ -7,21 +7,24 @@
 //   2. Container Apps Environment
 //   3. Container App running az-scout from GHCR
 //   4. User-assigned Managed Identity with Reader on target subscriptions
-//   5. (Optional) Entra ID EasyAuth via authConfigs
+//   5. (Optional) Entra ID authentication (fastapi-azure-auth + MSAL.js)
 //
-// Usage:
+// Usage (no auth):
 //   az deployment group create \
 //     -g <resource-group> \
 //     -f deploy/main.bicep \
 //     -p readerSubscriptionIds='["<sub-id-1>","<sub-id-2>"]'
 //
-// With EasyAuth:
+// With Entra ID (fastapi-azure-auth + MSAL.js):
 //   az deployment group create \
 //     -g <resource-group> \
 //     -f deploy/main.bicep \
 //     -p readerSubscriptionIds='["<sub-id-1>"]' \
-//     -p enableAuth=true \
-//     -p authClientId=<app-registration-client-id>
+//     -p authMode=entra \
+//     -p authClientId=<app-registration-client-id> \
+//     -p authClientSecret=<secret> \
+//     -p authApiScope='api://<client-id>/access_as_user'
+//
 // ---------------------------------------------------------------------------
 
 @description('Azure region for all resources.')
@@ -55,20 +58,24 @@ param readerSubscriptionIds array = []
 @description('Assign Virtual Machine Contributor role for Spot Placement Scores. Set to false if you don\'t need spot scores.')
 param enableSpotScoreRole bool = true
 
-// -- EasyAuth parameters --
+// -- Authentication parameters --
 
-@description('Enable Entra ID authentication (EasyAuth) on the Container App.')
-param enableAuth bool = false
-
-@description('Entra ID App Registration Client ID (required when enableAuth is true).')
+@description('Entra ID App Registration Client ID (required when authMode is "entra").')
 param authClientId string = ''
 
 @secure()
-@description('Entra ID App Registration Client Secret (required when enableAuth is true).')
+@description('Entra ID App Registration Client Secret (required when authMode is "entra").')
 param authClientSecret string = ''
 
 @description('Entra ID tenant ID for authentication. Defaults to the deployment tenant.')
 param authTenantId string = tenant().tenantId
+
+@description('Authentication mode: "entra" (fastapi-azure-auth + MSAL.js) or "none" (no authentication).')
+@allowed(['none', 'entra'])
+param authMode string = 'none'
+
+@description('API scope URI exposed by the App Registration (e.g. api://<clientId>/access_as_user). Required when authMode is "entra".')
+param authApiScope string = ''
 
 // ---------------------------------------------------------------------------
 // Managed Identity
@@ -163,9 +170,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         allowInsecure: false
       }
       registries: []   // GHCR public images don't need credentials
-      secrets: enableAuth ? [
+      secrets: authMode == 'entra' ? [
         {
-          name: 'microsoft-provider-authentication-secret'
+          name: 'auth-client-secret'
           value: authClientSecret
         }
       ] : []
@@ -179,13 +186,42 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json(containerCpu)
             memory: containerMemory
           }
-          env: [
-            {
-              // Tell azure-identity to use the user-assigned MI
-              name: 'AZURE_CLIENT_ID'
-              value: managedIdentity.properties.clientId
-            }
-          ]
+          env: union(
+            [
+              {
+                // Tell azure-identity to use the user-assigned MI
+                name: 'AZURE_CLIENT_ID'
+                value: managedIdentity.properties.clientId
+              }
+            ],
+            authMode == 'entra' ? [
+              {
+                name: 'AUTH_MODE'
+                value: 'entra'
+              }
+              {
+                name: 'AUTH_TENANT_ID'
+                value: authTenantId
+              }
+              {
+                name: 'AUTH_CLIENT_ID'
+                value: authClientId
+              }
+              {
+                name: 'AUTH_API_SCOPE'
+                value: authApiScope
+              }
+              {
+                name: 'AUTH_CLIENT_SECRET'
+                secretRef: 'auth-client-secret'
+              }
+            ] : [
+              {
+                name: 'AUTH_MODE'
+                value: 'mock'
+              }
+            ]
+          )
         }
       ]
       scale: {
@@ -201,46 +237,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             }
           }
         ]
-      }
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// EasyAuth (optional) – Entra ID authentication
-// ---------------------------------------------------------------------------
-
-resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableAuth) {
-  parent: containerApp
-  name: 'current'
-  properties: {
-    platform: {
-      enabled: true
-    }
-    globalValidation: {
-      unauthenticatedClientAction: 'RedirectToLoginPage'
-    }
-    identityProviders: {
-      azureActiveDirectory: {
-        registration: {
-          clientId: authClientId
-          clientSecretSettingName: 'microsoft-provider-authentication-secret'
-          openIdIssuer: '${environment().authentication.loginEndpoint}${authTenantId}/'
-        }
-        validation: {
-          allowedAudiences: [
-            'api://${authClientId}'
-            authClientId
-          ]
-          defaultAuthorizationPolicy: {
-            // Azure CLI app ID – required so `az account get-access-token`
-            // tokens are accepted by EasyAuth for MCP/API bearer-token access.
-            allowedApplications: [
-              authClientId
-              '04b07795-8ddb-461a-bbee-02f9e1bf7b46'   // Microsoft Azure CLI
-            ]
-          }
-        }
       }
     }
   }
