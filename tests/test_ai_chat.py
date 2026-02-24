@@ -195,9 +195,12 @@ class TestMcpToOpenaiConversion:
         from az_scout.mcp_server import mcp as mcp_server
 
         mcp_names = {t.name for t in mcp_server._tool_manager.list_tools()}
+        # Exclude plugin-namespaced tools (e.g. "public.pricing") – they are
+        # registered dynamically during lifespan and managed by the plugin system.
+        core_names = {n for n in mcp_names if "." not in n}
         generated_names = {t["function"]["name"] for t in TOOL_DEFINITIONS}
-        # All MCP tools must be present (chat-only tools are extra)
-        assert mcp_names.issubset(generated_names)
+        # All core MCP tools must be present (chat-only tools are extra)
+        assert core_names.issubset(generated_names)
 
     def test_chat_only_tools_present(self):
         """switch_region and switch_tenant should be in TOOL_DEFINITIONS."""

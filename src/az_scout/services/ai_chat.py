@@ -221,6 +221,18 @@ Steps:
 """
 
 
+# ---------------------------------------------------------------------------
+# Plugin chat-mode system prompts
+# ---------------------------------------------------------------------------
+
+_plugin_system_prompts: dict[str, str] = {}
+
+
+def register_chat_mode_prompt(global_id: str, system_prompt: str) -> None:
+    """Register a plugin-contributed system prompt for a chat mode."""
+    _plugin_system_prompts[global_id] = system_prompt
+
+
 def _build_system_prompt(
     tenant_id: str | None = None,
     region: str | None = None,
@@ -229,7 +241,12 @@ def _build_system_prompt(
     mode: str = "discussion",
 ) -> str:
     """Build the system prompt, optionally including tenant, region and subscription context."""
-    prompt = PLANNER_SYSTEM_PROMPT if mode == "planner" else SYSTEM_PROMPT
+    if mode == "planner":
+        prompt = PLANNER_SYSTEM_PROMPT
+    elif mode in _plugin_system_prompts:
+        prompt = _plugin_system_prompts[mode]
+    else:
+        prompt = SYSTEM_PROMPT
     if tenant_id:
         prompt += (
             f"\n\nCurrent tenant context: The user has selected tenant ID "

@@ -2602,7 +2602,7 @@ function _restoreChatHistory() {
 
         // Restore saved mode
         const savedMode = localStorage.getItem(_CHAT_MODE_KEY);
-        if (savedMode && (savedMode === "discussion" || savedMode === "planner")) {
+        if (savedMode && savedMode in _chatModeState) {
             _chatMode = savedMode;
             document.querySelectorAll("#chat-mode-toggle button").forEach(b => {
                 b.classList.toggle("active", b.dataset.mode === _chatMode);
@@ -2624,6 +2624,12 @@ function _restoreChatHistory() {
                     const disc = state.discussion || state.assistant;
                     if (disc?.messages) _chatModeState.discussion = disc;
                     if (state.planner?.messages) _chatModeState.planner = state.planner;
+                    // Restore plugin chat modes
+                    for (const key of Object.keys(state)) {
+                        if (key.includes(".") && key in _chatModeState && state[key]?.messages) {
+                            _chatModeState[key] = state[key];
+                        }
+                    }
                 }
 
                 // Load current mode's state

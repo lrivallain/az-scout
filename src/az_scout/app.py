@@ -50,7 +50,7 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-    """Warm the tenant cache and start the MCP session manager."""
+    """Warm the tenant cache, register plugins, and start the MCP session manager."""
     # Load OpenID config for Entra ID token validation
     if auth_settings.auth_mode == "entra":
         from az_scout.auth.security import azure_scheme
@@ -58,6 +58,13 @@ async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         await azure_scheme.openid_config.load_config()
     t = threading.Thread(target=azure_api.preload_discovery, daemon=True)
     t.start()
+
+    # Register plugins (built-in + externals via entry points)
+    from az_scout.plugins.bootstrap import register_plugins, shutdown_plugins
+
+    app_state: dict[str, object] = {}
+    await register_plugins(_app, _mcp_server, app_state)
+
     # The StreamableHTTP session manager needs a running task group;
     # sub-app lifespans are not invoked by FastAPI, so we start it here.
     # Re-create the session manager if a previous instance was already used
@@ -65,6 +72,7 @@ async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     _ensure_fresh_session_manager()
     async with _mcp_server.session_manager.run():
         yield
+        await shutdown_plugins(_app, app_state)
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +204,13 @@ async def health() -> JSONResponse:
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def index(request: Request) -> HTMLResponse:
     """Serve the main page."""
+    # Gather plugin tab/chat-mode metadata for template rendering
+    from az_scout.plugins.registry import PluginRegistry
+
+    registry: PluginRegistry | None = getattr(app.state, "plugin_registry", None)
+    plugin_tabs = registry.tabs if registry else []
+    plugin_chat_modes = registry.chat_modes if registry else []
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -206,6 +221,8 @@ async def index(request: Request) -> HTMLResponse:
             "auth_tenant_id": auth_settings.auth_tenant_id,
             "auth_scope": auth_settings.auth_api_scope,
             "chat_enabled": is_chat_enabled(),
+            "plugin_tabs": plugin_tabs,
+            "plugin_chat_modes": plugin_chat_modes,
         },
     )
 

@@ -22,6 +22,8 @@ Scout Azure regions for VM availability, zone mappings, pricing, spot scores, an
 - **Capacity Strategy Advisor** – a multi-region strategy recommendation engine that goes beyond single-region planning. Given a workload profile (instances, constraints, statefulness, latency sensitivity, budget), it evaluates candidate regions against zones, quotas, restrictions, spot scores, pricing, confidence and inter-region latency to recommend a deployment strategy: `single_region`, `active_active`, `active_passive`, `sharded_multi_region`, `burst_overflow`, `time_window_deploy`, or `progressive_ramp`. Includes business justification, technical allocations, latency matrix, and warnings. No LLM — all decisions are deterministic and traceable.
 - **AI Chat Assistant** *(optional)* – interactive chat panel powered by Azure OpenAI with streaming responses, tool calling (zones, SKUs, pricing, spot scores), and markdown rendering. Supports pin-to-side mode, conversation persistence, input history, clickable choice chips, and error retry. Requires Azure OpenAI environment variables (see below).
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
+- **Public Signals mode** – no-login capacity planning using only public Azure data (retail pricing, latency matrix, capacity strategy advisor). See [Public Signals mode](#public-signals-mode).
+- **Plugin system** – modular architecture allowing external packages to contribute routes, MCP tools, UI tabs, and chat modes. See [Plugin system](#plugin-system).
 
 
 ## Quick start
@@ -569,6 +571,97 @@ When the MCP server runs standalone (`az-scout mcp`), it uses `DefaultAzureCrede
 - This API uses delegated user permissions via Entra ID.
 - Deployment signals are heuristic estimates.
 - No deployment success is guaranteed.
+
+
+## Public Signals mode
+
+The **Public Signals** tab provides capacity planning insights that require **no Azure login** and **no subscription context**. It uses only unauthenticated, publicly available data sources:
+
+| Signal | Source | Notes |
+|---|---|---|
+| **Retail pricing** | [Azure Retail Prices API](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices) | Published list prices; may differ from negotiated EA/CSP rates |
+| **Inter-region latency** | [Azure network round-trip latency statistics](https://learn.microsoft.com/en-us/azure/networking/azure-network-latency) | Static dataset embedded in az-scout; indicative only |
+
+### What's included
+
+- **Pricing lookup** – filter VM SKUs by region, name, or family with on-demand and spot prices.
+- **Latency matrix** – round-trip latency between Azure regions for multi-region planning.
+- **Capacity strategy advisor** – given a workload profile (instances, budget, statefulness, latency constraints), recommends a deployment strategy (`single_region`, `active_active`, `active_passive`, etc.) with per-region allocations and business justification.
+
+### What's **not** included
+
+The following signals are unavailable without authentication and are explicitly flagged as missing in all responses:
+
+- Subscription context, vCPU quota / headroom
+- Policy restrictions (zone restrictions, SKU restrictions)
+- Spot Placement Scores, eviction rates
+- Fragmentation index
+
+### Disclaimer
+
+All Public Signals results carry disclaimers. Retail prices are published list prices. Spot pricing is volatile. Latency values are indicative. No subscription, quota, or policy signals are available in public mode.
+
+## Plugin system
+
+az-scout uses a **plugin architecture** that separates core functionality from feature modules. Each plugin can contribute:
+
+- **API routes** (FastAPI router)
+- **MCP tools** (for AI agents)
+- **UI tabs** (with static JS/CSS)
+- **Chat modes** (with custom system prompts and welcome messages)
+
+### Built-in plugins
+
+| Plugin | ID | Auth required | Description |
+|---|---|---|---|
+| Public Signals | `public` | No | Retail pricing, latency matrix, capacity strategy (unauthenticated) |
+
+### Writing a plugin
+
+A plugin is any Python class that satisfies the `AzScoutPlugin` protocol (see `src/az_scout/plugins/api.py`):
+
+```python
+from az_scout.plugins.api import AzScoutPlugin, PluginCapabilities
+
+class MyPlugin:
+    plugin_id: str = "my-plugin"
+    name: str = "My Plugin"
+    version: str = "0.1.0"
+    priority: int = 100  # lower = loaded first
+
+    def get_capabilities(self) -> PluginCapabilities:
+        return PluginCapabilities(mode="tenant_obo", requires_auth=True)
+
+    # Return None for any capability you don't need:
+    def get_router(self): return None
+    def get_mcp_tools(self): return None
+    def get_static_dir(self): return None
+    def get_tabs(self): return None
+    def get_chat_modes(self): return None
+
+    async def startup(self, app_state): ...
+    async def shutdown(self, app_state): ...
+```
+
+### Registering an external plugin
+
+External plugins are discovered via the `az_scout.plugins` entry-point group. In your plugin's `pyproject.toml`:
+
+```toml
+[project.entry-points."az_scout.plugins"]
+my-plugin = "my_package:MyPlugin"
+```
+
+Install the plugin package into the same environment as az-scout and it will be discovered automatically at startup.
+
+### Namespacing
+
+All plugin contributions are namespaced by `plugin_id` to prevent collisions:
+
+- Routes are mounted at `/plugins/{plugin_id}/...`
+- MCP tools are registered as `{plugin_id}.{tool_name}`
+- Tab DOM IDs use `plugin-{plugin_id}-{tab_id}`
+- Chat mode IDs use `{plugin_id}.{mode_id}`
 
 
 ## License
