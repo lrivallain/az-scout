@@ -52,6 +52,17 @@ def register_plugins(app: FastAPI, mcp_server: Any) -> list[AzScoutPlugin]:
 
     _loaded_plugins.clear()
     _loaded_plugins.extend(plugins)
+
+    # Rebuild AI chat tool definitions so plugin MCP tools are available
+    if plugins:
+        try:
+            from az_scout.services.ai_chat import refresh_tool_definitions
+
+            refresh_tool_definitions()
+            logger.info("Refreshed AI chat tool definitions with plugin tools")
+        except ImportError:
+            pass  # ai_chat module not available (e.g. no OpenAI config)
+
     return plugins
 
 

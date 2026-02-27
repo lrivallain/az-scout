@@ -12,6 +12,7 @@ from az_scout.services.ai_chat import (
     _mcp_schema_to_openai,
     _post_process_tool_result,
     _truncate_tool_result,
+    is_chat_enabled,
 )
 
 # ---------------------------------------------------------------------------
@@ -23,21 +24,12 @@ class TestIsChatEnabled:
     """Tests for the is_chat_enabled function."""
 
     def test_disabled_when_env_vars_missing(self):
-        with patch.dict(
-            "os.environ",
-            {
-                "AZURE_OPENAI_ENDPOINT": "",
-                "AZURE_OPENAI_API_KEY": "",
-                "AZURE_OPENAI_DEPLOYMENT": "",
-            },
+        with (
+            patch("az_scout.services.ai_chat.AZURE_OPENAI_ENDPOINT", ""),
+            patch("az_scout.services.ai_chat.AZURE_OPENAI_API_KEY", ""),
+            patch("az_scout.services.ai_chat.AZURE_OPENAI_DEPLOYMENT", ""),
         ):
-            # Re-import to pick up patched env
-            from importlib import reload
-
-            from az_scout.services import ai_chat
-
-            reload(ai_chat)
-            assert ai_chat.is_chat_enabled() is False
+            assert is_chat_enabled() is False
 
 
 # ---------------------------------------------------------------------------
@@ -191,21 +183,13 @@ class TestMcpToOpenaiConversion:
     """Tests for the MCP tool → OpenAI function-calling format converter."""
 
     def test_all_mcp_tools_present(self):
-        """All built-in MCP tools should appear in the generated TOOL_DEFINITIONS."""
+        """All MCP tools (built-in + plugin) should appear in TOOL_DEFINITIONS."""
         from az_scout.mcp_server import mcp as mcp_server
-        from az_scout.plugins import get_loaded_plugins
 
         mcp_names = {t.name for t in mcp_server._tool_manager.list_tools()}
         generated_names = {t["function"]["name"] for t in TOOL_DEFINITIONS}
-        # Exclude tools contributed by plugins (they are registered at runtime,
-        # after TOOL_DEFINITIONS is built at import time)
-        plugin_tool_names: set[str] = set()
-        for p in get_loaded_plugins():
-            for fn in p.get_mcp_tools() or []:
-                plugin_tool_names.add(fn.__name__)
-        builtin_mcp = mcp_names - plugin_tool_names
-        # All built-in MCP tools must be present (chat-only tools are extra)
-        assert builtin_mcp.issubset(generated_names)
+        # All MCP tools must be present (chat-only tools are extra)
+        assert mcp_names.issubset(generated_names)
 
     def test_chat_only_tools_present(self):
         """switch_region and switch_tenant should be in TOOL_DEFINITIONS."""
@@ -214,8 +198,12 @@ class TestMcpToOpenaiConversion:
         assert "switch_tenant" in names
 
     def test_total_tool_count(self):
-        """Should have 10 MCP tools + 2 chat-only = 12 total."""
-        assert len(TOOL_DEFINITIONS) == 12
+        """Should have all MCP tools (built-in + plugin) + 2 chat-only."""
+        from az_scout.mcp_server import mcp as mcp_server
+
+        mcp_count = len(list(mcp_server._tool_manager.list_tools()))
+        # MCP tools + 2 chat-only (switch_region, switch_tenant)
+        assert len(TOOL_DEFINITIONS) == mcp_count + 2
 
     def test_schema_strips_titles(self):
         """The converter should strip Pydantic 'title' fields from parameters."""
