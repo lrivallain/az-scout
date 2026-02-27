@@ -22,6 +22,7 @@ Scout Azure regions for VM availability, zone mappings, pricing, spot scores, an
 - **Capacity Strategy Advisor** – a multi-region strategy recommendation engine that goes beyond single-region planning. Given a workload profile (instances, constraints, statefulness, latency sensitivity, budget), it evaluates candidate regions against zones, quotas, restrictions, spot scores, pricing, confidence and inter-region latency to recommend a deployment strategy: `single_region`, `active_active`, `active_passive`, `sharded_multi_region`, `burst_overflow`, `time_window_deploy`, or `progressive_ramp`. Includes business justification, technical allocations, latency matrix, and warnings. No LLM — all decisions are deterministic and traceable.
 - **AI Chat Assistant** *(optional)* – interactive chat panel powered by Azure OpenAI with streaming responses, tool calling (zones, SKUs, pricing, spot scores), and markdown rendering. Supports pin-to-side mode, conversation persistence, input history, clickable choice chips, and error retry. Requires Azure OpenAI environment variables (see below).
 - **MCP server** – expose all capabilities as MCP tools for AI agents (see below).
+- **Plugin system** – extend az-scout with pip-installable plugins (API routes, MCP tools, UI tabs, chat modes). See [docs/plugins.md](docs/plugins.md).
 
 
 ## Quick start

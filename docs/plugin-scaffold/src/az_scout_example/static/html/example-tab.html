@@ -1,0 +1,28 @@
+<!-- Example HTML fragment loaded by the plugin JS -->
+<div class="example-card">
+    <h6><i class="bi bi-puzzle"></i> Example Plugin</h6>
+    <p class="text-body-secondary small mb-3">
+        This tab demonstrates how a plugin can reuse the main app's tenant &amp; region
+        selection, add its own subscription picker, and call a plugin API endpoint.
+    </p>
+
+    <!-- Context bar: shows the current tenant + region from the main selectors -->
+    <div class="d-flex align-items-center gap-2 mb-3 small" id="example-context">
+        <span class="badge bg-secondary" id="example-tenant-badge">No tenant</span>
+        <span class="badge bg-secondary" id="example-region-badge">No region</span>
+    </div>
+
+    <!-- Subscription selector (populated from main app API) -->
+    <div class="mb-3" style="max-width: 400px;">
+        <label for="example-sub-select" class="form-label form-label-sm">Subscription</label>
+        <select class="form-select form-select-sm" id="example-sub-select" disabled>
+            <option value="">Select tenant &amp; region first</option>
+        </select>
+    </div>
+
+    <!-- Action button -->
+    <button class="btn btn-primary btn-sm" id="example-btn" disabled>
+        <i class="bi bi-send"></i> Call Plugin API
+    </button>
+    <div class="example-output mt-2" id="example-output"></div>
+</div>

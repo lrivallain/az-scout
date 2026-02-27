@@ -22,6 +22,7 @@ from starlette.responses import StreamingResponse
 from az_scout import __version__, azure_api
 from az_scout.models.capacity_strategy import WorkloadProfileRequest
 from az_scout.models.deployment_plan import DeploymentIntentRequest
+from az_scout.plugins import get_plugin_metadata, register_plugins
 from az_scout.scoring.deployment_confidence import (
     best_spot_label,
     compute_deployment_confidence,
@@ -48,9 +49,11 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-    """Warm the tenant cache and start the MCP session manager."""
+    """Warm the tenant cache, register plugins, and start the MCP session manager."""
     t = threading.Thread(target=azure_api.preload_discovery, daemon=True)
     t.start()
+    # Discover and register plugins (routes, static, MCP tools, chat modes)
+    register_plugins(_app, _mcp_server)
     # The StreamableHTTP session manager needs a running task group;
     # sub-app lifespans are not invoked by FastAPI, so we start it here.
     # Re-create the session manager if a previous instance was already used
@@ -168,6 +171,7 @@ async def index(request: Request) -> HTMLResponse:
             "version": __version__,
             "auth_user": auth_user,
             "chat_enabled": is_chat_enabled(),
+            "plugins": get_plugin_metadata(),
         },
     )
 

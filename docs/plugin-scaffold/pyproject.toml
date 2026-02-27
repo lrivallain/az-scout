@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "az-scout-example"
+version = "0.1.0"
+description = "Example plugin for az-scout"
+requires-python = ">=3.11"
+dependencies = [
+    "az-scout",
+    "fastapi",
+]
+
+[project.entry-points."az_scout.plugins"]
+example = "az_scout_example:plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/az_scout_example"]

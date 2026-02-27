@@ -10,6 +10,13 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/style.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    {% for p in plugins %}
+    {% for tab in p.tabs %}
+    {% if tab.css_entry %}
+    <link rel="stylesheet" href="/plugins/{{ p.name }}/static/{{ tab.css_entry }}">
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body class="d-flex flex-column min-vh-100">
@@ -88,6 +95,16 @@
                 <i class="bi bi-compass"></i> Strategy Advisor
             </button>
         </li>
+        {% for p in plugins %}
+        {% for tab in p.tabs %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="{{ tab.id }}-tab" data-bs-toggle="tab" data-bs-target="#tab-{{ tab.id }}"
+                    type="button" role="tab" aria-controls="tab-{{ tab.id }}" aria-selected="false">
+                <i class="{{ tab.icon }}"></i> {{ tab.label }}
+            </button>
+        </li>
+        {% endfor %}
+        {% endfor %}
     </ul>
 
     <div class="tab-content" id="mainTabContent">
@@ -422,6 +439,18 @@
             </div>
         </div>
 
+        {% for p in plugins %}
+        {% for tab in p.tabs %}
+        <div class="tab-pane fade" id="tab-{{ tab.id }}" role="tabpanel" aria-labelledby="{{ tab.id }}-tab">
+            <div class="card border-top-0 rounded-top-0">
+                <div class="card-body" id="plugin-tab-{{ tab.id }}">
+                    <!-- Plugin "{{ tab.label }}" content is populated by its JS entry -->
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endfor %}
+
     </div><!-- /tab-content -->
 </div><!-- /container -->
 
@@ -491,6 +520,11 @@
             <div class="chat-mode-toggle" id="chat-mode-toggle">
                 <button type="button" class="active" data-mode="discussion" onclick="switchChatMode('discussion')">Discussion</button>
                 <button type="button" data-mode="planner" onclick="switchChatMode('planner')">Planner</button>
+                {% for p in plugins %}
+                {% for mode in p.chat_modes %}
+                <button type="button" data-mode="{{ mode.id }}" onclick="switchChatMode('{{ mode.id }}')">{{ mode.label }}</button>
+                {% endfor %}
+                {% endfor %}
             </div>
         </span>
         <div class="d-flex gap-1">
@@ -527,5 +561,19 @@
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
+{% for p in plugins %}
+{% for tab in p.tabs %}
+<script src="/plugins/{{ p.name }}/static/{{ tab.js_entry }}"></script>
+{% endfor %}
+{% endfor %}
+<script>
+// Register plugin chat modes with the frontend
+(function() {
+    const pluginModes = {{ plugins | tojson }};
+    if (typeof registerPluginChatModes === "function") {
+        registerPluginChatModes(pluginModes);
+    }
+})();
+</script>
 </body>
 </html>

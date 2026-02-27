@@ -191,13 +191,21 @@ class TestMcpToOpenaiConversion:
     """Tests for the MCP tool → OpenAI function-calling format converter."""
 
     def test_all_mcp_tools_present(self):
-        """All MCP tools should appear in the generated TOOL_DEFINITIONS."""
+        """All built-in MCP tools should appear in the generated TOOL_DEFINITIONS."""
         from az_scout.mcp_server import mcp as mcp_server
+        from az_scout.plugins import get_loaded_plugins
 
         mcp_names = {t.name for t in mcp_server._tool_manager.list_tools()}
         generated_names = {t["function"]["name"] for t in TOOL_DEFINITIONS}
-        # All MCP tools must be present (chat-only tools are extra)
-        assert mcp_names.issubset(generated_names)
+        # Exclude tools contributed by plugins (they are registered at runtime,
+        # after TOOL_DEFINITIONS is built at import time)
+        plugin_tool_names: set[str] = set()
+        for p in get_loaded_plugins():
+            for fn in p.get_mcp_tools() or []:
+                plugin_tool_names.add(fn.__name__)
+        builtin_mcp = mcp_names - plugin_tool_names
+        # All built-in MCP tools must be present (chat-only tools are extra)
+        assert builtin_mcp.issubset(generated_names)
 
     def test_chat_only_tools_present(self):
         """switch_region and switch_tenant should be in TOOL_DEFINITIONS."""
