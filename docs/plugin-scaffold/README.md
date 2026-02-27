@@ -29,6 +29,10 @@ az-scout  # plugin is auto-discovered
 
 ```
 az-scout-example/
+├── .github/
+│   ├── copilot-instructions.md  # Copilot context for this plugin
+│   └── workflows/
+│       └── ci.yml               # CI pipeline (lint + test, Python 3.11–3.13)
 ├── pyproject.toml
 ├── README.md
 └── src/
@@ -52,3 +56,32 @@ az-scout-example/
 3. When both are set, it fetches subscriptions from `/api/subscriptions`.
 4. The user picks a subscription and clicks the button.
 5. The plugin calls `GET /plugins/example/hello?subscription_name=…&tenant=…&region=…`.
+
+## Quality checks
+
+The scaffold includes GitHub Actions workflows in `.github/workflows/`:
+
+- **`ci.yml`** — Runs lint (ruff + mypy) and tests (pytest) on Python 3.11–3.13, triggered on push/PR to `main`.
+- **`publish.yml`** — Builds, creates a GitHub Release, and publishes to PyPI via trusted publishing (OIDC). Triggered on version tags (`v*`). Requires a `pypi` environment configured in your repo settings with OIDC trusted publishing.
+
+Run the same checks locally:
+
+```bash
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run mypy src/
+uv run pytest
+```
+
+To publish a release:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+## Copilot support
+
+The `.github/copilot-instructions.md` file provides context to GitHub Copilot about
+the plugin structure, conventions, and az-scout plugin API. It helps Copilot generate
+code that follows the project patterns.
