@@ -1,8 +1,8 @@
-<!-- Plugin Manager tab fragment -->
-<div class="row g-3">
-    <!-- Left: Add / Validate -->
-    <div class="col-md-5 col-lg-4">
-        <div class="card mb-3">
+<!-- Plugin Manager panel fragment -->
+<div class="d-flex flex-column gap-3">
+    <!-- Add / Validate -->
+    <div>
+        <div class="card">
             <div class="card-header"><i class="bi bi-plus-circle me-1"></i>Add Plugin</div>
             <div class="card-body">
                 <div class="mb-2">
@@ -51,16 +51,16 @@
         </div>
     </div>
 
-    <!-- Right: Lists -->
-    <div class="col-md-7 col-lg-8">
-        <!-- Installed (UI) -->
-        <div class="card mb-3">
+    <!-- Installed (UI) -->
+    <div>
+        <div class="card">
             <div class="card-header"><i class="bi bi-box-seam me-1"></i>Installed (UI)</div>
             <div class="card-body p-0">
                 <div id="pm-installed-empty" class="text-center text-body-secondary py-3">
                     No plugins installed via UI
                 </div>
                 <div id="pm-installed-table-wrap" class="d-none">
+                    <div class="table-responsive">
                     <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
                         <thead>
                             <tr>
@@ -69,17 +69,19 @@
                                 <th>Ref</th>
                                 <th>SHA</th>
                                 <th>Installed</th>
-                                <th>Actor</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody id="pm-installed-tbody"></tbody>
                     </table>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Loaded (runtime) -->
+    <!-- Loaded (runtime) -->
+    <div>
         <div class="card">
             <div class="card-header"><i class="bi bi-lightning me-1"></i>Loaded (runtime)</div>
             <div class="card-body p-0">

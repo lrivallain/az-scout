@@ -83,7 +83,6 @@
                 <td>${escHtml(r.ref)}</td>
                 <td><code title="${escHtml(r.resolved_sha)}">${escHtml(shaShort)}</code></td>
                 <td>${escHtml(installed)}</td>
-                <td>${escHtml(r.actor)}</td>
                 <td>
                     <button class="btn btn-outline-danger btn-sm py-0 px-1"
                             title="Uninstall"
