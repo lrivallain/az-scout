@@ -37,6 +37,10 @@
                 <i class="bi bi-box-arrow-right"></i>
             </a>
             {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="plugin-manager-btn"
+                    title="Plugin Manager" data-bs-toggle="offcanvas" data-bs-target="#pluginOffcanvas">
+                <i class="bi bi-puzzle"></i>
+            </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
                 <i class="bi bi-moon-fill" id="icon-dark"></i>
                 <i class="bi bi-sun-fill d-none" id="icon-light"></i>
@@ -464,6 +468,17 @@
     <span>Independent Azure analysis tool — not affiliated with Microsoft.</span>
 </footer>
 
+<!-- ===== Plugin Manager Offcanvas ===== -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="pluginOffcanvas" aria-labelledby="pluginOffcanvasLabel" style="width:700px;">
+    <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="pluginOffcanvasLabel"><i class="bi bi-puzzle me-2"></i>Plugin Manager</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body" id="plugin-manager-body">
+        <!-- Populated by plugins.js -->
+    </div>
+</div>
+
 <!-- ===== About Modal ===== -->
 <div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -622,6 +637,7 @@
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
+<script src="{{ url_for('static', path='js/plugins.js') }}"></script>
 {% for p in plugins %}
 {% for tab in p.tabs %}
 <script src="/plugins/{{ p.name }}/static/{{ tab.js_entry }}"></script>

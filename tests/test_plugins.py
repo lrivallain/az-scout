@@ -17,6 +17,17 @@ from az_scout.plugins import (
     register_plugins,
 )
 
+
+@pytest.fixture(autouse=True)
+def _isolate_plugin_venv():
+    """Prevent tests from picking up real packages in .venv-plugins."""
+    with (
+        patch("az_scout.plugins._ensure_plugin_venv_on_path"),
+        patch("az_scout.plugins._discover_plugin_venv_entry_points", return_value=[]),
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers – concrete plugin implementations for testing
 # ---------------------------------------------------------------------------

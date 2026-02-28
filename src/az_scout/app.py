@@ -23,6 +23,7 @@ from az_scout import __version__, azure_api
 from az_scout.models.capacity_strategy import WorkloadProfileRequest
 from az_scout.models.deployment_plan import DeploymentIntentRequest
 from az_scout.plugins import get_plugin_metadata, register_plugins
+from az_scout.routes import router as plugin_manager_router
 from az_scout.scoring.admission_confidence import compute_admission_confidence
 from az_scout.scoring.deployment_confidence import (
     best_spot_label,
@@ -89,6 +90,9 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
+
+# Plugin manager API routes
+app.include_router(plugin_manager_router)
 
 # ---------------------------------------------------------------------------
 # MCP – mount the MCP server as an ASGI sub-app under /mcp
