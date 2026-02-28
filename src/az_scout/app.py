@@ -223,6 +223,23 @@ async def list_regions(
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+@app.get("/api/locations", tags=["Discovery"], summary="List all ARM locations")
+async def list_locations(
+    subscriptionId: str | None = Query(  # noqa: N803
+        None, description="Subscription ID. Auto-discovered if omitted."
+    ),
+    tenantId: str | None = Query(None, description="Optional tenant ID."),  # noqa: N803
+) -> JSONResponse:
+    """Return all Azure ARM locations, including those without Availability Zones."""
+    try:
+        return JSONResponse(azure_api.list_locations(subscriptionId, tenantId))
+    except LookupError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        logger.exception("Failed to list locations")
+        return JSONResponse({"error": str(exc)}, status_code=502)
+
+
 @app.get("/api/mappings", tags=["Mappings"], summary="Get zone mappings")
 async def get_mappings(
     region: str | None = Query(None, description="Azure region name (e.g. eastus)."),
