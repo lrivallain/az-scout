@@ -17,15 +17,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from az_scout.mcp_server import mcp
-from az_scout.services.admission_confidence import (
+from az_scout.scoring.admission_confidence import (
     ADMISSION_WEIGHTS,
     compute_admission_confidence,
 )
-from az_scout.services.eviction_rate import _map_eviction_rate
-from az_scout.services.fragmentation import (
+from az_scout.scoring.fragmentation import (
     estimate_fragmentation_risk,
     fragmentation_to_normalized,
 )
+from az_scout.services.eviction_rate import _map_eviction_rate
 from az_scout.services.signal_collector import (
     _backoff_delay,
     clear_cache,
@@ -177,7 +177,7 @@ class TestVolatilityCalculation:
         assert _price_volatility_percent([None, None]) is None
 
     def test_compute_volatility_insufficient_samples(self):
-        with patch("az_scout.services.volatility.get_signals", return_value=[]):
+        with patch("az_scout.services.signals.volatility.get_signals", return_value=[]):
             result = compute_volatility("eastus", "Standard_D2s_v3")
         assert result["label"] == "unknown"
         assert result["sampleCount"] == 0
@@ -187,7 +187,7 @@ class TestVolatilityCalculation:
             {"spot_score": "High", "spot_price": 0.01, "timestamp": f"2026-01-01T{h:02d}:00:00"}
             for h in range(5)
         ]
-        with patch("az_scout.services.volatility.get_signals", return_value=signals):
+        with patch("az_scout.services.signals.volatility.get_signals", return_value=signals):
             result = compute_volatility("eastus", "Standard_D2s_v3", window="24h")
         assert result["label"] == "stable"
         assert result["sampleCount"] == 5
@@ -202,7 +202,7 @@ class TestVolatilityCalculation:
             }
             for i, s in enumerate(scores)
         ]
-        with patch("az_scout.services.volatility.get_signals", return_value=signals):
+        with patch("az_scout.services.signals.volatility.get_signals", return_value=signals):
             result = compute_volatility("eastus", "Standard_D2s_v3")
         assert result["label"] in ("moderate", "unstable")
 
@@ -412,7 +412,7 @@ class TestCollectorBackoff:
             "confidence_score": 85,
         }
         with patch(
-            "az_scout.services.signal_collector._do_collect",
+            "az_scout.services.signals.signal_collector._do_collect",
             return_value=mock_signal,
         ) as mock_fn:
             r1 = collect_sku_signal("eastus", "Standard_D2s_v3", "sub-1")
@@ -435,7 +435,7 @@ class TestMcpAdmissionIntelligence:
     def _mock_cred(self):
         mock_token = MagicMock()
         mock_token.token = "fake-token"
-        with patch("az_scout.azure_api.credential") as cred:
+        with patch("az_scout.azure_api._auth.credential") as cred:
             cred.get_token.return_value = mock_token
             yield cred
 
@@ -462,11 +462,11 @@ class TestMcpAdmissionIntelligence:
             patch("az_scout.azure_api.get_skus", return_value=mock_skus),
             patch("az_scout.azure_api.get_spot_placement_scores", return_value=mock_spot),
             patch("az_scout.azure_api.get_retail_prices", return_value=mock_prices),
-            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=[]),
             patch(
                 "az_scout.services.eviction_rate.get_spot_eviction_rate", return_value=mock_eviction
             ),
-            patch("az_scout.services.volatility.get_signals", return_value=[]),
+            patch("az_scout.services.signals.volatility.get_signals", return_value=[]),
         ):
             content, _ = await mcp.call_tool(
                 "sku_admission_intelligence",
@@ -516,7 +516,7 @@ class TestMcpAdmissionIntelligence:
                     "disclaimer": "test",
                 },
             ),
-            patch("az_scout.services.volatility.get_signals", return_value=[]),
+            patch("az_scout.services.signals.volatility.get_signals", return_value=[]),
         ):
             content, _ = await mcp.call_tool(
                 "sku_admission_intelligence",

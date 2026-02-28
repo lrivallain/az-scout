@@ -24,6 +24,12 @@ from az_scout.scoring.deployment_confidence import (
     DeploymentSignals,
     compute_deployment_confidence,
 )
+from az_scout.services._evaluation_helpers import (
+    SPOT_RANK,
+    best_spot_label,
+    is_gpu_family,
+    resolve_candidate_regions,
+)
 from az_scout.services.region_latency import get_rtt_ms
 
 logger = logging.getLogger(__name__)
@@ -32,48 +38,13 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-_DATA_RESIDENCY_REGIONS: dict[str, list[str]] = {
-    "FR": ["francecentral", "francesouth"],
-    "EU": [
-        "francecentral",
-        "francesouth",
-        "westeurope",
-        "northeurope",
-        "germanywestcentral",
-        "germanynorth",
-        "swedencentral",
-        "switzerlandnorth",
-        "switzerlandwest",
-        "norwayeast",
-        "norwaywest",
-        "polandcentral",
-        "italynorth",
-        "spaincentral",
-    ],
-}
-
 _MAX_REGIONS = 10
 _MAX_SKUS_PER_REGION = 20
-
-_GPU_FAMILY_MARKERS = ("nc", "nd", "nv", "hb", "hc")
-_SPOT_RANK = {"High": 3, "Medium": 2, "Low": 1, "Unknown": 0}
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _is_gpu_family(family: str) -> bool:
-    normalized = family.lower().replace("standard", "").replace("_", "")
-    return any(normalized.startswith(m) for m in _GPU_FAMILY_MARKERS)
-
-
-def _best_spot_label(zone_scores: dict[str, str]) -> str:
-    if not zone_scores:
-        return "Unknown"
-    best = max(zone_scores.values(), key=lambda s: _SPOT_RANK.get(s, 0))
-    return best if best in ("High", "Medium", "Low") else "Unknown"
 
 
 def _resolve_candidate_regions(
@@ -83,38 +54,16 @@ def _resolve_candidate_regions(
 ) -> list[str]:
     """Resolve candidate regions from workload constraints."""
     c = profile.constraints
-
-    if c.allowRegions:
-        candidates = list(c.allowRegions)
-    elif c.dataResidency and c.dataResidency != "ANY":
-        residency = c.dataResidency
-        if residency in _DATA_RESIDENCY_REGIONS:
-            candidates = list(_DATA_RESIDENCY_REGIONS[residency])
-        else:
-            warnings.append(
-                f"No region mapping for data residency '{residency}'. Using all available regions."
-            )
-            candidates = _fetch_all_regions(profile, errors)
-    else:
-        candidates = _fetch_all_regions(profile, errors)
-
-    if c.denyRegions:
-        deny_set = {r.lower() for r in c.denyRegions}
-        candidates = [r for r in candidates if r.lower() not in deny_set]
-
-    return candidates[:_MAX_REGIONS]
-
-
-def _fetch_all_regions(
-    profile: WorkloadProfileRequest,
-    errors: list[str],
-) -> list[str]:
-    try:
-        regions = azure_api.list_regions(profile.subscriptionId, profile.tenantId)
-        return [r["name"] for r in regions]
-    except Exception as exc:
-        errors.append(f"Failed to list regions: {exc}")
-        return []
+    return resolve_candidate_regions(
+        allow_regions=c.allowRegions,
+        deny_regions=c.denyRegions,
+        data_residency=c.dataResidency,
+        subscription_id=profile.subscriptionId,
+        tenant_id=profile.tenantId,
+        warnings=warnings,
+        errors=errors,
+        max_regions=_MAX_REGIONS,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +140,7 @@ def _evaluate_region_skus(
 
     # Filter GPU if needed
     if profile.scale.gpuCountTotal and profile.scale.gpuCountTotal > 0:
-        skus = [s for s in skus if _is_gpu_family(s.get("family", ""))]
+        skus = [s for s in skus if is_gpu_family(s.get("family", ""))]
 
     # Limit
     skus = skus[:_MAX_SKUS_PER_REGION]
@@ -241,7 +190,7 @@ def _evaluate_region_skus(
         remaining = quota.get("remaining")
 
         sku_spot = spot_scores.get(name, {})
-        spot_label = _best_spot_label(sku_spot)
+        spot_label = best_spot_label(sku_spot)
 
         conf = compute_deployment_confidence(
             DeploymentSignals(
@@ -286,7 +235,7 @@ def _pick_best_sku(
 
     def sort_key(e: _RegionEval) -> tuple[int, int, float]:
         conf = -(e.confidence_score or 0)
-        spot = -_SPOT_RANK.get(e.spot_label, 0)
+        spot = -SPOT_RANK.get(e.spot_label, 0)
         if prefer_spot and e.spot_price is not None:
             cost = e.spot_price
         elif e.paygo is not None:

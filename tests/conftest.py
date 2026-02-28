@@ -20,7 +20,7 @@ def _mock_credential():
     """Prevent real Azure credential calls in every test."""
     mock_token = MagicMock()
     mock_token.token = "fake-token"
-    with patch("az_scout.azure_api.credential") as cred:
+    with patch("az_scout.azure_api._auth.credential") as cred:
         cred.get_token.return_value = mock_token
         yield cred
 

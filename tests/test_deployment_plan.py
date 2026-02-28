@@ -16,8 +16,8 @@ from az_scout.models.deployment_plan import (
     SkuConstraints,
     TimingPreference,
 )
+from az_scout.services._evaluation_helpers import is_gpu_family
 from az_scout.services.deployment_planner import (
-    _is_gpu_family,
     _ranking_key,
     plan_deployment,
 )
@@ -145,23 +145,23 @@ class TestDeriveRequirements:
 
 class TestIsGpuFamily:
     def test_nc_family(self) -> None:
-        assert _is_gpu_family("standardNCv3Family") is True
+        assert is_gpu_family("standardNCv3Family") is True
 
     def test_nd_family(self) -> None:
-        assert _is_gpu_family("standardNDv2Family") is True
+        assert is_gpu_family("standardNDv2Family") is True
 
     def test_nv_family(self) -> None:
-        assert _is_gpu_family("standardNVv4Family") is True
+        assert is_gpu_family("standardNVv4Family") is True
 
     def test_hb_family(self) -> None:
-        assert _is_gpu_family("standardHBv3Family") is True
+        assert is_gpu_family("standardHBv3Family") is True
 
     def test_hc_family(self) -> None:
-        assert _is_gpu_family("standardHCFamily") is True
+        assert is_gpu_family("standardHCFamily") is True
 
     def test_non_gpu(self) -> None:
-        assert _is_gpu_family("standardDSv3Family") is False
-        assert _is_gpu_family("standardESv4Family") is False
+        assert is_gpu_family("standardDSv3Family") is False
+        assert is_gpu_family("standardESv4Family") is False
 
 
 # ---------------------------------------------------------------------------

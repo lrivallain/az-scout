@@ -32,6 +32,13 @@ from az_scout.scoring.deployment_confidence import (
     DeploymentSignals,
     compute_deployment_confidence,
 )
+from az_scout.services._evaluation_helpers import (
+    DATA_RESIDENCY_REGIONS,
+    SPOT_RANK,
+    best_spot_label,
+    is_gpu_family,
+    resolve_candidate_regions,
+)
 from az_scout.services.intent_parser import derive_requirements
 
 logger = logging.getLogger(__name__)
@@ -42,30 +49,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_REGIONS = 8
 DEFAULT_MAX_SKUS = 50
-
-_GPU_FAMILY_MARKERS = ("nc", "nd", "nv", "hb", "hc")
-
-_SPOT_RANK = {"High": 3, "Medium": 2, "Low": 1, "Unknown": 0}
-
-DATA_RESIDENCY_REGIONS: dict[str, list[str]] = {
-    "FR": ["francecentral", "francesouth"],
-    "EU": [
-        "francecentral",
-        "francesouth",
-        "westeurope",
-        "northeurope",
-        "germanywestcentral",
-        "germanynorth",
-        "swedencentral",
-        "switzerlandnorth",
-        "switzerlandwest",
-        "norwayeast",
-        "norwaywest",
-        "polandcentral",
-        "italynorth",
-        "spaincentral",
-    ],
-}
 
 _RISK_MESSAGES: dict[str, str] = {
     "ZoneMissing": "Insufficient availability zones for zonal deployment in some regions.",
@@ -87,24 +70,6 @@ _MITIGATION_MESSAGES: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _is_gpu_family(family: str) -> bool:
-    """Return True if the SKU family is a GPU/HPC family."""
-    normalized = family.lower().replace("standard", "").replace("_", "")
-    return any(normalized.startswith(m) for m in _GPU_FAMILY_MARKERS)
-
-
-def _best_spot_score(
-    zone_scores: dict[str, str],
-) -> Literal["High", "Medium", "Low", "Unknown"]:
-    """Return the best (most optimistic) score across zones."""
-    if not zone_scores:
-        return "Unknown"
-    best = max(zone_scores.values(), key=lambda s: _SPOT_RANK.get(s, 0))
-    if best in ("High", "Medium", "Low"):
-        return best  # type: ignore[return-value]
-    return "Unknown"
 
 
 def _evaluate_quota(
@@ -161,40 +126,15 @@ def _resolve_candidate_regions(
 ) -> list[str]:
     """Resolve candidate regions from intent constraints."""
     rc = intent.regionConstraints
-
-    if rc and rc.allowRegions:
-        candidates = list(rc.allowRegions)
-    elif rc and rc.dataResidency and rc.dataResidency != "ANY":
-        residency = rc.dataResidency
-        if residency in DATA_RESIDENCY_REGIONS:
-            candidates = list(DATA_RESIDENCY_REGIONS[residency])
-        else:
-            warnings.append(
-                f"No region mapping for data residency '{residency}'. Using all available regions."
-            )
-            candidates = _fetch_all_regions(intent, errors)
-    else:
-        candidates = _fetch_all_regions(intent, errors)
-
-    # Apply deny list
-    if rc and rc.denyRegions:
-        deny_set = {r.lower() for r in rc.denyRegions}
-        candidates = [r for r in candidates if r.lower() not in deny_set]
-
-    return candidates
-
-
-def _fetch_all_regions(
-    intent: DeploymentIntentRequest,
-    errors: list[str],
-) -> list[str]:
-    """Fetch AZ-enabled regions from the Azure API."""
-    try:
-        regions = azure_api.list_regions(intent.subscriptionId, intent.tenantId)
-        return [r["name"] for r in regions]
-    except Exception as exc:
-        errors.append(f"Failed to list regions: {exc}")
-        return []
+    return resolve_candidate_regions(
+        allow_regions=rc.allowRegions if rc else None,
+        deny_regions=rc.denyRegions if rc else None,
+        data_residency=rc.dataResidency if rc else None,
+        subscription_id=intent.subscriptionId,
+        tenant_id=intent.tenantId,
+        warnings=warnings,
+        errors=errors,
+    )
 
 
 def _evaluate_sku(
@@ -227,7 +167,7 @@ def _evaluate_sku(
 
     # Spot
     sku_spot_scores = spot_scores.get(sku_name, {})
-    spot_label = _best_spot_score(sku_spot_scores)
+    spot_label = best_spot_label(sku_spot_scores)
     spot_eval = SpotEvaluation(score=spot_label)
 
     # Pricing
@@ -347,7 +287,7 @@ def _evaluate_region(
 
     # Filter by GPU
     if intent.skuConstraints and intent.skuConstraints.requireGpu:
-        gpu_skus = [s for s in skus if _is_gpu_family(s.get("family", ""))]
+        gpu_skus = [s for s in skus if is_gpu_family(s.get("family", ""))]
         if not gpu_skus:
             warnings.append(
                 f"No GPU SKUs found in {region}. "
@@ -388,7 +328,7 @@ def _ranking_key(
     """Produce a sort key: lower is better."""
     eligible_rank = 0 if evaluation.verdict.eligible else 1
     confidence = -(evaluation.confidence.score or 0)
-    spot_rank = -_SPOT_RANK.get(evaluation.spot.score, 0)
+    spot_rank = -SPOT_RANK.get(evaluation.spot.score, 0)
 
     if prefer_spot and evaluation.pricing.estimatedHourlyCostSpot is not None:
         cost = evaluation.pricing.estimatedHourlyCostSpot
