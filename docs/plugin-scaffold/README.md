@@ -76,8 +76,8 @@ uv run pytest
 To publish a release:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v2026.2.0
+git push origin v2026.2.0
 ```
 
 ## Copilot support

@@ -8,7 +8,7 @@ This is an **az-scout plugin** — a Python package that extends [az-scout](http
 
 - **Backend:** Python 3.11+, FastAPI (APIRouter), az-scout plugin API
 - **Frontend:** Vanilla JavaScript (no framework, no npm), CSS custom properties
-- **Packaging:** hatchling, src-layout
+- **Packaging:** hatchling + hatch-vcs, CalVer (`YYYY.MM.MICRO`), src-layout
 - **Tools:** uv (package manager), ruff (lint + format), mypy, pytest
 
 ## Project structure
@@ -87,3 +87,9 @@ uv run pytest
 
 - **CI** (`.github/workflows/ci.yml`): Runs lint and tests on push/PR to `main`. Also callable via `workflow_call` for reuse.
 - **Publish** (`.github/workflows/publish.yml`): Triggered on version tags (`v*`). Runs CI gate → builds package → creates GitHub Release → publishes to PyPI via trusted publishing (OIDC). Requires a `pypi` environment in repo settings.
+
+## Versioning
+
+- Version is derived from git tags via `hatch-vcs` — never hardcode a version.
+- `_version.py` is auto-generated and excluded from linting.
+- Tags follow CalVer: `v2026.2.0`, `v2026.2.1`, etc.

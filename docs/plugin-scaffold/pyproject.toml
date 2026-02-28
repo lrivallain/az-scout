@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "az-scout-example"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Example plugin for az-scout"
 requires-python = ">=3.11"
 dependencies = [
@@ -31,6 +31,14 @@ example = "az_scout_example:plugin"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/az_scout_example"]
+
+[tool.hatch.version]
+source = "vcs"
+raw-options.version_scheme = "calver-by-date"
+raw-options.local_scheme = "no-local-version"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/az_scout_example/_version.py"
 
 [tool.ruff]
 line-length = 100
