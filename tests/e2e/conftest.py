@@ -95,57 +95,6 @@ for _raw in COMPUTE_SKUS_RAW["value"]:
     )
 
 
-STRATEGY_RESPONSE = {
-    "summary": {
-        "workloadName": "e2e-test-workload",
-        "strategy": "single_region",
-        "totalInstances": 2,
-        "regionCount": 1,
-        "estimatedHourlyCost": 0.192,
-        "currency": "USD",
-        "overallConfidence": 78,
-        "overallConfidenceLabel": "Medium",
-    },
-    "businessView": {
-        "keyMessage": "Deploy 2 Standard_D2s_v3 instances in francecentral.",
-        "justification": [
-            "Region francecentral has sufficient capacity.",
-            "SKU Standard_D2s_v3 available in zones 1, 2, 3.",
-        ],
-        "risks": ["Single-region deployment has no geographic redundancy."],
-        "mitigations": ["Add a secondary region for DR."],
-    },
-    "technicalView": {
-        "allocations": [
-            {
-                "region": "francecentral",
-                "role": "primary",
-                "sku": "Standard_D2s_v3",
-                "instanceCount": 2,
-                "zones": ["1", "2"],
-                "quotaRemaining": 48,
-                "spotScore": None,
-                "paygoPerHour": 0.096,
-                "spotPerHour": 0.019,
-                "confidenceScore": 78,
-                "confidenceLabel": "Medium",
-                "rttFromPrimaryMs": None,
-            }
-        ],
-        "latencyMatrix": {},
-        "evaluatedAt": "2025-01-15T12:00:00+00:00",
-    },
-    "warnings": [],
-    "missingInputs": [],
-    "errors": [],
-    "disclaimer": (
-        "This tool is not affiliated with Microsoft. "
-        "All capacity, pricing and latency information are indicative "
-        "and not a guarantee of deployment success."
-    ),
-}
-
-
 # ---------------------------------------------------------------------------
 # Server fixture
 # ---------------------------------------------------------------------------
@@ -199,10 +148,6 @@ def _patched_server(
             "get_sku_profile",
             return_value=None,
         ),
-        patch(
-            "az_scout.app.recommend_capacity_strategy",
-            side_effect=lambda body: _make_strategy_model(),
-        ),
         # Prevent real Azure credential usage
         patch("az_scout.azure_api._auth.credential", new_callable=lambda: MagicMock),
     ]
@@ -244,13 +189,6 @@ def _patched_server(
 
     for p in patches:
         p.stop()
-
-
-def _make_strategy_model():
-    """Build a CapacityStrategyResponse from fixture data."""
-    from az_scout.models.capacity_strategy import CapacityStrategyResponse
-
-    return CapacityStrategyResponse(**STRATEGY_RESPONSE)
 
 
 @pytest.fixture(scope="session")

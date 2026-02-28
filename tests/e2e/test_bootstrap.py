@@ -55,14 +55,14 @@ def test_region_search_enabled(page: Page, base_url: str) -> None:
     expect(region_search).to_be_enabled()
 
 
-def test_three_tabs_visible(page: Page, base_url: str) -> None:
-    """The three main tabs are visible."""
+def test_two_tabs_visible(page: Page, base_url: str) -> None:
+    """The two built-in tabs are visible."""
     page.goto(base_url)
     tabs = page.locator("#mainTabs .nav-link")
-    expect(tabs).to_have_count(3)  # Topology, Planner, Strategy
+    # At least 2 built-in tabs; plugins may add more
+    assert tabs.count() >= 2
     expect(tabs.nth(0)).to_contain_text("AZ Topology")
     expect(tabs.nth(1)).to_contain_text("Deployment Planner")
-    expect(tabs.nth(2)).to_contain_text("Strategy Advisor")
 
 
 def test_topology_tab_active_by_default(page: Page, base_url: str) -> None:
