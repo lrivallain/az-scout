@@ -19,3 +19,4 @@ wheels/
 
 # Generated version file (hatch-vcs)
 src/*/_version.py
+data/plugins/
