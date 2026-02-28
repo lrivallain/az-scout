@@ -379,7 +379,10 @@ def install_plugin(
         return False, validation.warnings, validation.errors
 
     sha = validation.resolved_sha or ref
-    git_url = f"git+{repo_url}.git@{sha}"
+    clean_url = repo_url.rstrip("/")
+    if not clean_url.endswith(".git"):
+        clean_url += ".git"
+    git_url = f"git+{clean_url}@{sha}"
 
     result = run_uv_in_venv(["pip", "install", git_url])
     if result.returncode != 0:
