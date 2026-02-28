@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .env
+data/plugins/
 .vscode/
 !.vscode/tasks.json
 
