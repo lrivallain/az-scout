@@ -8,14 +8,32 @@
     if (!container) return;
 
     let lastValidation = null;
+    let initialized = false;
 
-    // Load HTML fragment, then bootstrap data
-    fetch("/static/html/plugins.html")
-        .then(r => r.text())
-        .then(html => {
-            container.innerHTML = html;
-            loadPlugins();
-        });
+    // Show a lightweight spinner until the tab is activated
+    container.innerHTML =
+        '<div class="text-center py-4 text-muted">' +
+        '<div class="spinner-border spinner-border-sm me-2" role="status"></div>' +
+        "Loading plugin manager…</div>";
+
+    // Lazy-init: fetch HTML fragment + data only when the tab is first shown
+    const tabBtn = document.getElementById("plugins-tab");
+    if (tabBtn) {
+        tabBtn.addEventListener("shown.bs.tab", initOnce);
+        // If the tab is already active (e.g. direct #tab-plugins hash)
+        if (tabBtn.classList.contains("active")) initOnce();
+    }
+
+    function initOnce() {
+        if (initialized) return;
+        initialized = true;
+        fetch("/static/html/plugins.html")
+            .then(r => r.text())
+            .then(html => {
+                container.innerHTML = html;
+                loadPlugins();
+            });
+    }
 
     // ---- Data loading ----
 

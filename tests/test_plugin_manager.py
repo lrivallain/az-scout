@@ -321,7 +321,7 @@ class TestPluginRoutes:
                 json={"repo_url": "https://github.com/owner/repo", "ref": "bad"},
             )
 
-        assert resp.status_code == 400
+        assert resp.status_code == 200
         data = resp.json()
         assert data["ok"] is False
         assert "install failed" in data["errors"]
@@ -351,7 +351,7 @@ class TestPluginRoutes:
                 json={"distribution_name": "nonexistent"},
             )
 
-        assert resp.status_code == 400
+        assert resp.status_code == 200
         data = resp.json()
         assert data["ok"] is False
         assert "not found" in data["errors"]

@@ -80,7 +80,6 @@ async def install_plugin(body: InstallRequest, request: Request) -> JSONResponse
         client_ip,
         user_agent,
     )
-    status = 200 if ok else 400
     return JSONResponse(
         {
             "ok": ok,
@@ -88,7 +87,6 @@ async def install_plugin(body: InstallRequest, request: Request) -> JSONResponse
             "warnings": warnings,
             "errors": errors,
         },
-        status_code=status,
     )
 
 
@@ -102,12 +100,10 @@ async def uninstall_plugin(body: UninstallRequest, request: Request) -> JSONResp
         client_ip,
         user_agent,
     )
-    status = 200 if ok else 400
     return JSONResponse(
         {
             "ok": ok,
             "restart_required": ok,
             "errors": errors,
         },
-        status_code=status,
     )
