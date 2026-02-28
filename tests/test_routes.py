@@ -266,6 +266,106 @@ class TestListRegions:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/locations
+# ---------------------------------------------------------------------------
+
+
+class TestListLocations:
+    """Tests for the /api/locations endpoint."""
+
+    def _make_locations_response(self):
+        return {
+            "value": [
+                {
+                    "name": "eastus",
+                    "displayName": "East US",
+                    "availabilityZoneMappings": [
+                        {"logicalZone": "1", "physicalZone": "eastus-az1"},
+                    ],
+                    "metadata": {"regionType": "Physical"},
+                },
+                {
+                    "name": "westus",
+                    "displayName": "West US",
+                    "metadata": {"regionType": "Physical"},
+                },
+                {
+                    "name": "staging",
+                    "displayName": "Staging",
+                    "metadata": {"regionType": "Logical"},
+                },
+            ]
+        }
+
+    def test_returns_locations_with_explicit_sub(self, client):
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = self._make_locations_response()
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/locations?subscriptionId=sub-123")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # Both Physical regions returned, Logical excluded
+        assert len(data) == 2
+        names = [d["name"] for d in data]
+        assert "eastus" in names
+        assert "westus" in names
+        assert "staging" not in names
+
+    def test_auto_discovers_subscription_sorted_by_id(self, client):
+        subs_resp = MagicMock()
+        subs_resp.ok = True
+        subs_resp.json.return_value = {
+            "value": [
+                {"subscriptionId": "zzz-sub", "state": "Enabled"},
+                {"subscriptionId": "aaa-sub", "state": "Enabled"},
+            ]
+        }
+        subs_resp.raise_for_status.return_value = None
+
+        locations_resp = MagicMock()
+        locations_resp.ok = True
+        locations_resp.json.return_value = self._make_locations_response()
+        locations_resp.raise_for_status.return_value = None
+
+        with patch(
+            "az_scout.azure_api.requests.get",
+            side_effect=[subs_resp, locations_resp],
+        ) as mock_get:
+            resp = client.get("/api/locations")
+
+        assert resp.status_code == 200
+        # Verify the first sorted subscription was used
+        locations_call_url = mock_get.call_args_list[1][0][0]
+        assert "aaa-sub" in locations_call_url
+
+    def test_returns_400_when_no_enabled_subs(self, client):
+        subs_resp = MagicMock()
+        subs_resp.ok = True
+        subs_resp.json.return_value = {"value": [{"subscriptionId": "x", "state": "Disabled"}]}
+        subs_resp.raise_for_status.return_value = None
+
+        with patch("az_scout.azure_api.requests.get", return_value=subs_resp):
+            resp = client.get("/api/locations")
+
+        assert resp.status_code == 400
+        assert "error" in resp.json()
+
+    def test_returns_502_on_arm_error(self, client):
+        with patch(
+            "az_scout.azure_api.requests.get",
+            side_effect=Exception("ARM unreachable"),
+        ):
+            resp = client.get("/api/locations?subscriptionId=sub-123")
+
+        assert resp.status_code == 502
+        assert "error" in resp.json()
+
+
+# ---------------------------------------------------------------------------
 # GET /api/mappings
 # ---------------------------------------------------------------------------
 

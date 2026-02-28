@@ -36,6 +36,7 @@ from az_scout.azure_api._pagination import _paginate  # noqa: F401
 
 # -- Discovery ---------------------------------------------------------------
 from az_scout.azure_api.discovery import (  # noqa: F401
+    list_locations,
     list_regions,
     list_subscriptions,
     list_tenants,

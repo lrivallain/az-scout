@@ -111,6 +111,47 @@ def list_regions(
     return result
 
 
+def list_locations(
+    subscription_id: str | None = None,
+    tenant_id: str | None = None,
+) -> list[dict[str, str]]:
+    """Return all ARM locations as ``[{"name": ..., "displayName": ...}, ...]``.
+
+    Unlike :func:`list_regions` this includes regions **without** Availability
+    Zones.  When *subscription_id* is ``None`` the first enabled subscription
+    (sorted by ID) is used.
+    """
+    headers = _get_headers(tenant_id)
+
+    sub_id = subscription_id
+    if not sub_id:
+        subs_url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
+        subs_resp = requests.get(subs_url, headers=headers, timeout=30)
+        subs_resp.raise_for_status()
+        enabled = sorted(
+            s["subscriptionId"]
+            for s in subs_resp.json().get("value", [])
+            if s.get("state") == "Enabled"
+        )
+        if not enabled:
+            raise LookupError("No enabled subscriptions found")
+        sub_id = enabled[0]
+
+    url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
+    resp = requests.get(url, headers=headers, timeout=30)
+    resp.raise_for_status()
+
+    locations = resp.json().get("value", [])
+    return sorted(
+        [
+            {"name": loc["name"], "displayName": loc["displayName"]}
+            for loc in locations
+            if loc.get("metadata", {}).get("regionType") == "Physical"
+        ],
+        key=lambda x: x["displayName"],
+    )
+
+
 def preload_discovery() -> None:
     """Fetch tenants to warm the cache.
 
