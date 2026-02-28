@@ -85,3 +85,12 @@ git push origin v2026.2.0
 The `.github/copilot-instructions.md` file provides context to GitHub Copilot about
 the plugin structure, conventions, and az-scout plugin API. It helps Copilot generate
 code that follows the project patterns.
+
+
+## License
+
+[MIT](LICENSE.txt)
+
+## Disclaimer
+
+> **This tool is not affiliated with Microsoft.** All capacity, pricing, and latency information are indicative and not a guarantee of deployment success. Spot placement scores are probabilistic. Quota values and pricing are dynamic and may change between planning and actual deployment. Latency values are based on [Microsoft published statistics](https://learn.microsoft.com/en-us/azure/networking/azure-network-latency) and must be validated with in-tenant measurements.

@@ -8,8 +8,17 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Strategy Advisor extracted to plugin** – the Capacity Strategy Advisor is no longer bundled in
+  the core application. It is now available as a standalone plugin:
+  [`az-scout-plugin-strategy-advisor`](https://github.com/lrivallain/az-scout-plugin-strategy-advisor).
+  Install the plugin to restore Strategy Advisor functionality (API route, MCP tool, UI tab).
+- Use calver in the plugin scaffold structure
 
 ## [2026.2.8] - 2026-02-28
+
+### Added
 
 - **AI Chat Assistant** – interactive chat panel powered by Azure OpenAI with streaming responses,
   tool calling (zones, SKUs, pricing, spot scores), markdown/table rendering, and clickable choice chips.
