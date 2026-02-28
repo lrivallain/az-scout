@@ -8,7 +8,8 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
-### Added
+
+## [2026.2.8] - 2026-02-28
 
 - **AI Chat Assistant** – interactive chat panel powered by Azure OpenAI with streaming responses,
   tool calling (zones, SKUs, pricing, spot scores), markdown/table rendering, and clickable choice chips.
