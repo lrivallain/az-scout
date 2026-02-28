@@ -43,6 +43,7 @@ version-file = "src/az_scout_example/_version.py"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["src/az_scout_latency_stats/_version.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "SIM"]

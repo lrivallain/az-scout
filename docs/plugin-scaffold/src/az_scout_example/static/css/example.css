@@ -1,10 +1,5 @@
 /* Example plugin styles */
-.example-card {
-    border: 1px solid var(--bs-border-color);
-    border-radius: 0.5rem;
-    padding: 1rem;
-    margin-bottom: 1rem;
-}
+.example-card {}
 
 .example-card h6 {
     color: var(--bs-primary);
