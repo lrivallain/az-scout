@@ -45,8 +45,8 @@ class TestListTenants:
 
         with (
             patch("az_scout.azure_api.requests.get", return_value=mock_resp),
-            patch("az_scout.azure_api._get_default_tenant_id", return_value="tid-1"),
-            patch("az_scout.azure_api._check_tenant_auth", return_value=True),
+            patch("az_scout.azure_api.discovery._get_default_tenant_id", return_value="tid-1"),
+            patch("az_scout.azure_api.discovery._check_tenant_auth", return_value=True),
         ):
             resp = client.get("/api/tenants")
 
@@ -76,8 +76,8 @@ class TestListTenants:
 
         with (
             patch("az_scout.azure_api.requests.get", return_value=mock_resp),
-            patch("az_scout.azure_api._get_default_tenant_id", return_value="tid-ok"),
-            patch("az_scout.azure_api._check_tenant_auth", side_effect=_auth_side_effect),
+            patch("az_scout.azure_api.discovery._get_default_tenant_id", return_value="tid-ok"),
+            patch("az_scout.azure_api.discovery._check_tenant_auth", side_effect=_auth_side_effect),
         ):
             resp = client.get("/api/tenants")
 
@@ -99,8 +99,8 @@ class TestListTenants:
 
         with (
             patch("az_scout.azure_api.requests.get", return_value=mock_resp),
-            patch("az_scout.azure_api._get_default_tenant_id", return_value=None),
-            patch("az_scout.azure_api._check_tenant_auth", return_value=True),
+            patch("az_scout.azure_api.discovery._get_default_tenant_id", return_value=None),
+            patch("az_scout.azure_api.discovery._check_tenant_auth", return_value=True),
         ):
             resp = client.get("/api/tenants")
 

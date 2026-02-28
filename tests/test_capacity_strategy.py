@@ -9,8 +9,8 @@ Covers:
 from unittest.mock import patch
 
 from az_scout.models.capacity_strategy import WorkloadProfileRequest
+from az_scout.services._evaluation_helpers import best_spot_label
 from az_scout.services.capacity_strategy_engine import (
-    _best_spot_label,
     _RegionEval,
     _select_strategy,
     recommend_capacity_strategy,
@@ -59,13 +59,13 @@ class TestRegionLatency:
 
 class TestBestSpotLabel:
     def test_empty(self) -> None:
-        assert _best_spot_label({}) == "Unknown"
+        assert best_spot_label({}) == "Unknown"
 
     def test_high(self) -> None:
-        assert _best_spot_label({"1": "High", "2": "Medium"}) == "High"
+        assert best_spot_label({"1": "High", "2": "Medium"}) == "High"
 
     def test_low_only(self) -> None:
-        assert _best_spot_label({"1": "Low"}) == "Low"
+        assert best_spot_label({"1": "Low"}) == "Low"
 
 
 # ---------------------------------------------------------------------------

@@ -23,20 +23,20 @@ from az_scout import __version__, azure_api
 from az_scout.models.capacity_strategy import WorkloadProfileRequest
 from az_scout.models.deployment_plan import DeploymentIntentRequest
 from az_scout.plugins import get_plugin_metadata, register_plugins
+from az_scout.scoring.admission_confidence import compute_admission_confidence
 from az_scout.scoring.deployment_confidence import (
     best_spot_label,
     compute_deployment_confidence,
     signals_from_sku,
 )
-from az_scout.services.admission_confidence import compute_admission_confidence
+from az_scout.scoring.fragmentation import (
+    estimate_fragmentation_risk,
+    fragmentation_to_normalized,
+)
 from az_scout.services.ai_chat import is_chat_enabled
 from az_scout.services.capacity_strategy_engine import recommend_capacity_strategy
 from az_scout.services.deployment_planner import plan_deployment
 from az_scout.services.eviction_rate import get_spot_eviction_rate
-from az_scout.services.fragmentation import (
-    estimate_fragmentation_risk,
-    fragmentation_to_normalized,
-)
 from az_scout.services.volatility import compute_volatility, volatility_to_normalized
 
 _PKG_DIR = Path(__file__).resolve().parent

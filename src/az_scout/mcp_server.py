@@ -38,17 +38,17 @@ from az_scout.models.capacity_strategy import (
     WorkloadConstraints,
     WorkloadProfileRequest,
 )
+from az_scout.scoring.admission_confidence import compute_admission_confidence
 from az_scout.scoring.deployment_confidence import (
     compute_deployment_confidence,
     signals_from_sku,
 )
-from az_scout.services.admission_confidence import compute_admission_confidence
-from az_scout.services.capacity_strategy_engine import recommend_capacity_strategy
-from az_scout.services.eviction_rate import get_spot_eviction_rate
-from az_scout.services.fragmentation import (
+from az_scout.scoring.fragmentation import (
     estimate_fragmentation_risk,
     fragmentation_to_normalized,
 )
+from az_scout.services.capacity_strategy_engine import recommend_capacity_strategy
+from az_scout.services.eviction_rate import get_spot_eviction_rate
 from az_scout.services.region_latency import get_rtt_ms
 from az_scout.services.volatility import compute_volatility, volatility_to_normalized
 

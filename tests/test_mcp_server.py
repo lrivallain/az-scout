@@ -15,7 +15,7 @@ def _mock_credential():
 
     mock_token = MagicMock()
     mock_token.token = "fake-token"
-    with patch("az_scout.azure_api.credential") as cred:
+    with patch("az_scout.azure_api._auth.credential") as cred:
         cred.get_token.return_value = mock_token
         yield cred
 
@@ -141,7 +141,7 @@ class TestMcpGetSkuAvailability:
         ]
         with (
             patch("az_scout.azure_api.get_skus", return_value=mock_data),
-            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=[]),
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -158,7 +158,7 @@ class TestMcpGetSkuAvailability:
     async def test_passes_resource_type(self, _mock_credential):
         with (
             patch("az_scout.azure_api.get_skus", return_value=[]) as mock_fn,
-            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=[]),
         ):
             _, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -186,7 +186,7 @@ class TestMcpGetSkuAvailability:
     async def test_passes_sku_filters(self, _mock_credential):
         with (
             patch("az_scout.azure_api.get_skus", return_value=[]) as mock_fn,
-            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=[]),
         ):
             _, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -242,7 +242,7 @@ class TestMcpGetSkuAvailability:
         ]
         with (
             patch("az_scout.azure_api.get_skus", return_value=mock_skus),
-            patch("az_scout.azure_api.get_compute_usages", return_value=mock_usages),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=mock_usages),
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -270,7 +270,7 @@ class TestMcpGetSkuAvailability:
         ]
         with (
             patch("az_scout.azure_api.get_skus", return_value=mock_skus),
-            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=[]),
             patch("az_scout.azure_api.enrich_skus_with_prices") as mock_enrich,
         ):
             content, _ = await mcp.call_tool(
@@ -309,7 +309,7 @@ class TestMcpGetSkuAvailability:
         ]
         with (
             patch("az_scout.azure_api.get_skus", return_value=mock_skus),
-            patch("az_scout.azure_api.get_compute_usages", return_value=mock_usages),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=mock_usages),
         ):
             content, _ = await mcp.call_tool(
                 "get_sku_availability",
@@ -327,7 +327,7 @@ class TestMcpGetSkuAvailability:
         """Pricing enrichment is not called when include_prices is omitted."""
         with (
             patch("az_scout.azure_api.get_skus", return_value=[]),
-            patch("az_scout.azure_api.get_compute_usages", return_value=[]),
+            patch("az_scout.azure_api.quotas.get_compute_usages", return_value=[]),
             patch("az_scout.azure_api.enrich_skus_with_prices") as mock_enrich,
         ):
             _, _ = await mcp.call_tool(
