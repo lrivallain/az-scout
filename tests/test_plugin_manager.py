@@ -5,11 +5,14 @@ import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from az_scout import plugin_manager
 from az_scout.plugin_manager import (
     GitHubRepo,
     InstalledPluginRecord,
     PluginValidationResult,
+    fetch_latest_ref,
     is_commit_sha,
     load_installed,
     parse_github_repo_url,
@@ -56,6 +59,7 @@ PYPROJECT_BAD_EP_FORMAT = textwrap.dedent("""\
 """)
 
 SAMPLE_SHA = "a" * 40
+SAMPLE_SHA_2 = "b" * 40
 
 
 # ---------------------------------------------------------------------------
@@ -355,3 +359,507 @@ class TestPluginRoutes:
         data = resp.json()
         assert data["ok"] is False
         assert "not found" in data["errors"]
+
+
+# ---------------------------------------------------------------------------
+# fetch_latest_ref tests (mocked GitHub)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchLatestRef:
+    def test_latest_release(self) -> None:
+        mock_release_resp = MagicMock()
+        mock_release_resp.status_code = 200
+        mock_release_resp.json.return_value = {"tag_name": "v2.0.0"}
+
+        mock_ref_resp = MagicMock()
+        mock_ref_resp.status_code = 200
+        mock_ref_resp.raise_for_status = MagicMock()
+        mock_ref_resp.json.return_value = {
+            "object": {"sha": SAMPLE_SHA_2, "type": "commit"},
+        }
+
+        def side_effect(url: str, **_: object) -> MagicMock:
+            if "/releases/latest" in url:
+                return mock_release_resp
+            return mock_ref_resp
+
+        with patch("az_scout.plugin_manager.requests.get", side_effect=side_effect):
+            ref, sha = fetch_latest_ref("owner", "repo")
+
+        assert ref == "v2.0.0"
+        assert sha == SAMPLE_SHA_2
+
+    def test_fallback_to_tags(self) -> None:
+        mock_release_resp = MagicMock()
+        mock_release_resp.status_code = 404
+
+        mock_tags_resp = MagicMock()
+        mock_tags_resp.status_code = 200
+        mock_tags_resp.json.return_value = [{"name": "v1.5.0"}]
+
+        mock_ref_resp = MagicMock()
+        mock_ref_resp.status_code = 200
+        mock_ref_resp.raise_for_status = MagicMock()
+        mock_ref_resp.json.return_value = {
+            "object": {"sha": SAMPLE_SHA_2, "type": "commit"},
+        }
+
+        def side_effect(url: str, **_: object) -> MagicMock:
+            if "/releases/latest" in url:
+                return mock_release_resp
+            if "/tags?" in url:
+                return mock_tags_resp
+            return mock_ref_resp
+
+        with patch("az_scout.plugin_manager.requests.get", side_effect=side_effect):
+            ref, sha = fetch_latest_ref("owner", "repo")
+
+        assert ref == "v1.5.0"
+        assert sha == SAMPLE_SHA_2
+
+    def test_no_releases_or_tags(self) -> None:
+        mock_release_resp = MagicMock()
+        mock_release_resp.status_code = 404
+
+        mock_tags_resp = MagicMock()
+        mock_tags_resp.status_code = 200
+        mock_tags_resp.json.return_value = []
+
+        def side_effect(url: str, **_: object) -> MagicMock:
+            if "/releases/latest" in url:
+                return mock_release_resp
+            return mock_tags_resp
+
+        with (
+            patch("az_scout.plugin_manager.requests.get", side_effect=side_effect),
+            pytest.raises(ValueError, match="No releases or tags"),
+        ):
+            fetch_latest_ref("owner", "repo")
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestBackwardCompatibility:
+    def test_load_without_update_fields(self, tmp_path: Path) -> None:
+        """Old installed.json without update fields should load fine."""
+        installed_file = tmp_path / "installed.json"
+        old_data = [
+            {
+                "distribution_name": "az-scout-example",
+                "repo_url": "https://github.com/owner/repo",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA,
+                "entry_points": {"example": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+            }
+        ]
+        installed_file.write_text(json.dumps(old_data), encoding="utf-8")
+
+        with patch.object(plugin_manager, "_INSTALLED_FILE", installed_file):
+            loaded = load_installed()
+
+        assert len(loaded) == 1
+        assert loaded[0].last_checked_at is None
+        assert loaded[0].latest_ref is None
+        assert loaded[0].latest_sha is None
+        assert loaded[0].update_available is None
+
+    def test_load_with_update_fields(self, tmp_path: Path) -> None:
+        """New installed.json with update fields should load correctly."""
+        installed_file = tmp_path / "installed.json"
+        data = [
+            {
+                "distribution_name": "az-scout-example",
+                "repo_url": "https://github.com/owner/repo",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA,
+                "entry_points": {"example": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+                "last_checked_at": "2026-02-28T12:00:00+00:00",
+                "latest_ref": "v2.0.0",
+                "latest_sha": SAMPLE_SHA_2,
+                "update_available": True,
+            }
+        ]
+        installed_file.write_text(json.dumps(data), encoding="utf-8")
+
+        with patch.object(plugin_manager, "_INSTALLED_FILE", installed_file):
+            loaded = load_installed()
+
+        assert len(loaded) == 1
+        assert loaded[0].latest_ref == "v2.0.0"
+        assert loaded[0].latest_sha == SAMPLE_SHA_2
+        assert loaded[0].update_available is True
+
+
+# ---------------------------------------------------------------------------
+# Check updates tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckUpdates:
+    def test_check_updates_with_update(self, tmp_path: Path) -> None:
+        installed_file = tmp_path / "installed.json"
+        audit_file = tmp_path / "audit.jsonl"
+        record = InstalledPluginRecord(
+            distribution_name="az-scout-example",
+            repo_url="https://github.com/owner/repo",
+            ref="v1.0.0",
+            resolved_sha=SAMPLE_SHA,
+            entry_points={"example": "mod:obj"},
+            installed_at="2026-02-28T00:00:00+00:00",
+            actor="tester",
+        )
+        installed_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "distribution_name": record.distribution_name,
+                        "repo_url": record.repo_url,
+                        "ref": record.ref,
+                        "resolved_sha": record.resolved_sha,
+                        "entry_points": record.entry_points,
+                        "installed_at": record.installed_at,
+                        "actor": record.actor,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with (
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch(
+                "az_scout.plugin_manager.fetch_latest_ref",
+                return_value=("v2.0.0", SAMPLE_SHA_2),
+            ),
+        ):
+            results = plugin_manager.check_updates("actor", "127.0.0.1", "test-agent")
+
+        assert len(results) == 1
+        assert results[0]["update_available"] is True
+        assert results[0]["latest_ref"] == "v2.0.0"
+        assert results[0]["latest_sha"] == SAMPLE_SHA_2
+
+    def test_check_updates_up_to_date(self, tmp_path: Path) -> None:
+        installed_file = tmp_path / "installed.json"
+        audit_file = tmp_path / "audit.jsonl"
+        data = [
+            {
+                "distribution_name": "az-scout-example",
+                "repo_url": "https://github.com/owner/repo",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA,
+                "entry_points": {"example": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+            }
+        ]
+        installed_file.write_text(json.dumps(data), encoding="utf-8")
+
+        with (
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch(
+                "az_scout.plugin_manager.fetch_latest_ref",
+                return_value=("v1.0.0", SAMPLE_SHA),
+            ),
+        ):
+            results = plugin_manager.check_updates("actor", "127.0.0.1", "test-agent")
+
+        assert len(results) == 1
+        assert results[0]["update_available"] is False
+
+
+# ---------------------------------------------------------------------------
+# Update tests
+# ---------------------------------------------------------------------------
+
+
+class TestUpdatePlugin:
+    def test_update_success(self, tmp_path: Path) -> None:
+        installed_file = tmp_path / "installed.json"
+        audit_file = tmp_path / "audit.jsonl"
+        data = [
+            {
+                "distribution_name": "az-scout-example",
+                "repo_url": "https://github.com/owner/repo",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA,
+                "entry_points": {"example": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+            }
+        ]
+        installed_file.write_text(json.dumps(data), encoding="utf-8")
+
+        mock_uv = MagicMock()
+        mock_uv.returncode = 0
+        mock_uv.stderr = ""
+
+        with (
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch(
+                "az_scout.plugin_manager.fetch_latest_ref",
+                return_value=("v2.0.0", SAMPLE_SHA_2),
+            ),
+            patch("az_scout.plugin_manager.run_uv_in_venv", return_value=mock_uv),
+        ):
+            ok, errors = plugin_manager.update_plugin(
+                "az-scout-example", "actor", "127.0.0.1", "test-agent"
+            )
+
+        assert ok is True
+        assert errors == []
+
+        # Verify installed.json was updated
+        loaded = json.loads(installed_file.read_text(encoding="utf-8"))
+        assert loaded[0]["resolved_sha"] == SAMPLE_SHA_2
+        assert loaded[0]["ref"] == "v2.0.0"
+        assert loaded[0]["update_available"] is False
+
+    def test_update_not_found(self, tmp_path: Path) -> None:
+        installed_file = tmp_path / "installed.json"
+        audit_file = tmp_path / "audit.jsonl"
+        installed_file.write_text("[]", encoding="utf-8")
+
+        with (
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+        ):
+            ok, errors = plugin_manager.update_plugin(
+                "nonexistent", "actor", "127.0.0.1", "test-agent"
+            )
+
+        assert ok is False
+        assert any("not found" in e for e in errors)
+
+    def test_update_already_up_to_date(self, tmp_path: Path) -> None:
+        installed_file = tmp_path / "installed.json"
+        audit_file = tmp_path / "audit.jsonl"
+        data = [
+            {
+                "distribution_name": "az-scout-example",
+                "repo_url": "https://github.com/owner/repo",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA,
+                "entry_points": {"example": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+            }
+        ]
+        installed_file.write_text(json.dumps(data), encoding="utf-8")
+
+        with (
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch(
+                "az_scout.plugin_manager.fetch_latest_ref",
+                return_value=("v1.0.0", SAMPLE_SHA),
+            ),
+        ):
+            ok, errors = plugin_manager.update_plugin(
+                "az-scout-example", "actor", "127.0.0.1", "test-agent"
+            )
+
+        assert ok is False
+        assert any("up to date" in e.lower() for e in errors)
+
+    def test_update_uv_failure(self, tmp_path: Path) -> None:
+        installed_file = tmp_path / "installed.json"
+        audit_file = tmp_path / "audit.jsonl"
+        data = [
+            {
+                "distribution_name": "az-scout-example",
+                "repo_url": "https://github.com/owner/repo",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA,
+                "entry_points": {"example": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+            }
+        ]
+        installed_file.write_text(json.dumps(data), encoding="utf-8")
+
+        mock_uv = MagicMock()
+        mock_uv.returncode = 1
+        mock_uv.stderr = "pip error"
+
+        with (
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch(
+                "az_scout.plugin_manager.fetch_latest_ref",
+                return_value=("v2.0.0", SAMPLE_SHA_2),
+            ),
+            patch("az_scout.plugin_manager.run_uv_in_venv", return_value=mock_uv),
+        ):
+            ok, errors = plugin_manager.update_plugin(
+                "az-scout-example", "actor", "127.0.0.1", "test-agent"
+            )
+
+        assert ok is False
+        assert any("pip" in e.lower() for e in errors)
+
+
+class TestUpdateAllPlugins:
+    def test_update_all_mixed(self, tmp_path: Path) -> None:
+        installed_file = tmp_path / "installed.json"
+        audit_file = tmp_path / "audit.jsonl"
+        data = [
+            {
+                "distribution_name": "az-scout-a",
+                "repo_url": "https://github.com/owner/a",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA,
+                "entry_points": {"a": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+            },
+            {
+                "distribution_name": "az-scout-b",
+                "repo_url": "https://github.com/owner/b",
+                "ref": "v1.0.0",
+                "resolved_sha": SAMPLE_SHA_2,
+                "entry_points": {"b": "mod:obj"},
+                "installed_at": "2026-02-28T00:00:00+00:00",
+                "actor": "tester",
+            },
+        ]
+        installed_file.write_text(json.dumps(data), encoding="utf-8")
+
+        def mock_fetch_latest(owner: str, repo: str) -> tuple[str, str]:
+            if repo == "a":
+                return ("v2.0.0", SAMPLE_SHA_2)
+            return ("v1.0.0", SAMPLE_SHA_2)
+
+        mock_uv = MagicMock()
+        mock_uv.returncode = 0
+        mock_uv.stderr = ""
+
+        with (
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch(
+                "az_scout.plugin_manager.fetch_latest_ref",
+                side_effect=mock_fetch_latest,
+            ),
+            patch("az_scout.plugin_manager.run_uv_in_venv", return_value=mock_uv),
+        ):
+            updated, failed, details = plugin_manager.update_all_plugins(
+                "actor", "127.0.0.1", "test-agent"
+            )
+
+        assert updated == 1
+        assert failed == 0
+        assert len(details) == 2
+
+
+# ---------------------------------------------------------------------------
+# Update route tests
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateRoutes:
+    def test_check_updates(self, client) -> None:  # type: ignore[no-untyped-def]
+        with patch(
+            "az_scout.routes.plugin_manager.check_updates",
+            return_value=[
+                {
+                    "distribution_name": "az-scout-example",
+                    "update_available": True,
+                    "latest_ref": "v2.0.0",
+                    "latest_sha": SAMPLE_SHA_2,
+                }
+            ],
+        ):
+            resp = client.get("/api/plugins/updates")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "plugins" in data
+        assert data["plugins"][0]["update_available"] is True
+
+    def test_update_single_success(self, client) -> None:  # type: ignore[no-untyped-def]
+        with patch(
+            "az_scout.routes.plugin_manager.update_plugin",
+            return_value=(True, []),
+        ):
+            resp = client.post(
+                "/api/plugins/update",
+                json={"distribution_name": "az-scout-example"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["restart_required"] is True
+
+    def test_update_single_failure(self, client) -> None:  # type: ignore[no-untyped-def]
+        with patch(
+            "az_scout.routes.plugin_manager.update_plugin",
+            return_value=(False, ["already up to date"]),
+        ):
+            resp = client.post(
+                "/api/plugins/update",
+                json={"distribution_name": "az-scout-example"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+
+    def test_update_all(self, client) -> None:  # type: ignore[no-untyped-def]
+        with patch(
+            "az_scout.routes.plugin_manager.update_all_plugins",
+            return_value=(
+                2,
+                0,
+                [
+                    {"distribution_name": "a", "ok": True},
+                    {"distribution_name": "b", "ok": True},
+                ],
+            ),
+        ):
+            resp = client.post("/api/plugins/update-all")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["updated"] == 2
+        assert data["restart_required"] is True
+
+    def test_update_all_with_failures(self, client) -> None:  # type: ignore[no-untyped-def]
+        with patch(
+            "az_scout.routes.plugin_manager.update_all_plugins",
+            return_value=(
+                1,
+                1,
+                [
+                    {"distribution_name": "a", "ok": True},
+                    {"distribution_name": "b", "ok": False, "error": "failed"},
+                ],
+            ),
+        ):
+            resp = client.post("/api/plugins/update-all")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        assert data["updated"] == 1
+        assert data["failed"] == 1

@@ -9,6 +9,7 @@
 
     let lastValidation = null;
     let initialized = false;
+    let updateInfo = {};  // distribution_name → update status from /api/plugins/updates
 
     const offcanvasEl = document.getElementById("pluginOffcanvas");
     if (!offcanvasEl) return;
@@ -70,6 +71,7 @@
         empty.classList.add("d-none");
         wrap.classList.remove("d-none");
         tbody.innerHTML = "";
+        let anyUpdate = false;
         for (const r of list) {
             const tr = document.createElement("tr");
             const shaShort = (r.resolved_sha || "").substring(0, 8);
@@ -77,13 +79,63 @@
                 ? `<a href="${escHtml(r.repo_url)}" target="_blank" rel="noopener">${escHtml(r.repo_url)}</a>`
                 : "";
             const installed = r.installed_at ? new Date(r.installed_at).toLocaleString() : "";
+
+            // Installed version column
+            const installedVer = `${escHtml(r.ref)} <code title="${escHtml(r.resolved_sha)}">${escHtml(shaShort)}</code>`;
+
+            // Latest version column
+            const info = updateInfo[r.distribution_name];
+            let latestVer = '<span class="text-body-secondary">—</span>';
+            let statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+            let updateBtn = "";
+
+            if (info) {
+                if (info.error) {
+                    latestVer = '<span class="text-danger" title="' + escHtml(info.error) + '">Error</span>';
+                    statusBadge = '<span class="badge bg-warning text-dark">Unknown</span>';
+                } else if (info.latest_ref) {
+                    const latestShaShort = (info.latest_sha || "").substring(0, 8);
+                    latestVer = `${escHtml(info.latest_ref)} <code title="${escHtml(info.latest_sha)}">${escHtml(latestShaShort)}</code>`;
+                    if (info.update_available) {
+                        statusBadge = '<span class="badge bg-info text-dark">Update available</span>';
+                        updateBtn = ` <button class="btn btn-outline-info btn-sm py-0 px-1"
+                                              title="Update"
+                                              onclick="pmUpdate('${escAttr(r.distribution_name)}')">
+                                          <i class="bi bi-cloud-download"></i>
+                                      </button>`;
+                        anyUpdate = true;
+                    } else {
+                        statusBadge = '<span class="badge bg-success">Up to date</span>';
+                    }
+                }
+            } else if (r.update_available === true && r.latest_ref) {
+                // Use persisted data from installed.json
+                const latestShaShort = (r.latest_sha || "").substring(0, 8);
+                latestVer = `${escHtml(r.latest_ref)} <code title="${escHtml(r.latest_sha)}">${escHtml(latestShaShort)}</code>`;
+                statusBadge = '<span class="badge bg-info text-dark">Update available</span>';
+                updateBtn = ` <button class="btn btn-outline-info btn-sm py-0 px-1"
+                                      title="Update"
+                                      onclick="pmUpdate('${escAttr(r.distribution_name)}')">
+                                  <i class="bi bi-cloud-download"></i>
+                              </button>`;
+                anyUpdate = true;
+            } else if (r.update_available === false) {
+                const latestShaShort = (r.latest_sha || "").substring(0, 8);
+                if (r.latest_ref) {
+                    latestVer = `${escHtml(r.latest_ref)} <code title="${escHtml(r.latest_sha)}">${escHtml(latestShaShort)}</code>`;
+                }
+                statusBadge = '<span class="badge bg-success">Up to date</span>';
+            }
+
             tr.innerHTML = `
                 <td><code>${escHtml(r.distribution_name)}</code></td>
                 <td>${repoLink}</td>
-                <td>${escHtml(r.ref)}</td>
-                <td><code title="${escHtml(r.resolved_sha)}">${escHtml(shaShort)}</code></td>
+                <td>${installedVer}</td>
+                <td>${latestVer}</td>
+                <td>${statusBadge}</td>
                 <td>${escHtml(installed)}</td>
-                <td>
+                <td class="text-nowrap">
+                    ${updateBtn}
                     <button class="btn btn-outline-danger btn-sm py-0 px-1"
                             title="Uninstall"
                             onclick="pmUninstall('${escAttr(r.distribution_name)}')">
@@ -91,6 +143,16 @@
                     </button>
                 </td>`;
             tbody.appendChild(tr);
+        }
+
+        // Show/hide "Update all" button
+        const updateAllBtn = document.getElementById("pm-update-all-btn");
+        if (updateAllBtn) {
+            if (anyUpdate) {
+                updateAllBtn.classList.remove("d-none");
+            } else {
+                updateAllBtn.classList.add("d-none");
+            }
         }
     }
 
@@ -180,6 +242,67 @@
             }
         } catch (e) {
             alert("Uninstall error: " + e.message);
+        }
+    };
+
+    // ---- Check updates ----
+
+    window.pmCheckUpdates = async function () {
+        showSpinner("Checking for updates…");
+        try {
+            const data = await apiFetch("/api/plugins/updates");
+            updateInfo = {};
+            for (const p of (data.plugins || [])) {
+                updateInfo[p.distribution_name] = p;
+            }
+            loadPlugins();
+        } catch (e) {
+            alert("Check updates error: " + e.message);
+        } finally {
+            hideSpinner();
+        }
+    };
+
+    // ---- Update single ----
+
+    window.pmUpdate = async function (distName) {
+        showSpinner("Updating " + distName + "…");
+        try {
+            const data = await apiPost("/api/plugins/update", { distribution_name: distName });
+            if (data.ok) {
+                showRestart();
+                // Refresh update info
+                delete updateInfo[distName];
+                loadPlugins();
+            } else {
+                alert("Update failed: " + (data.errors || []).join("; "));
+            }
+        } catch (e) {
+            alert("Update error: " + e.message);
+        } finally {
+            hideSpinner();
+        }
+    };
+
+    // ---- Update all ----
+
+    window.pmUpdateAll = async function () {
+        if (!confirm("Update all plugins with available updates?")) return;
+
+        showSpinner("Updating all plugins…");
+        try {
+            const data = await apiPost("/api/plugins/update-all", {});
+            if (data.restart_required) {
+                showRestart();
+            }
+            updateInfo = {};
+            loadPlugins();
+            const msg = "Updated: " + data.updated + ", Failed: " + data.failed;
+            alert(msg);
+        } catch (e) {
+            alert("Update all error: " + e.message);
+        } finally {
+            hideSpinner();
         }
     };
 
