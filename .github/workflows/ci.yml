@@ -48,3 +48,23 @@ jobs:
 
       - name: Run tests
         run: uv run --group dev pytest --cov=az_scout --cov-report=term-missing
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Install Playwright browsers
+        run: uv run --group dev playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: uv run --group dev pytest -m e2e --tb=short -q
