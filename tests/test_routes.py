@@ -345,9 +345,7 @@ class TestListLocations:
     def test_returns_400_when_no_enabled_subs(self, client):
         subs_resp = MagicMock()
         subs_resp.ok = True
-        subs_resp.json.return_value = {
-            "value": [{"subscriptionId": "x", "state": "Disabled"}]
-        }
+        subs_resp.json.return_value = {"value": [{"subscriptionId": "x", "state": "Disabled"}]}
         subs_resp.raise_for_status.return_value = None
 
         with patch("az_scout.azure_api.requests.get", return_value=subs_resp):
