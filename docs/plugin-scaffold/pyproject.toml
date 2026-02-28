@@ -12,6 +12,11 @@ dependencies = [
     "fastapi",
 ]
 
+[project.urls]
+Homepage = "https://github.com/lrivallain/az-scout-example"
+Repository = "https://github.com/lrivallain/az-scout-example"
+Issues = "https://github.com/lrivallain/az-scout-example/issues"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0",

@@ -240,6 +240,7 @@ class TestPluginMetadata:
         mock_ep = MagicMock()
         mock_ep.name = "test-full"
         mock_ep.load.return_value = full
+        mock_ep.dist.name = "test-full-dist"
 
         mock_mcp = MagicMock()
 
@@ -257,6 +258,33 @@ class TestPluginMetadata:
         assert meta[0]["tabs"][0]["css_entry"] == "css/test.css"
         assert len(meta[0]["chat_modes"]) == 1
         assert meta[0]["chat_modes"][0]["id"] == "test-mode"
+        assert "homepage" in meta[0]
+
+    def test_metadata_includes_homepage_from_dist(self):
+        """Homepage is extracted from pip distribution Project-URL metadata."""
+        full = FullPlugin()
+        mock_ep = MagicMock()
+        mock_ep.name = "test-full"
+        mock_ep.load.return_value = full
+        mock_ep.dist.name = "test-full-dist"
+
+        mock_mcp = MagicMock()
+        mock_dist = MagicMock()
+        mock_dist.metadata.get_all.return_value = [
+            "Homepage, https://example.com/my-plugin",
+            "Issues, https://example.com/my-plugin/issues",
+        ]
+
+        from az_scout.app import app
+
+        with (
+            patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[mock_ep]),
+            patch("az_scout.plugins.importlib.metadata.distribution", return_value=mock_dist),
+        ):
+            register_plugins(app, mock_mcp)
+            meta = get_plugin_metadata()
+
+        assert meta[0]["homepage"] == "https://example.com/my-plugin"
 
     def test_metadata_empty_when_no_plugins(self):
         meta = get_plugin_metadata()
@@ -317,6 +345,7 @@ class TestIndexWithPlugins:
         mock_ep = MagicMock()
         mock_ep.name = "test-full"
         mock_ep.load.return_value = full
+        mock_ep.dist.name = "test-full-dist"
 
         with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[mock_ep]):
             from az_scout.app import app

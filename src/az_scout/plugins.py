@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level registries populated by register_plugins()
 _loaded_plugins: list[AzScoutPlugin] = []
+_plugin_dist_names: dict[str, str] = {}  # plugin.name → pip distribution name
 _plugin_chat_modes: dict[str, ChatMode] = {}
 
 
@@ -30,6 +31,9 @@ def discover_plugins() -> list[AzScoutPlugin]:
             obj = ep.load()
             if isinstance(obj, AzScoutPlugin):
                 plugins.append(obj)
+                # Remember the pip distribution name for metadata lookups
+                if ep.dist is not None:
+                    _plugin_dist_names[obj.name] = ep.dist.name
                 logger.info("Loaded plugin: %s v%s", obj.name, obj.version)
             else:
                 logger.warning(
@@ -123,6 +127,22 @@ def get_plugin_chat_modes() -> dict[str, ChatMode]:
     return dict(_plugin_chat_modes)
 
 
+def _get_plugin_homepage(plugin_name: str) -> str:
+    """Look up the Homepage URL from a plugin's pip distribution metadata."""
+    dist_name = _plugin_dist_names.get(plugin_name)
+    if not dist_name:
+        return ""
+    try:
+        dist = importlib.metadata.distribution(dist_name)
+        for raw in dist.metadata.get_all("Project-URL") or []:
+            label, _, url = raw.partition(",")
+            if label.strip().lower() == "homepage":
+                return str(url).strip()
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    return ""
+
+
 def get_plugin_metadata() -> list[dict[str, Any]]:
     """Return serialisable metadata for all loaded plugins (for template context)."""
     result: list[dict[str, Any]] = []
@@ -133,6 +153,7 @@ def get_plugin_metadata() -> list[dict[str, Any]]:
             {
                 "name": p.name,
                 "version": p.version,
+                "homepage": _get_plugin_homepage(p.name),
                 "tabs": [
                     {
                         "id": t.id,

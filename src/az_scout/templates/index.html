@@ -44,6 +44,9 @@
             <a href="https://github.com/lrivallain/az-scout" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="GitHub">
                 <i class="bi bi-github"></i>
             </a>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#aboutModal" title="About">
+                <i class="bi bi-info-circle"></i>
+            </button>
         </div>
     </div>
 </nav>
@@ -460,6 +463,60 @@
     <span>MIT License</span> ·
     <span>Independent Azure analysis tool — not affiliated with Microsoft.</span>
 </footer>
+
+<!-- ===== About Modal ===== -->
+<div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span></span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="about-showcase">
+                    <div class="about-logo-wrap">
+                        <img src="{{ url_for('static', path='img/favicon.svg') }}" alt="Azure Scout">
+                    </div>
+                    <h4 id="aboutModalLabel">Azure Scout</h4>
+                    <span class="about-version">{{ version }}</span>
+                    <div class="about-links">
+                        <a href="https://github.com/lrivallain/az-scout" target="_blank" rel="noopener"
+                           class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-house-door me-1"></i>Homepage
+                        </a>
+                        <a href="https://github.com/lrivallain/az-scout/issues" target="_blank" rel="noopener"
+                           class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-bug me-1"></i>Issues
+                        </a>
+                    </div>
+                </div>
+                {% if plugins %}
+                <div class="about-plugins-section">
+                    <h6><i class="bi bi-puzzle me-1"></i>Installed plugins</h6>
+                    {% for p in plugins %}
+                    <div class="about-plugin-row">
+                        <div class="about-plugin-icon">
+                            <i class="bi bi-puzzle"></i>
+                        </div>
+                        <span class="about-plugin-name">{{ p.name }}</span>
+                        <span class="about-plugin-version">{{ p.version }}</span>
+                        {% if p.homepage %}
+                        <a href="{{ p.homepage }}" target="_blank" rel="noopener"
+                           class="about-plugin-link" title="Plugin homepage">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ===== Spot Score Modal ===== -->
 <div class="modal fade" id="spotModal" tabindex="-1" aria-labelledby="spotModalLabel" aria-hidden="true">
