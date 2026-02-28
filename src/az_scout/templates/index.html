@@ -98,6 +98,12 @@
                 <i class="bi bi-compass"></i> Strategy Advisor
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="plugins-tab" data-bs-toggle="tab" data-bs-target="#tab-plugins"
+                    type="button" role="tab" aria-controls="tab-plugins" aria-selected="false">
+                <i class="bi bi-puzzle"></i> Plugins
+            </button>
+        </li>
         {% for p in plugins %}
         {% for tab in p.tabs %}
         <li class="nav-item" role="presentation">
@@ -442,6 +448,14 @@
             </div>
         </div>
 
+        <div class="tab-pane fade" id="tab-plugins" role="tabpanel" aria-labelledby="plugins-tab">
+            <div class="card border-top-0 rounded-top-0">
+                <div class="card-body" id="plugin-tab-plugins">
+                    <!-- Populated by plugins.js -->
+                </div>
+            </div>
+        </div>
+
         {% for p in plugins %}
         {% for tab in p.tabs %}
         <div class="tab-pane fade" id="tab-{{ tab.id }}" role="tabpanel" aria-labelledby="{{ tab.id }}-tab">
@@ -622,6 +636,7 @@
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
+<script src="{{ url_for('static', path='js/plugins.js') }}"></script>
 {% for p in plugins %}
 {% for tab in p.tabs %}
 <script src="/plugins/{{ p.name }}/static/{{ tab.js_entry }}"></script>

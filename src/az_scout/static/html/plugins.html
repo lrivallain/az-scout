@@ -1,0 +1,103 @@
+<!-- Plugin Manager tab fragment -->
+<div class="row g-3">
+    <!-- Left: Add / Validate -->
+    <div class="col-md-5 col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-plus-circle me-1"></i>Add Plugin</div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label for="pm-repo-url" class="form-label form-label-sm">Repository URL</label>
+                    <input type="url" class="form-control form-control-sm" id="pm-repo-url"
+                           placeholder="https://github.com/owner/repo">
+                    <div class="form-text">Only public github.com repositories</div>
+                </div>
+                <div class="mb-3">
+                    <label for="pm-ref" class="form-label form-label-sm">Ref (tag or commit SHA)</label>
+                    <input type="text" class="form-control form-control-sm" id="pm-ref"
+                           placeholder="v0.1.0 or 40-char SHA">
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary btn-sm" id="pm-validate-btn" onclick="pmValidate()">
+                        <i class="bi bi-check-circle me-1"></i>Validate
+                    </button>
+                    <button class="btn btn-primary btn-sm" id="pm-install-btn" onclick="pmInstall()" disabled>
+                        <i class="bi bi-download me-1"></i>Install
+                    </button>
+                </div>
+
+                <!-- Validation result -->
+                <div id="pm-validation-result" class="d-none mt-3">
+                    <hr>
+                    <div id="pm-val-status" class="mb-2"></div>
+                    <div id="pm-val-meta" class="mb-2" style="font-size:0.82rem;"></div>
+                    <div id="pm-val-errors" class="d-none"></div>
+                    <div id="pm-val-warnings" class="d-none"></div>
+                </div>
+
+                <!-- Spinner -->
+                <div id="pm-spinner" class="d-none mt-3 text-center">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Loading…</span>
+                    </div>
+                    <span class="ms-2 text-body-secondary" id="pm-spinner-text">Validating…</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Restart banner -->
+        <div id="pm-restart-banner" class="alert alert-warning d-none" role="alert">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <strong>Restart required</strong> — the application must be restarted for plugin changes to take effect.
+        </div>
+    </div>
+
+    <!-- Right: Lists -->
+    <div class="col-md-7 col-lg-8">
+        <!-- Installed (UI) -->
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-box-seam me-1"></i>Installed (UI)</div>
+            <div class="card-body p-0">
+                <div id="pm-installed-empty" class="text-center text-body-secondary py-3">
+                    No plugins installed via UI
+                </div>
+                <div id="pm-installed-table-wrap" class="d-none">
+                    <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
+                        <thead>
+                            <tr>
+                                <th>Distribution</th>
+                                <th>Repo</th>
+                                <th>Ref</th>
+                                <th>SHA</th>
+                                <th>Installed</th>
+                                <th>Actor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="pm-installed-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loaded (runtime) -->
+        <div class="card">
+            <div class="card-header"><i class="bi bi-lightning me-1"></i>Loaded (runtime)</div>
+            <div class="card-body p-0">
+                <div id="pm-loaded-empty" class="text-center text-body-secondary py-3">
+                    No plugins loaded in current process
+                </div>
+                <div id="pm-loaded-table-wrap" class="d-none">
+                    <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Version</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pm-loaded-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
