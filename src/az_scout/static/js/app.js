@@ -143,23 +143,22 @@ async function init() {
     // Init planner subscription combobox
     initPlannerSubCombobox();
 
-    // Hash-based tab routing
+    // Hash-based tab routing (supports built-in + plugin tabs)
     const tabEl = document.querySelector('#mainTabs');
     if (tabEl) {
         tabEl.addEventListener('shown.bs.tab', (e) => {
             const target = e.target.getAttribute('data-bs-target');
-            const hashMap = { '#tab-planner': '#planner', '#tab-strategy': '#strategy' };
-            window.history.replaceState(null, '', hashMap[target] || '#topology');
+            // Built-in tabs: #tab-topology → #topology, #tab-planner → #planner, etc.
+            // Plugin tabs:   #tab-example  → #example
+            const hash = target ? '#' + target.replace(/^#tab-/, '') : '#topology';
+            window.history.replaceState(null, '', hash);
         });
     }
-    // Activate tab from hash
-    const hash = window.location.hash;
-    if (hash === '#planner') {
-        const plannerTab = document.getElementById('planner-tab');
-        if (plannerTab) new bootstrap.Tab(plannerTab).show();
-    } else if (hash === '#strategy') {
-        const stratTab = document.getElementById('strategy-tab');
-        if (stratTab) new bootstrap.Tab(stratTab).show();
+    // Activate tab from hash (built-in or plugin)
+    const hash = window.location.hash.replace(/^#/, '');
+    if (hash && hash !== 'topology') {
+        const tabBtn = document.getElementById(hash + '-tab');
+        if (tabBtn) new bootstrap.Tab(tabBtn).show();
     }
 
     // Init strategy subscription combobox
@@ -179,10 +178,8 @@ async function init() {
 // URL hash helper  (only stores active tab, no query params)
 // ---------------------------------------------------------------------------
 function getActiveTabFromHash() {
-    const h = window.location.hash;
-    if (h === "#planner") return "planner";
-    if (h === "#strategy") return "strategy";
-    return "topology";
+    const h = window.location.hash.replace(/^#/, '');
+    return h || "topology";
 }
 
 // ---------------------------------------------------------------------------
@@ -2296,6 +2293,24 @@ const _chatModeState = {
     planner:   { messages: [], inputHistory: [] },
 };
 
+/**
+ * Register plugin-contributed chat modes at startup.
+ * Called from the inline <script> block in the template after app.js loads.
+ * @param {Array} plugins - Array of plugin metadata objects from Jinja2 context.
+ */
+function registerPluginChatModes(plugins) {
+    for (const p of plugins) {
+        for (const mode of (p.chat_modes || [])) {
+            if (!_chatModeState[mode.id]) {
+                _chatModeState[mode.id] = { messages: [], inputHistory: [] };
+            }
+            if (!_CHAT_WELCOME[mode.id]) {
+                _CHAT_WELCOME[mode.id] = mode.welcome_message || `Welcome to **${mode.label}** mode.`;
+            }
+        }
+    }
+}
+
 
 function toggleChatPanel() {
     const panel = document.getElementById("chat-panel");
@@ -2333,6 +2348,11 @@ function switchChatMode(mode) {
     _chatModeState[_chatMode].messages = [..._chatMessages];
     _chatModeState[_chatMode].inputHistory = [..._chatInputHistory];
 
+    // Ensure target mode state exists (plugin modes may be registered dynamically)
+    if (!_chatModeState[mode]) {
+        _chatModeState[mode] = { messages: [], inputHistory: [] };
+    }
+
     // Switch
     _chatMode = mode;
     try { localStorage.setItem(_CHAT_MODE_KEY, mode); } catch {}
@@ -2356,7 +2376,8 @@ function switchChatMode(mode) {
     // Show welcome message
     const welcome = document.createElement("div");
     welcome.className = "chat-message assistant";
-    welcome.innerHTML = `<div class="chat-bubble">${_renderMarkdown(_CHAT_WELCOME[mode])}</div>`;
+    const welcomeText = _CHAT_WELCOME[mode] || `Welcome to **${mode}** mode.`;
+    welcome.innerHTML = `<div class="chat-bubble">${_renderMarkdown(welcomeText)}</div>`;
     container.appendChild(welcome);
 
     // Replay stored messages

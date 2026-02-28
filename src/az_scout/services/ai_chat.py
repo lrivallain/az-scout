@@ -246,7 +246,16 @@ def _build_system_prompt(
     mode: str = "discussion",
 ) -> str:
     """Build the system prompt, optionally including tenant, region and subscription context."""
-    prompt = PLANNER_SYSTEM_PROMPT if mode == "planner" else SYSTEM_PROMPT
+    if mode == "planner":
+        prompt = PLANNER_SYSTEM_PROMPT
+    elif mode == "discussion":
+        prompt = SYSTEM_PROMPT
+    else:
+        # Check for a plugin-contributed chat mode
+        from az_scout.plugins import get_plugin_chat_modes
+
+        plugin_modes = get_plugin_chat_modes()
+        prompt = plugin_modes[mode].system_prompt if mode in plugin_modes else SYSTEM_PROMPT
     if tenant_id:
         prompt += (
             f"\n\nCurrent tenant context: The user has selected tenant ID "
@@ -395,6 +404,19 @@ def _build_openai_tools() -> list[dict[str, Any]]:
 
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = _build_openai_tools()
+
+
+def refresh_tool_definitions() -> None:
+    """Rebuild TOOL_DEFINITIONS after plugins have registered MCP tools.
+
+    Called by :func:`az_scout.plugins.register_plugins` so that plugin tools
+    become available to the AI chat assistant.
+    """
+    global _mcp_tool_registry  # noqa: PLW0603
+    _mcp_tool_registry = None  # invalidate cache so _get_mcp_tools() re-reads
+    TOOL_DEFINITIONS.clear()
+    TOOL_DEFINITIONS.extend(_build_openai_tools())
+
 
 # ---------------------------------------------------------------------------
 # Tool execution dispatcher

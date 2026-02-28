@@ -1,0 +1,24 @@
+/* Example plugin styles */
+.example-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.example-card h6 {
+    color: var(--bs-primary);
+    margin-bottom: 0.5rem;
+}
+
+.example-output {
+    font-family: var(--bs-font-monospace);
+    background: var(--bs-tertiary-bg);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    min-height: 2rem;
+}
+
+.example-output:empty {
+    display: none;
+}

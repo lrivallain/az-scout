@@ -21,6 +21,15 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
   Azure VM families and best practices alongside live tool data.
   - Per-mode conversation state (messages, input history) persisted independently to `localStorage`.
 - Numeric operator filters on SKU table columns (`>`, `>=`, `<`, `<=`, `=`, ranges).
+- **Plugin system** – extend az-scout with pip-installable plugins discovered via Python entry points.
+  Plugins can contribute API routes, MCP tools, UI tabs, static assets, and AI chat modes.
+  See [docs/plugins.md](docs/plugins.md) and the [scaffold](docs/plugin-scaffold/).
+
+### Fixed
+
+- Graph text overflow: subscription names exceeding their box due to font-weight mismatch in `measureText()`.
+- MCP→OpenAI schema converter: `items` not propagated from `anyOf` branches for `list[str] | None` parameters.
+- Unauthenticated tenants now hidden from the dropdown selector with a disabled hint option.
 
 ## [2026.2.7] - 2026-02-20
 
