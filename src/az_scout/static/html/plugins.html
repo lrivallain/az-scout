@@ -54,7 +54,19 @@
     <!-- Installed (UI) -->
     <div>
         <div class="card">
-            <div class="card-header"><i class="bi bi-box-seam me-1"></i>Installed (UI)</div>
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <span><i class="bi bi-box-seam me-1"></i>Installed (UI)</span>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-outline-info btn-sm py-0 px-2" id="pm-check-updates-btn"
+                            onclick="pmCheckUpdates()" title="Check for updates">
+                        <i class="bi bi-arrow-repeat me-1"></i>Check updates
+                    </button>
+                    <button class="btn btn-primary btn-sm py-0 px-2 d-none" id="pm-update-all-btn"
+                            onclick="pmUpdateAll()" title="Update all plugins">
+                        <i class="bi bi-cloud-download me-1"></i>Update all
+                    </button>
+                </div>
+            </div>
             <div class="card-body p-0">
                 <div id="pm-installed-empty" class="text-center text-body-secondary py-3">
                     No plugins installed via UI
@@ -66,9 +78,10 @@
                             <tr>
                                 <th>Distribution</th>
                                 <th>Repo</th>
-                                <th>Ref</th>
-                                <th>SHA</th>
                                 <th>Installed</th>
+                                <th>Latest</th>
+                                <th>Status</th>
+                                <th>Installed at</th>
                                 <th></th>
                             </tr>
                         </thead>

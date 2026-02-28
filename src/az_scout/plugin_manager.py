@@ -76,6 +76,11 @@ class InstalledPluginRecord:
     entry_points: dict[str, str]
     installed_at: str  # ISO-8601
     actor: str
+    # Update-related fields (optional for backward compatibility)
+    last_checked_at: str | None = None
+    latest_ref: str | None = None
+    latest_sha: str | None = None
+    update_available: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -312,13 +317,32 @@ def _ensure_data_dir() -> None:
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _record_from_dict(data: dict[str, Any]) -> InstalledPluginRecord:
+    """Create an ``InstalledPluginRecord`` from a dict, tolerating missing fields."""
+    known_fields = {
+        "distribution_name",
+        "repo_url",
+        "ref",
+        "resolved_sha",
+        "entry_points",
+        "installed_at",
+        "actor",
+        "last_checked_at",
+        "latest_ref",
+        "latest_sha",
+        "update_available",
+    }
+    filtered = {k: v for k, v in data.items() if k in known_fields}
+    return InstalledPluginRecord(**filtered)
+
+
 def load_installed() -> list[InstalledPluginRecord]:
     """Load the list of UI-installed plugins from ``installed.json``."""
     if not _INSTALLED_FILE.exists():
         return []
     try:
         raw = json.loads(_INSTALLED_FILE.read_text(encoding="utf-8"))
-        return [InstalledPluginRecord(**r) for r in raw]
+        return [_record_from_dict(r) for r in raw]
     except Exception:
         logger.exception("Failed to read %s", _INSTALLED_FILE)
         return []
@@ -434,6 +458,324 @@ def install_plugin(
     )
 
     return True, validation.warnings, []
+
+
+# ---------------------------------------------------------------------------
+# GitHub latest-version helpers
+# ---------------------------------------------------------------------------
+
+
+def fetch_latest_ref(owner: str, repo: str) -> tuple[str, str]:
+    """Determine the latest version ref and its resolved commit SHA.
+
+    Strategy:
+      1. Try ``GET /repos/{owner}/{repo}/releases/latest`` → ``tag_name``.
+      2. If no release, try ``GET /repos/{owner}/{repo}/tags?per_page=1``.
+      3. Resolve the ref → 40-char commit SHA.
+
+    Returns ``(latest_ref, latest_sha)``.
+    Raises ``ValueError`` when no release or tag is found.
+    """
+    # 1. Try latest release
+    release_url = f"{_GITHUB_API_BASE}/repos/{owner}/{repo}/releases/latest"
+    release_resp = requests.get(release_url, timeout=15)
+    if release_resp.status_code == 200:
+        tag_name: str = release_resp.json().get("tag_name", "")
+        if tag_name:
+            sha = resolve_ref_to_sha(owner, repo, tag_name)
+            return tag_name, sha
+
+    # 2. Fallback to latest tag
+    tags_url = f"{_GITHUB_API_BASE}/repos/{owner}/{repo}/tags?per_page=1"
+    tags_resp = requests.get(tags_url, timeout=15)
+    if tags_resp.status_code == 200:
+        tags: list[dict[str, Any]] = tags_resp.json()
+        if tags:
+            tag_name = tags[0].get("name", "")
+            if tag_name:
+                sha = resolve_ref_to_sha(owner, repo, tag_name)
+                return tag_name, sha
+
+    msg = f"No releases or tags found for {owner}/{repo}"
+    raise ValueError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Check for updates
+# ---------------------------------------------------------------------------
+
+
+def check_updates(
+    actor: str,
+    client_ip: str,
+    user_agent: str,
+) -> list[dict[str, Any]]:
+    """Check all installed plugins for available updates.
+
+    Returns a list of dicts with update status per plugin.
+    """
+    records = load_installed()
+    results: list[dict[str, Any]] = []
+    now = datetime.now(UTC).isoformat()
+
+    for record in records:
+        info: dict[str, Any] = {
+            "distribution_name": record.distribution_name,
+            "repo_url": record.repo_url,
+            "installed_ref": record.ref,
+            "resolved_sha": record.resolved_sha,
+            "latest_ref": None,
+            "latest_sha": None,
+            "update_available": False,
+            "error": None,
+        }
+
+        gh = parse_github_repo_url(record.repo_url)
+        if gh is None:
+            info["error"] = "Invalid GitHub URL"
+            results.append(info)
+            continue
+
+        try:
+            latest_ref, latest_sha = fetch_latest_ref(gh.owner, gh.repo)
+            info["latest_ref"] = latest_ref
+            info["latest_sha"] = latest_sha
+            info["update_available"] = latest_sha != record.resolved_sha
+
+            # Update the record in-place for persistence
+            record.last_checked_at = now
+            record.latest_ref = latest_ref
+            record.latest_sha = latest_sha
+            record.update_available = latest_sha != record.resolved_sha
+        except Exception as exc:
+            info["error"] = str(exc)
+            record.last_checked_at = now
+
+        results.append(info)
+
+    # Persist updated records
+    save_installed(records)
+
+    _audit_event(
+        "check_updates",
+        actor,
+        client_ip,
+        user_agent,
+        success=True,
+        detail=f"Checked {len(records)} plugin(s)",
+    )
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Update operations
+# ---------------------------------------------------------------------------
+
+
+def update_plugin(
+    distribution_name: str,
+    actor: str,
+    client_ip: str,
+    user_agent: str,
+) -> tuple[bool, list[str]]:
+    """Update a single plugin to the latest GitHub release/tag.
+
+    Returns ``(ok, errors)``.
+    """
+    errors: list[str] = []
+    records = load_installed()
+    record = next((r for r in records if r.distribution_name == distribution_name), None)
+
+    if record is None:
+        errors.append(f"Plugin '{distribution_name}' not found in installed list")
+        _audit_event(
+            "update",
+            actor,
+            client_ip,
+            user_agent,
+            distribution_name=distribution_name,
+            success=False,
+            detail=errors[0],
+        )
+        return False, errors
+
+    gh = parse_github_repo_url(record.repo_url)
+    if gh is None:
+        errors.append("Invalid GitHub URL in installed record")
+        _audit_event(
+            "update",
+            actor,
+            client_ip,
+            user_agent,
+            distribution_name=distribution_name,
+            repo_url=record.repo_url,
+            success=False,
+            detail=errors[0],
+        )
+        return False, errors
+
+    # Resolve latest version
+    try:
+        latest_ref, latest_sha = fetch_latest_ref(gh.owner, gh.repo)
+    except Exception as exc:
+        errors.append(f"Cannot determine latest version: {exc}")
+        _audit_event(
+            "update",
+            actor,
+            client_ip,
+            user_agent,
+            distribution_name=distribution_name,
+            repo_url=record.repo_url,
+            ref=record.ref,
+            resolved_sha=record.resolved_sha,
+            success=False,
+            detail=errors[0],
+        )
+        return False, errors
+
+    if latest_sha == record.resolved_sha:
+        errors.append("Already up to date")
+        return False, errors
+
+    # Install the new version
+    clean_url = record.repo_url.rstrip("/")
+    if not clean_url.endswith(".git"):
+        clean_url += ".git"
+    git_url = f"git+{clean_url}@{latest_sha}"
+
+    result = run_uv_in_venv(["pip", "install", "--upgrade", git_url])
+    if result.returncode != 0:
+        err_msg = f"uv pip install --upgrade failed: {result.stderr.strip()}"
+        errors.append(err_msg)
+        _audit_event(
+            "update",
+            actor,
+            client_ip,
+            user_agent,
+            repo_url=record.repo_url,
+            ref=record.ref,
+            resolved_sha=record.resolved_sha,
+            distribution_name=distribution_name,
+            success=False,
+            detail=err_msg,
+        )
+        return False, errors
+
+    # Update the record
+    now = datetime.now(UTC).isoformat()
+    record.ref = latest_ref
+    record.resolved_sha = latest_sha
+    record.installed_at = now
+    record.actor = actor
+    record.last_checked_at = now
+    record.latest_ref = latest_ref
+    record.latest_sha = latest_sha
+    record.update_available = False
+    save_installed(records)
+
+    _audit_event(
+        "update",
+        actor,
+        client_ip,
+        user_agent,
+        repo_url=record.repo_url,
+        ref=latest_ref,
+        resolved_sha=latest_sha,
+        distribution_name=distribution_name,
+        success=True,
+        detail=f"Updated from {record.ref} to {latest_ref}",
+    )
+
+    return True, []
+
+
+def update_all_plugins(
+    actor: str,
+    client_ip: str,
+    user_agent: str,
+) -> tuple[int, int, list[dict[str, Any]]]:
+    """Update all installed plugins that have available updates.
+
+    Returns ``(updated_count, failed_count, details)``.
+    """
+    records = load_installed()
+    updated = 0
+    failed = 0
+    details: list[dict[str, Any]] = []
+
+    for record in records:
+        gh = parse_github_repo_url(record.repo_url)
+        if gh is None:
+            details.append(
+                {
+                    "distribution_name": record.distribution_name,
+                    "ok": False,
+                    "error": "Invalid GitHub URL",
+                }
+            )
+            failed += 1
+            continue
+
+        try:
+            latest_ref, latest_sha = fetch_latest_ref(gh.owner, gh.repo)
+        except Exception as exc:
+            details.append(
+                {
+                    "distribution_name": record.distribution_name,
+                    "ok": False,
+                    "error": str(exc),
+                }
+            )
+            failed += 1
+            continue
+
+        if latest_sha == record.resolved_sha:
+            details.append(
+                {
+                    "distribution_name": record.distribution_name,
+                    "ok": True,
+                    "skipped": True,
+                    "reason": "Already up to date",
+                }
+            )
+            continue
+
+        ok, errors = update_plugin(
+            record.distribution_name,
+            actor,
+            client_ip,
+            user_agent,
+        )
+        if ok:
+            updated += 1
+            details.append(
+                {
+                    "distribution_name": record.distribution_name,
+                    "ok": True,
+                    "updated_to": latest_ref,
+                }
+            )
+        else:
+            failed += 1
+            details.append(
+                {
+                    "distribution_name": record.distribution_name,
+                    "ok": False,
+                    "error": "; ".join(errors),
+                }
+            )
+
+    _audit_event(
+        "update_all",
+        actor,
+        client_ip,
+        user_agent,
+        success=failed == 0,
+        detail=f"Updated {updated}, failed {failed} of {len(records)} plugin(s)",
+    )
+
+    return updated, failed, details
 
 
 def uninstall_plugin(

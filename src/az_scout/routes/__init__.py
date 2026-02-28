@@ -31,6 +31,10 @@ class UninstallRequest(BaseModel):
     distribution_name: str
 
 
+class UpdateRequest(BaseModel):
+    distribution_name: str
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -105,5 +109,52 @@ async def uninstall_plugin(body: UninstallRequest, request: Request) -> JSONResp
             "ok": ok,
             "restart_required": ok,
             "errors": errors,
+        },
+    )
+
+
+@router.get("/updates", summary="Check for plugin updates")
+async def check_updates(request: Request) -> JSONResponse:
+    """Check all installed plugins for available updates."""
+    actor, client_ip, user_agent = _actor(request)
+    results = plugin_manager.check_updates(actor, client_ip, user_agent)
+    return JSONResponse({"plugins": results})
+
+
+@router.post("/update", summary="Update a single plugin")
+async def update_plugin(body: UpdateRequest, request: Request) -> JSONResponse:
+    """Update a single plugin to the latest GitHub release/tag."""
+    actor, client_ip, user_agent = _actor(request)
+    ok, errors = plugin_manager.update_plugin(
+        body.distribution_name,
+        actor,
+        client_ip,
+        user_agent,
+    )
+    return JSONResponse(
+        {
+            "ok": ok,
+            "restart_required": ok,
+            "errors": errors,
+        },
+    )
+
+
+@router.post("/update-all", summary="Update all plugins")
+async def update_all_plugins(request: Request) -> JSONResponse:
+    """Update all installed plugins that have available updates."""
+    actor, client_ip, user_agent = _actor(request)
+    updated, failed, details = plugin_manager.update_all_plugins(
+        actor,
+        client_ip,
+        user_agent,
+    )
+    return JSONResponse(
+        {
+            "ok": failed == 0,
+            "restart_required": updated > 0,
+            "updated": updated,
+            "failed": failed,
+            "details": details,
         },
     )
