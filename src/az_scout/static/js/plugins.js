@@ -1,32 +1,44 @@
-/* Plugin Manager tab logic */
-/* global apiFetch, apiPost */
+/* Plugin Manager offcanvas logic */
+/* global apiFetch, apiPost, bootstrap */
 
 (function () {
     "use strict";
 
-    const container = document.getElementById("plugin-tab-plugins");
+    const container = document.getElementById("plugin-manager-body");
     if (!container) return;
 
     let lastValidation = null;
     let initialized = false;
 
-    // Show a lightweight spinner until the tab is activated
-    container.innerHTML =
-        '<div class="text-center py-4 text-muted">' +
-        '<div class="spinner-border spinner-border-sm me-2" role="status"></div>' +
-        "Loading plugin manager…</div>";
+    const offcanvasEl = document.getElementById("pluginOffcanvas");
+    if (!offcanvasEl) return;
 
-    // Lazy-init: fetch HTML fragment + data only when the tab is first shown
-    const tabBtn = document.getElementById("plugins-tab");
-    if (tabBtn) {
-        tabBtn.addEventListener("shown.bs.tab", initOnce);
-        // If the tab is already active (e.g. direct #tab-plugins hash)
-        if (tabBtn.classList.contains("active")) initOnce();
+    // Lazy-init: fetch HTML fragment + data only when the offcanvas is first shown
+    offcanvasEl.addEventListener("show.bs.offcanvas", initOnce);
+
+    // Update URL hash when offcanvas opens/closes
+    offcanvasEl.addEventListener("shown.bs.offcanvas", () => {
+        window.history.replaceState(null, "", "#plugin");
+    });
+    offcanvasEl.addEventListener("hidden.bs.offcanvas", () => {
+        if (window.location.hash === "#plugin") {
+            window.history.replaceState(null, "", window.location.pathname);
+        }
+    });
+
+    // Open offcanvas from #plugin hash on page load
+    if (window.location.hash === "#plugin") {
+        const bsOffcanvas = new bootstrap.Offcanvas(offcanvasEl);
+        bsOffcanvas.show();
     }
 
     function initOnce() {
         if (initialized) return;
         initialized = true;
+        container.innerHTML =
+            '<div class="text-center py-4 text-muted">' +
+            '<div class="spinner-border spinner-border-sm me-2" role="status"></div>' +
+            "Loading…</div>";
         fetch("/static/html/plugins.html")
             .then(r => r.text())
             .then(html => {
