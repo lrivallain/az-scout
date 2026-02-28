@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "az-scout-example"
 dynamic = ["version"]
 description = "Example plugin for az-scout"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "az-scout",
