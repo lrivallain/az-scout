@@ -61,11 +61,15 @@ dev = [
     "mypy>=1.15",
     "types-requests>=2.31",
     "pre-commit>=4.0",
+    "pytest-playwright>=0.7",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not e2e'"
+markers = [
+    "e2e: End-to-end UI tests (Playwright)",
+]
 
 [tool.ruff]
 target-version = "py311"

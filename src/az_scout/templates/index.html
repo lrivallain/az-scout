@@ -63,7 +63,7 @@
         <div class="col-auto" id="tenant-section">
             <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bi bi-shield-lock"></i> Tenant</span>
-                <select class="form-select form-select-sm" id="tenant-select" style="max-width:320px;">
+                <select class="form-select form-select-sm" id="tenant-select" data-testid="tenant-select" style="max-width:320px;">
                     <option value="">Loading tenants…</option>
                 </select>
             </div>
@@ -72,11 +72,11 @@
             <div class="position-relative" id="region-combobox">
                 <div class="input-group input-group-sm">
                     <span class="input-group-text"><i class="bi bi-geo-alt"></i> Region</span>
-                    <input type="search" class="form-control form-control-sm" id="region-search"
+                    <input type="search" class="form-control form-control-sm" id="region-search" data-testid="region-search"
                            placeholder="Loading regions…" autocomplete="off" spellcheck="false" disabled
                            style="min-width:240px;">
                 </div>
-                <input type="hidden" id="region-select" value="">
+                <input type="hidden" id="region-select" data-testid="region-select" value="">
                 <ul class="dropdown-menu w-100" id="region-dropdown"></ul>
             </div>
         </div>
@@ -131,10 +131,10 @@
                                         <i class="bi bi-x-lg"></i>
                                     </button>
                                 </div>
-                                <div id="topo-sub-list" class="subscription-checklist"></div>
+                                <div id="topo-sub-list" data-testid="topo-sub-list" class="subscription-checklist"></div>
                                 <div class="d-flex justify-content-between align-items-center mt-2">
                                     <small class="text-body-secondary" id="topo-sub-count">0 selected</small>
-                                    <button type="button" class="btn btn-primary btn-sm" id="topo-load-btn" onclick="loadMappings()" disabled>
+                                    <button type="button" class="btn btn-primary btn-sm" id="topo-load-btn" data-testid="topo-load-btn" onclick="loadMappings()" disabled>
                                         <i class="bi bi-arrow-repeat"></i> Load
                                     </button>
                                 </div>
@@ -144,22 +144,22 @@
                         <!-- Right content: results -->
                         <div class="col-md-9 col-xl-10">
                             <!-- Error -->
-                            <div id="topo-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
+                            <div id="topo-error" data-testid="topo-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
 
                             <!-- Empty state -->
-                            <div id="topo-empty" class="text-center text-body-secondary py-5">
+                            <div id="topo-empty" data-testid="topo-empty" class="text-center text-body-secondary py-5">
                                 <i class="bi bi-diagram-3 fs-1 d-block mb-2"></i>
                                 <p>Select subscriptions and click <strong>Load</strong>.</p>
                             </div>
 
                             <!-- Loading -->
-                            <div id="topo-loading" class="text-center py-5 d-none">
+                            <div id="topo-loading" data-testid="topo-loading" class="text-center py-5 d-none">
                                 <div class="spinner-border text-primary" role="status"></div>
                                 <p class="mt-2 text-body-secondary">Fetching zone mappings…</p>
                             </div>
 
                             <!-- Results -->
-                            <div id="topo-results" class="d-none">
+                            <div id="topo-results" data-testid="topo-results" class="d-none">
                                 <!-- Graph -->
                                 <div class="card mb-3">
                                     <div class="card-header d-flex justify-content-between align-items-center">
@@ -169,7 +169,7 @@
                                         </button>
                                     </div>
                                     <div class="card-body">
-                                        <div id="graph-container" class="graph-container mx-auto"></div>
+                                        <div id="graph-container" data-testid="graph-container" class="graph-container mx-auto"></div>
                                         <div id="graph-legend" class="d-flex flex-wrap gap-3 mt-2 justify-content-center"></div>
                                     </div>
                                 </div>
@@ -183,7 +183,7 @@
                                         </button>
                                     </div>
                                     <div class="card-body">
-                                        <div id="table-container" class="table-responsive"></div>
+                                        <div id="table-container" data-testid="table-container" class="table-responsive"></div>
                                     </div>
                                 </div>
                             </div>
@@ -204,9 +204,9 @@
                                 <i class="bi bi-collection"></i> Subscription
                             </label>
                             <div class="position-relative" id="planner-sub-combobox">
-                                <input type="search" class="form-control form-control-sm" id="planner-sub-search"
+                                <input type="search" class="form-control form-control-sm" id="planner-sub-search" data-testid="planner-sub-search"
                                        placeholder="Loading subscriptions…" autocomplete="off" spellcheck="false" disabled>
-                                <input type="hidden" id="planner-sub-select" value="">
+                                <input type="hidden" id="planner-sub-select" data-testid="planner-sub-select" value="">
                                 <ul class="dropdown-menu w-100" id="planner-sub-dropdown"></ul>
                             </div>
                         </div>
@@ -225,7 +225,7 @@
                             </select>
                         </div>
                         <div class="col-auto">
-                            <button type="button" class="btn btn-primary btn-sm" id="planner-load-btn" onclick="loadSkus()" disabled>
+                            <button type="button" class="btn btn-primary btn-sm" id="planner-load-btn" data-testid="planner-load-btn" onclick="loadSkus()" disabled>
                                 <i class="bi bi-arrow-repeat"></i> Load SKUs
                             </button>
                         </div>
@@ -247,24 +247,24 @@
                     </div>
 
                     <!-- Error -->
-                    <div id="planner-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
+                    <div id="planner-error" data-testid="planner-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
 
                     <!-- Empty state -->
-                    <div id="planner-empty" class="text-center text-body-secondary py-5">
+                    <div id="planner-empty" data-testid="planner-empty" class="text-center text-body-secondary py-5">
                         <i class="bi bi-grid-3x3-gap fs-1 d-block mb-2"></i>
                         <p>Select a subscription, then click <strong>Load SKUs</strong>.</p>
                     </div>
 
                     <!-- Loading -->
-                    <div id="planner-loading" class="text-center py-5 d-none">
+                    <div id="planner-loading" data-testid="planner-loading" class="text-center py-5 d-none">
                         <div class="spinner-border text-primary" role="status"></div>
                         <p class="mt-2 text-body-secondary">Fetching SKU data…</p>
                     </div>
 
                     <!-- SKU results -->
-                    <div id="planner-results" class="d-none">
+                    <div id="planner-results" data-testid="planner-results" class="d-none">
                         <div id="region-summary" class="d-none"></div>
-                        <div id="sku-table-container"></div>
+                        <div id="sku-table-container" data-testid="sku-table-container"></div>
                     </div>
                 </div>
             </div>
