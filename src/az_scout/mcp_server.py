@@ -39,7 +39,6 @@ from az_scout.scoring.fragmentation import (
     fragmentation_to_normalized,
 )
 from az_scout.services.eviction_rate import get_spot_eviction_rate
-from az_scout.services.region_latency import get_rtt_ms
 from az_scout.services.volatility import compute_volatility, volatility_to_normalized
 
 logger = logging.getLogger(__name__)
@@ -310,31 +309,6 @@ def get_sku_pricing_detail(
         profile = azure_api.get_sku_profile(region, subscription_id, actual_name, tenant_id)
         if profile is not None:
             result["profile"] = profile
-    return json.dumps(result, indent=2)
-
-
-@mcp.tool()
-def region_latency(
-    source_region: Annotated[
-        str, Field(description="Source Azure region name (e.g. francecentral).")
-    ],
-    target_region: Annotated[str, Field(description="Target Azure region name (e.g. westeurope).")],
-) -> str:
-    """Return indicative RTT latency between two Azure regions.
-
-    Uses Microsoft published statistics from:
-    https://learn.microsoft.com/en-us/azure/networking/azure-network-latency
-    """
-    rtt = get_rtt_ms(source_region, target_region)
-    result = {
-        "sourceRegion": source_region,
-        "targetRegion": target_region,
-        "rttMs": rtt,
-        "source": "https://learn.microsoft.com/en-us/azure/networking/azure-network-latency",
-        "disclaimer": (
-            "Latency values are indicative and must be validated with in-tenant measurements."
-        ),
-    }
     return json.dumps(result, indent=2)
 
 

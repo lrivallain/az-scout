@@ -56,6 +56,7 @@ az-scout can be extended with pip-installable plugins discovered automatically a
 |---|---|
 | [az-scout-plugin-strategy-advisor](https://github.com/lrivallain/az-scout-plugin-strategy-advisor) | Multi-region capacity strategy recommendation engine — evaluates regions, quotas, spot scores, pricing, and latency to recommend deployment strategies |
 | [az-scout-plugin-batch-sku](https://github.com/lrivallain/az-scout-plugin-batch-sku) | Azure Batch SKU availability — discover and compare Batch-supported VM SKUs per region |
+| [az-scout-plugin-latency-stats](https://github.com/lrivallain/az-scout-plugin-latency-stats) | Inter-region latency statistics — D3.js graph visualisation of pairwise RTT between Azure regions |
 
 Install a plugin:
 
@@ -194,7 +195,6 @@ An [MCP](https://modelcontextprotocol.io/) server is included, allowing AI agent
 | `get_sku_availability` | Get VM SKU availability per zone with restrictions, capabilities, and vCPU quota per family |
 | `get_spot_scores` | Get Spot Placement Scores (High / Medium / Low) for a list of VM sizes in a region |
 | `get_sku_pricing_detail` | Get detailed Linux pricing (PayGo, Spot, RI 1Y/3Y, SP 1Y/3Y) and VM profile for a single SKU |
-| `region_latency` | Return indicative RTT latency between two Azure regions (Microsoft published statistics) |
 
 > **Plugin tools:** Plugins can register additional MCP tools. For example, the [Strategy Advisor plugin](https://github.com/lrivallain/az-scout-plugin-strategy-advisor) adds a `capacity_strategy` tool.
 

@@ -10,6 +10,11 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ### Changed
 
+- **Latency Stats extracted to plugin** – the inter-region latency dataset and MCP tool are no longer
+  bundled in the core application. They are now available as a standalone plugin:
+  [`az-scout-plugin-latency-stats`](https://github.com/lrivallain/az-scout-plugin-latency-stats).
+  The plugin adds a pairwise latency matrix API, an interactive D3.js graph visualisation, and the
+  `region_latency` MCP tool. Install the plugin to restore latency functionality.
 - **Strategy Advisor extracted to plugin** – the Capacity Strategy Advisor is no longer bundled in
   the core application. It is now available as a standalone plugin:
   [`az-scout-plugin-strategy-advisor`](https://github.com/lrivallain/az-scout-plugin-strategy-advisor).

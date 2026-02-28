@@ -20,3 +20,6 @@ wheels/
 
 # Generated version file (hatch-vcs)
 src/*/_version.py
+
+# Data files
+data/

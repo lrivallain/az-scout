@@ -35,7 +35,6 @@ packages = ["src/az_scout_example"]
 
 [tool.hatch.version]
 source = "vcs"
-raw-options.version_scheme = "calver-by-date"
 raw-options.local_scheme = "no-local-version"
 
 [tool.hatch.build.hooks.vcs]
