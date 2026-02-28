@@ -88,9 +88,251 @@ uv run pytest
 
 Pre-commit hooks run these automatically on `git commit`.
 
+## Plugin development
+
+az-scout supports plugins — pip-installable Python packages that extend the app with API routes, MCP tools, UI tabs, static assets, and AI chat modes.
+
+### Plugin architecture
+
+- Plugins are discovered at startup via `importlib.metadata.entry_points(group="az_scout.plugins")`.
+- Each plugin must expose a module-level object satisfying the `AzScoutPlugin` protocol from `az_scout.plugin_api`.
+- Registration is automatic — no manual configuration needed.
+- A ready-to-use scaffold is at `docs/plugin-scaffold/`.
+
+### Plugin protocol
+
+```python
+from az_scout.plugin_api import AzScoutPlugin, TabDefinition, ChatMode
+
+class MyPlugin:
+    name = "my-plugin"       # unique identifier
+    version = "0.1.0"
+
+    def get_router(self) -> APIRouter | None: ...       # FastAPI routes → /plugins/{name}/
+    def get_mcp_tools(self) -> list[Callable] | None: ... # MCP tool functions
+    def get_static_dir(self) -> Path | None: ...        # served at /plugins/{name}/static/
+    def get_tabs(self) -> list[TabDefinition] | None: ... # UI tabs in main app
+    def get_chat_modes(self) -> list[ChatMode] | None: ... # AI chat modes
+
+plugin = MyPlugin()  # module-level instance referenced by entry point
+```
+
+All methods are optional — return `None` to skip a layer.
+
+### Entry point registration
+
+```toml
+[project.entry-points."az_scout.plugins"]
+my_plugin = "az_scout_myplugin:plugin"
+```
+
+### Plugin conventions
+
+- **Package layout:** Use src-layout (`src/az_scout_myplugin/`) with hatchling build backend.
+- **Naming:** Package name `az-scout-{name}`, module `az_scout_{name}`.
+- **Dependencies:** Declare `az-scout` and `fastapi` as dependencies in `pyproject.toml`.
+- **Type annotations:** Follow the same mypy strict rules as the main project (`disallow_untyped_defs = true`).
+- **Linting:** Use `ruff` with the same rules: `E, F, I, W, UP, B, SIM`, line length 100.
+- **Lazy imports:** Use deferred imports inside methods (e.g. `from az_scout_myplugin.routes import router`) to avoid circular imports at plugin discovery time.
+- **Static dir:** Define `_STATIC_DIR = Path(__file__).parent / "static"` at module level.
+
+### API routes
+
+- Routes are mounted under `/plugins/{name}/` — define endpoints with relative paths (e.g. `@router.get("/hello")` → `/plugins/my-plugin/hello`).
+- Routes receive context (tenant, region, subscription) as query parameters from the frontend.
+- Use `async def` for route handlers.
+
+### MCP tools
+
+- MCP tool functions are plain Python functions with type annotations and docstrings.
+- The docstring is the tool description shown to LLMs — keep it concise and helpful.
+- Functions are registered on the MCP server automatically at startup.
+
+### UI tabs
+
+- Tabs use `TabDefinition(id, label, icon, js_entry, css_entry?)`.
+- `icon` uses Bootstrap Icon classes (e.g. `"bi bi-puzzle"`).
+- `js_entry` / `css_entry` are relative paths inside the plugin's static dir.
+- Plugin tabs appear after built-in tabs (AZ Topology, Deployment Planner, Strategy Advisor).
+- Plugin JS targets `#plugin-tab-{id}` as its container.
+- URL hash `#{tab-id}` activates the plugin tab (deep-linking support).
+
+### Frontend integration
+
+Plugin JS runs after `app.js` and can use these globals:
+
+| Global | Description |
+|---|---|
+| `apiFetch(url)` | GET with JSON parsing + error handling |
+| `apiPost(url, body)` | POST helper |
+| `tenantQS(prefix)` | Returns `?tenantId=…` or `""` |
+| `subscriptions` | `[{id, name}]` array |
+| `regions` | `[{name, displayName}]` array |
+
+React to context changes:
+
+```javascript
+// Tenant change
+document.getElementById("tenant-select")
+    .addEventListener("change", () => { /* reload */ });
+
+// Region change (hidden input, use MutationObserver)
+const regionEl = document.getElementById("region-select");
+let lastRegion = regionEl.value;
+new MutationObserver(() => {
+    if (regionEl.value !== lastRegion) {
+        lastRegion = regionEl.value;
+        // reload
+    }
+}).observe(regionEl, { attributes: true, attributeFilter: ["value"] });
+```
+
+Use the **HTML fragments pattern** — keep markup in `.html` files under `static/html/` and fetch at runtime instead of building HTML strings in JS.
+
+### Chat modes
+
+- `ChatMode(id, label, system_prompt, welcome_message)` adds extra buttons in the chat mode toggle.
+- `system_prompt` is sent to the LLM — craft it for the plugin's domain.
+- `welcome_message` is markdown displayed when the mode is activated.
+
+### Testing plugins
+
+- Test plugins independently with `pytest` and `httpx`.
+- Mock `discover_plugins()` to inject test plugin instances.
+- Use `register_plugins(app, mcp_server)` with a test FastAPI app.
+- Follow the same testing patterns as the main project (mocked Azure API, `TestClient`).
+
+### Plugin `pyproject.toml` template
+
+```toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "az-scout-myplugin"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["az-scout", "fastapi"]
+
+[project.entry-points."az_scout.plugins"]
+my_plugin = "az_scout_myplugin:plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/az_scout_myplugin"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+```
+
 ## Versioning
 
 - Version is derived from git tags via `hatch-vcs` — never hardcode a version.
 - `_version.py` is auto-generated and excluded from linting.
 - Tags follow CalVer: `v2026.2.0`, `v2026.2.1`, etc.
 - Update `CHANGELOG.md` before tagging a release.
+
+## Design constraints & architectural rules
+
+### Do
+
+- Reuse `azure_api.py` for all Azure ARM interactions.
+- Keep FastAPI routes as thin wrappers.
+- Keep MCP tools as thin wrappers over `azure_api`.
+- Include full type annotations on all public functions.
+- Preserve dark/light theme compatibility.
+
+### Do NOT
+
+- Do NOT call Azure ARM APIs directly from `app.py` or `mcp_server.py`.
+- Do NOT duplicate Azure API logic outside `azure_api.py`.
+- Do NOT introduce frontend frameworks, npm, or build tooling.
+- Do NOT introduce global mutable state.
+- Do NOT perform heavy imports at module import time.
+- Do NOT bypass plugin auto-discovery.
+- Do NOT add synchronous blocking calls inside large subscription loops.
+- Do NOT change API response shapes without updating tests.
+
+## Backend design principles
+
+- All business logic lives in `azure_api.py`.
+- `app.py` and `mcp_server.py` contain no business logic.
+- Per-subscription failures must not break global execution.
+- Functions must be deterministic and side-effect free unless explicitly documented.
+- No hidden state between requests.
+
+### Response contract consistency
+
+- API responses must be stable and predictable.
+- If an error occurs for a specific subscription, return:
+
+```json
+{
+  "subscription_id": "00000000-0000-0000-0000-000000000000",
+  "error": {
+    "code": "AuthorizationFailed",
+    "message": "User is not authorized to perform this action."
+  }
+}
+```
+
+- Never raise an unhandled exception for per-subscription failures.
+
+## Performance constraints
+
+This tool may operate across dozens or hundreds of subscriptions. When generating code:
+
+- Avoid O(n²) loops over subscriptions.
+- Avoid re-authenticating inside loops.
+- Avoid fetching full SKU catalogs when filters are provided.
+- Respect ARM pagination (`nextLink`) efficiently.
+- Do not load large datasets into memory unnecessarily.
+- Future scalability should remain possible without architectural rewrite.
+
+## Plugin isolation rules
+
+Plugins must:
+
+- Be fully self-contained.
+- Not mutate global application state.
+- Not assume ordering of plugin registration.
+- Not introduce circular imports.
+- Not import heavy modules at import time.
+- Use lazy imports inside methods when possible.
+- Respect the core app’s authentication and context model.
+- Never override built-in routes.
+
+## Testing enforcement
+
+When modifying backend logic:
+
+- Update pytest coverage.
+- Maintain mocking of `requests.get` and `DefaultAzureCredential`.
+- Never require live Azure calls in unit tests.
+- Response schemas must remain backward compatible unless versioned.
+
+Breaking changes require:
+
+- Test updates
+- `CHANGELOG` update
+- New CalVer tag
+
+## Code generation expectations (for Copilot)
+
+When generating code:
+
+- Always include type annotations.
+- Prefer explicit return types.
+- Prefer small pure functions.
+- Prefer clarity over cleverness.
+- Avoid metaprogramming.
+- Avoid dynamic attribute access unless required.
+- Avoid magic constants — define named constants.
