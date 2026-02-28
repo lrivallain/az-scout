@@ -5,21 +5,27 @@ to add your own routes, MCP tools, UI tabs, and chat modes.
 """
 
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
 
+from az_scout.plugin_api import ChatMode, TabDefinition
 from fastapi import APIRouter
 
-from az_scout.plugin_api import ChatMode, TabDefinition
-
 _STATIC_DIR = Path(__file__).parent / "static"
+
+try:
+    __version__ = _pkg_version("az-scout-example")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"
 
 
 class ExamplePlugin:
     """Example az-scout plugin."""
 
     name = "example"
-    version = "0.1.0"
+    version = __version__
 
     def get_router(self) -> APIRouter | None:
         """Return API routes, or None to skip."""
