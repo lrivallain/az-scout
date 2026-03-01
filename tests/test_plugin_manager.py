@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -886,3 +887,117 @@ class TestUpdateRoutes:
         assert data["ok"] is False
         assert data["updated"] == 1
         assert data["failed"] == 1
+
+
+# ---------------------------------------------------------------------------
+# uv fallback tests
+# ---------------------------------------------------------------------------
+
+
+class TestEnsurePluginsVenvFallback:
+    def test_creates_venv_with_uv(self, tmp_path: Path) -> None:
+        """When uv is available, ensure_plugins_venv uses it."""
+        venv_dir = tmp_path / ".venv-plugins"
+        mock_proc = MagicMock()
+
+        with (
+            patch.object(plugin_manager, "_VENV_DIR", venv_dir),
+            patch("az_scout.plugin_manager._find_uv", return_value="/usr/bin/uv"),
+            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+        ):
+            result = plugin_manager.ensure_plugins_venv()
+
+        assert result == venv_dir
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "/usr/bin/uv"
+        assert "venv" in cmd
+
+    def test_creates_venv_with_stdlib_fallback(self, tmp_path: Path) -> None:
+        """When uv is not available, ensure_plugins_venv falls back to python -m venv."""
+        venv_dir = tmp_path / ".venv-plugins"
+        mock_proc = MagicMock()
+
+        with (
+            patch.object(plugin_manager, "_VENV_DIR", venv_dir),
+            patch("az_scout.plugin_manager._find_uv", return_value=None),
+            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+        ):
+            result = plugin_manager.ensure_plugins_venv()
+
+        assert result == venv_dir
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == sys.executable
+        assert "-m" in cmd
+        assert "venv" in cmd
+
+    def test_skips_creation_if_venv_exists(self, tmp_path: Path) -> None:
+        """If the venv directory already exists, no subprocess is called."""
+        venv_dir = tmp_path / ".venv-plugins"
+        venv_dir.mkdir()
+
+        with (
+            patch.object(plugin_manager, "_VENV_DIR", venv_dir),
+            patch("az_scout.plugin_manager.subprocess.run") as mock_run,
+        ):
+            result = plugin_manager.ensure_plugins_venv()
+
+        assert result == venv_dir
+        mock_run.assert_not_called()
+
+
+class TestRunUvInVenvFallback:
+    def test_uses_uv_when_available(self, tmp_path: Path) -> None:
+        """When uv is found, run_uv_in_venv builds command with uv."""
+        venv_dir = tmp_path / ".venv-plugins"
+        venv_dir.mkdir()
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+
+        with (
+            patch.object(plugin_manager, "_VENV_DIR", venv_dir),
+            patch("az_scout.plugin_manager._find_uv", return_value="/usr/bin/uv"),
+            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+        ):
+            plugin_manager.run_uv_in_venv(["pip", "install", "some-pkg"])
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "/usr/bin/uv"
+        assert cmd[1] == "pip"
+        assert cmd[2] == "install"
+
+    def test_uses_pip_fallback_for_install(self, tmp_path: Path) -> None:
+        """When uv is not found, run_uv_in_venv delegates to venv pip."""
+        venv_dir = tmp_path / ".venv-plugins"
+        (venv_dir / "bin").mkdir(parents=True)
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+
+        with (
+            patch.object(plugin_manager, "_VENV_DIR", venv_dir),
+            patch("az_scout.plugin_manager._find_uv", return_value=None),
+            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+        ):
+            plugin_manager.run_uv_in_venv(["pip", "install", "some-pkg"])
+
+        cmd = mock_run.call_args[0][0]
+        assert str(venv_dir / "bin" / "pip") in cmd[0]
+        assert cmd[1] == "install"
+        assert cmd[2] == "some-pkg"
+
+    def test_pip_fallback_uninstall_adds_y_flag(self, tmp_path: Path) -> None:
+        """Fallback pip uninstall automatically adds -y for non-interactive mode."""
+        venv_dir = tmp_path / ".venv-plugins"
+        (venv_dir / "bin").mkdir(parents=True)
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+
+        with (
+            patch.object(plugin_manager, "_VENV_DIR", venv_dir),
+            patch("az_scout.plugin_manager._find_uv", return_value=None),
+            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+        ):
+            plugin_manager.run_uv_in_venv(["pip", "uninstall", "some-pkg"])
+
+        cmd = mock_run.call_args[0][0]
+        assert "-y" in cmd
+        assert "some-pkg" in cmd
