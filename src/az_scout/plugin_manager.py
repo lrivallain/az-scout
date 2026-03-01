@@ -36,10 +36,23 @@ _GITHUB_URL_RE = re.compile(
 )
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
-_DATA_DIR = Path("data") / "plugins"
+
+def _default_data_dir() -> Path:
+    """Return the data directory, respecting the ``AZ_SCOUT_DATA_DIR`` env var.
+
+    Falls back to ``~/.local/share/az-scout`` when the env var is not set,
+    which is writable in both local and container (non-root user) environments.
+    """
+    env_override = os.environ.get("AZ_SCOUT_DATA_DIR")
+    if env_override:
+        return Path(env_override)
+    return Path.home() / ".local" / "share" / "az-scout"
+
+
+_DATA_DIR = _default_data_dir() / "plugins"
 _INSTALLED_FILE = _DATA_DIR / "installed.json"
 _AUDIT_FILE = _DATA_DIR / "audit.jsonl"
-_VENV_DIR = Path(".venv-plugins")
+_VENV_DIR = _default_data_dir() / ".venv-plugins"
 
 
 # ---------------------------------------------------------------------------

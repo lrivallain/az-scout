@@ -1,6 +1,7 @@
 """Tests for the plugin manager (business logic + API routes)."""
 
 import json
+import os
 import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -12,6 +13,7 @@ from az_scout.plugin_manager import (
     GitHubRepo,
     InstalledPluginRecord,
     PluginValidationResult,
+    _default_data_dir,
     fetch_latest_ref,
     is_commit_sha,
     load_installed,
@@ -496,6 +498,27 @@ class TestBackwardCompatibility:
         assert loaded[0].latest_ref == "v2.0.0"
         assert loaded[0].latest_sha == SAMPLE_SHA_2
         assert loaded[0].update_available is True
+
+
+# ---------------------------------------------------------------------------
+# Data directory configuration
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultDataDir:
+    def test_env_var_override(self, tmp_path: Path) -> None:
+        """AZ_SCOUT_DATA_DIR env var should override the default data directory."""
+        custom_dir = str(tmp_path / "custom-data")
+        with patch.dict(os.environ, {"AZ_SCOUT_DATA_DIR": custom_dir}):
+            result = _default_data_dir()
+        assert result == Path(custom_dir)
+
+    def test_default_is_home_local_share(self) -> None:
+        """Without env var, default should be ~/.local/share/az-scout."""
+        env = {k: v for k, v in os.environ.items() if k != "AZ_SCOUT_DATA_DIR"}
+        with patch.dict(os.environ, env, clear=True):
+            result = _default_data_dir()
+        assert result == Path.home() / ".local" / "share" / "az-scout"
 
 
 # ---------------------------------------------------------------------------
