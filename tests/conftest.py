@@ -1,11 +1,27 @@
 """Shared test fixtures for az-scout tests."""
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from az_scout.app import app
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Ensure E2E tests always run after unit tests.
+
+    The E2E server fixture applies session-scoped patches on ``azure_api``
+    and starts a uvicorn event loop.  Running E2E tests last prevents those
+    patches and the loop from interfering with unit-test mocks.
+    """
+    unit: list[pytest.Item] = []
+    e2e: list[pytest.Item] = []
+    for item in items:
+        (e2e if "e2e" in str(item.path) else unit).append(item)
+    items[:] = unit + e2e
 
 
 @pytest.fixture()
