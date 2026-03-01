@@ -13,7 +13,9 @@ import logging
 import os
 import platform
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
 from dataclasses import asdict, dataclass, field
@@ -279,38 +281,71 @@ def validate_plugin_repo(repo_url: str, ref: str) -> PluginValidationResult:
 # ---------------------------------------------------------------------------
 
 
+def _find_uv() -> str | None:
+    """Return the path to the ``uv`` executable, or ``None`` if not found."""
+    return shutil.which("uv")
+
+
 def ensure_plugins_venv() -> Path:
     """Create the ``.venv-plugins`` virtual environment if it does not exist.
+
+    Uses ``uv venv`` when ``uv`` is available, otherwise falls back to the
+    standard library ``venv`` module.
 
     Returns the path to the venv directory.
     """
     if not _VENV_DIR.exists():
         logger.info("Creating plugin venv at %s", _VENV_DIR)
-        subprocess.run(  # noqa: S603
-            ["uv", "venv", str(_VENV_DIR)],
-            check=True,
-            capture_output=True,
-        )
+        uv = _find_uv()
+        if uv:
+            subprocess.run(  # noqa: S603
+                [uv, "venv", str(_VENV_DIR)],
+                check=True,
+                capture_output=True,
+            )
+        else:
+            logger.warning("uv not found; falling back to python -m venv")
+            subprocess.run(  # noqa: S603
+                [sys.executable, "-m", "venv", str(_VENV_DIR)],
+                check=True,
+                capture_output=True,
+            )
     return _VENV_DIR
+
+
+def _venv_bin(venv_path: Path, name: str) -> Path:
+    """Return the path to an executable in the plugin venv's bin directory."""
+    bin_dir = "Scripts" if platform.system() == "Windows" else "bin"
+    return venv_path / bin_dir / name
 
 
 def _venv_env(venv_path: Path) -> dict[str, str]:
     """Return an environment dict configured for the plugin venv."""
     env = os.environ.copy()
     env["VIRTUAL_ENV"] = str(venv_path)
-    if platform.system() == "Windows":
-        bin_dir = str(venv_path / "Scripts")
-    else:
-        bin_dir = str(venv_path / "bin")
-    env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
+    bin_dir = "Scripts" if platform.system() == "Windows" else "bin"
+    env["PATH"] = str(venv_path / bin_dir) + os.pathsep + env.get("PATH", "")
     return env
 
 
 def run_uv_in_venv(args: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run a ``uv`` command inside the plugin venv."""
+    """Run a ``uv`` or ``pip`` command inside the plugin venv.
+
+    Uses ``uv`` when available, otherwise delegates to the venv's ``pip``.
+    """
     venv_path = ensure_plugins_venv()
     env = _venv_env(venv_path)
-    cmd = ["uv", *args]
+    uv = _find_uv()
+    if uv:
+        cmd: list[str] = [uv, *args]
+    else:
+        # Fall back to the venv's pip when uv is not installed.
+        # args[0] is "pip"; args[1:] are the sub-command and its options.
+        pip_args = list(args[1:])
+        # pip uninstall requires -y for non-interactive mode
+        if pip_args and pip_args[0] == "uninstall" and "-y" not in pip_args:
+            pip_args.insert(1, "-y")
+        cmd = [str(_venv_bin(venv_path, "pip")), *pip_args]
     logger.info("Running in plugin venv: %s", " ".join(cmd))
     return subprocess.run(  # noqa: S603
         cmd,

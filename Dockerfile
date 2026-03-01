@@ -32,6 +32,9 @@ WORKDIR /app
 COPY --from=builder /build/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 
+# Install uv so the plugin manager can create venvs and install plugins
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 USER scout
 
 EXPOSE 8000
