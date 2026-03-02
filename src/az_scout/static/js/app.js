@@ -20,8 +20,6 @@ let lastSkuData = null;                     // cached SKU list
 let lastSpotScores = null;                  // {scores: {sku: {zone: label}}, errors: []}
 let _skuDataTable = null;                   // Simple-DataTables instance
 let _skuFilterState = {};                   // {headerText: filterValue} – persists across re-renders
-let _admissionCache = {};                   // {skuName: admissionData} – cached admission intelligence
-
 // ---------------------------------------------------------------------------
 // Deployment Confidence – scores are computed server-side only.
 // The frontend NEVER recomputes confidence; it displays what the API returns.
@@ -1227,23 +1225,6 @@ function refreshPricingModal() {
     if (_pricingModalSku) fetchPricingDetail();
 }
 
-async function fetchAdmissionIntelligence(skuName) {
-    const region = document.getElementById("region-select").value;
-    if (!region || !plannerSubscriptionId) return null;
-    try {
-        const params = new URLSearchParams({ region, sku: skuName, subscriptionId: plannerSubscriptionId });
-        const tqs = tenantQS("&");
-        const data = await apiFetch(`/api/sku-admission?${params}${tqs}`);
-        if (data && !data.error) {
-            _admissionCache[skuName] = data;
-            return data;
-        }
-    } catch (err) {
-        console.warn("Admission intelligence fetch failed for", skuName, err);
-    }
-    return null;
-}
-
 async function fetchPricingDetail() {
     const skuName = _pricingModalSku;
     if (!skuName) return;
@@ -1258,13 +1239,8 @@ async function fetchPricingDetail() {
         const params = new URLSearchParams({ region, skuName, currencyCode: currency });
         if (plannerSubscriptionId) params.set("subscriptionId", plannerSubscriptionId);
         const tqs = tenantQS("&");
-        const [data] = await Promise.all([
-            apiFetch(`/api/sku-pricing?${params}${tqs}`),
-            fetchAdmissionIntelligence(skuName),
-        ]);
+        const data = await apiFetch(`/api/sku-pricing?${params}${tqs}`);
         renderPricingDetail(data);
-        // Update admission column in table if data was cached
-        if (_admissionCache[skuName] && lastSkuData) renderSkuTable(lastSkuData);
     } catch (err) {
         const content = document.getElementById("pricing-modal-content");
         content.innerHTML = `<p class="text-danger small">Failed to load pricing: ${escapeHtml(err.message)}</p>`;
@@ -1291,11 +1267,9 @@ function renderPricingDetail(data, openAccordionIds) {
         confSku.pricing.currency = currency;
     }
 
-    // Build sections in order: Confidence → Admission → VM Profile → Zone Availability → Quota → Pricing
+    // Build sections in order: Confidence → VM Profile → Zone Availability → Quota → Pricing
     let html = "";
     if (confSku?.confidence) html += renderConfidenceBreakdown(confSku.confidence);
-    const admData = _admissionCache[_pricingModalSku];
-    html += renderAdmissionIntelligence(admData);
     if (data.profile) html += renderVmProfile(data.profile);
     if (data.profile) html += renderZoneAvailability(data.profile, confSku?.confidence);
     const vcpus = parseInt(confSku?.capabilities?.vCPUs, 10) || 0;
@@ -1693,97 +1667,6 @@ function renderConfidenceBreakdown(conf) {
     return html;
 }
 
-function renderAdmissionIntelligence(admData) {
-    if (!admData) return "";
-    const ac = admData.admissionConfidence || {};
-    const frag = admData.fragmentationRisk || {};
-    const vol24 = admData.volatility24h || {};
-    const vol7d = admData.volatility7d || {};
-    const evict = admData.evictionRate || {};
-
-    function admBadge(score, label) {
-        if (score == null) return '<span class="vm-badge vm-badge-unknown">\u2014</span>';
-        const cls = score >= 80 ? "admission-high" : score >= 60 ? "admission-medium" : score >= 40 ? "admission-low" : "admission-very-low";
-        return `<span class="admission-badge ${cls}">${score} ${escapeHtml(label || "")}</span>`;
-    }
-    function admRow(label, value) {
-        return `<div class="vm-profile-row"><span class="vm-profile-label">${escapeHtml(label)}</span><span>${value}</span></div>`;
-    }
-    function signalBadge(label) {
-        if (!label) return '<span class="vm-badge vm-badge-unknown">\u2014</span>';
-        const lower = label.toLowerCase();
-        const cls = lower === "low" ? "admission-high" : lower === "moderate" || lower === "medium" ? "admission-medium" : lower === "high" ? "admission-low" : lower === "critical" || lower === "very high" ? "admission-very-low" : "";
-        return cls ? `<span class="admission-badge ${cls}">${escapeHtml(label)}</span>` : escapeHtml(label);
-    }
-
-    let html = '<div class="admission-section">';
-    html += '<h4 class="vm-profile-title">Admission Intelligence</h4>';
-    html += '<div class="admission-grid">';
-
-    // Left column: Admission Confidence card
-    html += '<div class="vm-profile-card">';
-    html += '<div class="vm-profile-card-title">Admission Confidence</div>';
-    html += admRow("Score", admBadge(ac.score, ac.label));
-    html += admRow("Signals Available", ac.signalsAvailable != null ? String(ac.signalsAvailable) : "\u2014");
-
-    if (ac.breakdown?.length) {
-        html += '<div class="confidence-breakdown-table mt-2"><table class="table table-sm mb-0"><thead><tr><th>Signal</th><th>Raw</th><th>Norm</th><th>Weight</th><th>Contrib</th></tr></thead><tbody>';
-        ac.breakdown.forEach(b => {
-            const rawStr = b.rawValue != null ? escapeHtml(String(b.rawValue)) : "\u2014";
-            const normStr = b.normalizedScore != null ? b.normalizedScore.toFixed(2) : "\u2014";
-            const weightStr = b.weight != null ? b.weight.toFixed(2) : "\u2014";
-            const contribStr = b.contribution != null ? b.contribution.toFixed(1) : "\u2014";
-            html += `<tr><td>${escapeHtml(b.signal || "")}</td><td>${rawStr}</td><td>${normStr}</td><td>${weightStr}</td><td>${contribStr}</td></tr>`;
-        });
-        html += '</tbody></table></div>';
-    }
-
-    if (ac.missingInputs?.length) {
-        html += `<div class="confidence-missing mt-2"><i class="bi bi-exclamation-triangle me-1"></i>Missing: ${ac.missingInputs.map(m => escapeHtml(m)).join(", ")}</div>`;
-    }
-    html += '</div>';
-
-    // Right column: Signals card
-    html += '<div class="vm-profile-card">';
-    html += '<div class="vm-profile-card-title">Signals</div>';
-    html += admRow("Fragmentation Risk", signalBadge(frag.label));
-    if (frag.factors?.length) {
-        html += `<div class="small text-body-secondary ms-2 mb-2">${frag.factors.map(f => escapeHtml(f)).join("; ")}</div>`;
-    }
-    html += admRow("Volatility (24h)", signalBadge(vol24.label));
-    if (vol24.sampleCount != null) {
-        html += `<div class="small text-body-secondary ms-2 mb-1">Samples: ${vol24.sampleCount}`;
-        if (vol24.timeInLowPercent != null) html += ` | Time in Low: ${vol24.timeInLowPercent.toFixed(0)}%`;
-        html += '</div>';
-    }
-    html += admRow("Volatility (7d)", signalBadge(vol7d.label));
-    if (vol7d.sampleCount != null) {
-        html += `<div class="small text-body-secondary ms-2 mb-1">Samples: ${vol7d.sampleCount}`;
-        if (vol7d.timeInLowPercent != null) html += ` | Time in Low: ${vol7d.timeInLowPercent.toFixed(0)}%`;
-        html += '</div>';
-    }
-    html += admRow("Eviction Rate", evict.evictionRate ? escapeHtml(evict.evictionRate) : "\u2014");
-    if (evict.status) html += `<div class="small text-body-secondary ms-2 mb-1">${escapeHtml(evict.status)}</div>`;
-    html += '</div>';
-
-    html += '</div>'; // .admission-grid
-
-    html += '<div class="admission-disclaimer mt-2"><i class="bi bi-info-circle me-1"></i>Estimated signals derived from public APIs and collected history. Not a deployment guarantee.</div>';
-
-    html += '<div class="accordion mt-2" id="admissionAccordion">';
-    html += '<div class="accordion-item">';
-    html += '<h2 class="accordion-header">';
-    html += '<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#admissionJsonPanel" aria-expanded="false" aria-controls="admissionJsonPanel">';
-    html += '<i class="bi bi-code-slash me-2"></i>Breakdown JSON';
-    html += '</button></h2>';
-    html += '<div id="admissionJsonPanel" class="accordion-collapse collapse" data-bs-parent="#admissionAccordion">';
-    html += `<div class="accordion-body p-2"><pre class="mb-0 small" style="max-height:300px;overflow:auto">${escapeHtml(JSON.stringify(admData, null, 2))}</pre></div>`;
-    html += '</div></div></div>';
-
-    html += '</div>'; // .admission-section
-    return html;
-}
-
 // ---------------------------------------------------------------------------
 // Render SKU table  (powered by Simple-DataTables)
 // ---------------------------------------------------------------------------
@@ -1925,7 +1808,6 @@ function renderSkuTable(skus) {
         "Quota Limit", "Quota Used", "Quota Remaining"];
     if (showSpot) headers.push("Spot Score");
     headers.push("Confidence");
-    headers.push("Admission");
     if (showPricing) {
         headers.push(`PAYGO ${priceCurrency}/h`, `Spot ${priceCurrency}/h`);
     }
@@ -1976,17 +1858,6 @@ function renderSkuTable(skus) {
             html += '<td data-sort="-1">\u2014</td>';
         }
 
-        // Admission
-        const adm = _admissionCache[sku.name];
-        if (adm?.admissionConfidence?.score != null) {
-            const admScore = adm.admissionConfidence.score;
-            const admLabel = adm.admissionConfidence.label || "";
-            const admClass = admScore >= 80 ? "admission-high" : admScore >= 60 ? "admission-medium" : admScore >= 40 ? "admission-low" : "admission-very-low";
-            html += `<td data-sort="${admScore}"><span class="admission-badge ${admClass}" data-bs-toggle="tooltip" data-bs-title="Heuristic admission confidence estimate (not a guarantee)">${admScore} ${escapeHtml(admLabel)}</span></td>`;
-        } else {
-            html += '<td data-sort="-1">\u2014</td>';
-        }
-
         // Prices
         if (showPricing) {
             const pricing = sku.pricing || {};
@@ -2008,15 +1879,13 @@ function renderSkuTable(skus) {
     container.innerHTML = html;
 
     // Column type configuration for proper numeric sorting
-    // Columns: SKU(0) Family(1) vCPUs(2) Mem(3) QLimit(4) QUsed(5) QRem(6) [Spot(7)] Conf(7|8) Adm(8|9) [PAYGO Spot]
+    // Columns: SKU(0) Family(1) vCPUs(2) Mem(3) QLimit(4) QUsed(5) QRem(6) [Spot(7)] Conf(7|8) [PAYGO Spot]
     const confCol = showSpot ? 8 : 7;
-    const admCol = confCol + 1;
     const colConfig = [
         { select: [2, 3, 4, 5, 6], type: "number" },   // vCPUs, Memory, Quota
         { select: confCol, type: "number" },              // Confidence (uses data-sort attr)
-        { select: admCol, type: "number" },               // Admission (uses data-sort attr)
     ];
-    let nextCol = admCol + 1;
+    let nextCol = confCol + 1;
     if (showPricing) {
         colConfig.push({ select: [nextCol, nextCol + 1], type: "number" });
         nextCol += 2;
@@ -2028,7 +1897,7 @@ function renderSkuTable(skus) {
     // Build per-column header filter config
     // Only text-filterable columns get an input; Zone columns are excluded
     const filterableCols = [];
-    for (let i = 0; i <= admCol; i++) filterableCols.push(i);
+    for (let i = 0; i <= confCol; i++) filterableCols.push(i);
     if (showPricing) { filterableCols.push(nextCol - 2, nextCol - 1); }
 
     _skuDataTable = new simpleDatatables.DataTable(tableEl, {
@@ -2042,7 +1911,7 @@ function renderSkuTable(skus) {
     });
 
     // Numeric column indices (for operator-aware filtering: >5, <32, 4-16, etc.)
-    const numericCols = new Set([2, 3, 4, 5, 6, confCol, admCol]);
+    const numericCols = new Set([2, 3, 4, 5, 6, confCol]);
     if (showPricing) { numericCols.add(nextCol - 2); numericCols.add(nextCol - 1); }
 
     // Build per-column filter row in thead
@@ -2244,10 +2113,9 @@ function exportSkuCSV() {
     const zoneHeaders = allLogicalZones.map((lz, i) => `Zone ${lz}\n${physicalZones[i]}`);
     const headers = ["SKU Name", "Family", "vCPUs", "Memory (GB)",
         "Quota Limit", "Quota Used", "Quota Remaining", "Spot Score",
-        "Confidence Score", "Confidence Label", "Admission Score", "Admission Label", ...priceHeaders, ...zoneHeaders];
+        "Confidence Score", "Confidence Label", ...priceHeaders, ...zoneHeaders];
     const rows = lastSkuData.map(sku => {
         const quota = sku.quota || {};
-        const adm = _admissionCache[sku.name];
         const zoneCols = allLogicalZones.map(lz => {
             if (sku.restrictions.includes(lz)) return "Restricted";
             if (sku.zones.includes(lz)) return "Available";
@@ -2258,7 +2126,6 @@ function exportSkuCSV() {
             quota.limit ?? "", quota.used ?? "", quota.remaining ?? "",
             Object.entries((lastSpotScores?.scores || {})[sku.name] || {}).sort(([a], [b]) => a.localeCompare(b)).map(([z, s]) => `Z${z}:${s}`).join(" ") || "",
             sku.confidence?.score ?? "", sku.confidence?.label || "",
-            adm?.admissionConfidence?.score ?? "", adm?.admissionConfidence?.label || "",
             ...(hasPricing ? [sku.pricing?.paygo ?? "", sku.pricing?.spot ?? ""] : []),
             ...zoneCols
         ];
