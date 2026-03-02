@@ -54,12 +54,15 @@ def web(
 ) -> None:
     """Run the web UI (default)."""
     import logging
+    import os
 
     import uvicorn
 
     from az_scout.app import _PKG_DIR, _setup_logging, app
 
-    log_level = "info" if verbose else "warning"
+    log_level = "debug" if verbose else "warning"
+    env_level = "DEBUG" if verbose else "WARNING"
+    os.environ["AZ_SCOUT_LOG_LEVEL"] = env_level
     _setup_logging(level=logging.DEBUG if verbose else logging.WARNING)
 
     url = f"http://{host}:{port}"
@@ -94,12 +97,20 @@ def web(
             host=host,
             port=port,
             log_level=log_level,
+            log_config=None,  # use our unified _setup_logging() config
             reload=True,
             reload_dirs=[str(_PKG_DIR)],
             **proxy_kwargs,  # type: ignore[arg-type]
         )
     else:
-        uvicorn.run(app, host=host, port=port, log_level=log_level, **proxy_kwargs)  # type: ignore[arg-type]
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level=log_level,
+            log_config=None,  # use our unified _setup_logging() config
+            **proxy_kwargs,  # type: ignore[arg-type]
+        )
 
 
 @cli.command()
@@ -125,13 +136,14 @@ def web(
 def mcp(http: bool, port: int, verbose: bool) -> None:
     """Run the MCP server."""
     import logging
+    import os
 
+    from az_scout.app import _setup_logging
     from az_scout.mcp_server import mcp as mcp_server
 
-    if verbose:
-        logging.basicConfig(level=logging.INFO)
-    else:
-        logging.basicConfig(level=logging.WARNING)
+    env_level = "DEBUG" if verbose else "WARNING"
+    os.environ["AZ_SCOUT_LOG_LEVEL"] = env_level
+    _setup_logging(level=logging.DEBUG if verbose else logging.WARNING)
 
     if http:
         mcp_server.settings.port = port

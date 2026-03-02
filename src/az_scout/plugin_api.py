@@ -10,12 +10,29 @@ Example ``pyproject.toml`` entry::
     my_plugin = "az_scout_myplugin:plugin"
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from fastapi import APIRouter
+
+
+def get_plugin_logger(plugin_name: str) -> logging.Logger:
+    """Return a logger for a plugin, using the ``az_scout_<name>`` namespace.
+
+    This ensures plugin logs share the same coloured format and category
+    labelling (``plugin:<name>``) as the core application.
+
+    Usage in a plugin module::
+
+        from az_scout.plugin_api import get_plugin_logger
+        logger = get_plugin_logger("batch-sku")
+        logger.info("Loading data")  # → INFO [plugin:batch_sku] az_scout_batch_sku - Loading data
+    """
+    module_name = f"az_scout_{plugin_name.replace('-', '_')}"
+    return logging.getLogger(module_name)
 
 
 @dataclass

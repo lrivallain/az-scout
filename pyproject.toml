@@ -46,7 +46,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 source = "vcs"
-raw-options.version_scheme = "calver-by-date"
+raw-options.version_scheme = "guess-next-dev"
 raw-options.local_scheme = "no-local-version"
 
 [tool.hatch.build.hooks.vcs]

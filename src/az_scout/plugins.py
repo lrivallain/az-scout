@@ -128,6 +128,11 @@ def _register_one(app: FastAPI, mcp_server: Any, plugin: AzScoutPlugin) -> None:
     """Wire a single plugin into the application."""
     name = plugin.name
 
+    # Configure the plugin's logger to use the same format as core
+    from az_scout.app import setup_plugin_logger
+
+    setup_plugin_logger(name)
+
     # API routes
     try:
         router = plugin.get_router()
