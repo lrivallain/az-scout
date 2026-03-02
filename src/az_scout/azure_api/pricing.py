@@ -31,6 +31,7 @@ def _fetch_retail_prices(
         f"and serviceName eq 'Virtual Machines' "
         f"and priceType eq 'Consumption'"
     )
+    logger.info("Fetching retail prices for region=%s, currency=%s", region, currency_code)
     items: list[dict] = []
     url: str | None = RETAIL_PRICES_URL
     params: dict[str, str] | None = {
@@ -38,6 +39,7 @@ def _fetch_retail_prices(
         "$filter": odata_filter,
         "currencyCode": currency_code,
     }
+    page_count = 0
 
     while url:
         resp = None
@@ -64,10 +66,18 @@ def _fetch_retail_prices(
             break
 
         data = resp.json()
-        items.extend(data.get("Items", []))
+        page_items = data.get("Items", [])
+        items.extend(page_items)
+        page_count += 1
         url = data.get("NextPageLink")
         params = None  # NextPageLink already includes query parameters
 
+    logger.info(
+        "Retail prices fetched: region=%s, pages=%d, items=%d",
+        region,
+        page_count,
+        len(items),
+    )
     return items
 
 
@@ -104,12 +114,14 @@ def get_retail_prices(
     if cached is not None:
         ts, data = cached
         if now - ts < _PRICE_CACHE_TTL:
+            logger.debug("get_retail_prices cache HIT: %s (%d SKUs)", cache_key, len(data))
             return data
+    logger.debug("get_retail_prices cache MISS: %s", cache_key)
 
     try:
         items = _fetch_retail_prices(region, currency_code)
     except Exception:
-        logger.warning("Failed to fetch retail prices for %s", region)
+        logger.warning("Failed to fetch retail prices for %s", region, exc_info=True)
         return {}
 
     paygo_by_sku: dict[str, list[dict]] = {}
@@ -139,6 +151,13 @@ def get_retail_prices(
         }
 
     _price_cache[cache_key] = (time.monotonic(), result)
+    logger.info(
+        "get_retail_prices: region=%s, total_skus=%d, with_paygo=%d, with_spot=%d",
+        region,
+        len(result),
+        sum(1 for v in result.values() if v.get("paygo") is not None),
+        sum(1 for v in result.values() if v.get("spot") is not None),
+    )
     return result
 
 
@@ -185,6 +204,11 @@ def _fetch_all_retail_prices(
     # This handles cases where the caller has a slightly wrong ARM name
     # (e.g. "Standard_FX48_v2" instead of "Standard_FX48mds_v2").
     if not items:
+        logger.info(
+            "Exact match returned 0 items for %s/%s, trying fuzzy fallback",
+            region,
+            sku_name,
+        )
         parts = sku_name.replace("-", "_").split("_")
         # Use the most distinctive part (skip "Standard" prefix)
         search_parts = [p for p in parts if p.lower() != "standard" and p]
@@ -204,6 +228,7 @@ def _fetch_retail_prices_with_filter(
     currency_code: str = "USD",
 ) -> list[dict]:
     """Fetch retail price items matching an OData filter."""
+    logger.debug("Retail prices filter: %s (currency=%s)", odata_filter, currency_code)
     items: list[dict] = []
     url: str | None = RETAIL_PRICES_URL
     params: dict[str, str] | None = {
@@ -280,7 +305,9 @@ def get_sku_pricing_detail(
     if cached is not None:
         ts, data = cached
         if now - ts < _DETAIL_PRICE_CACHE_TTL:
+            logger.debug("get_sku_pricing_detail cache HIT: %s", cache_key)
             return data
+    logger.debug("get_sku_pricing_detail cache MISS: %s", cache_key)
 
     result: dict = {
         "skuName": sku_name,
@@ -297,8 +324,12 @@ def get_sku_pricing_detail(
     try:
         items = _fetch_all_retail_prices(region, sku_name, currency_code)
     except Exception:
-        logger.warning("Failed to fetch detailed prices for %s in %s", sku_name, region)
+        logger.warning(
+            "Failed to fetch detailed prices for %s in %s", sku_name, region, exc_info=True
+        )
         return result
+
+    logger.debug("get_sku_pricing_detail: %s/%s fetched %d raw items", region, sku_name, len(items))
 
     # If the fuzzy fallback found items for a *different* armSkuName,
     # update the result to reflect the actual matched SKU name.
@@ -352,4 +383,13 @@ def get_sku_pricing_detail(
                     result["ri_3y"] = retail_price / 26280  # 3 * 365 * 24
 
     _detail_price_cache[cache_key] = (time.monotonic(), result)
+    logger.info(
+        "get_sku_pricing_detail: %s/%s → paygo=%s, spot=%s, ri_1y=%s, ri_3y=%s",
+        region,
+        sku_name,
+        result.get("paygo"),
+        result.get("spot"),
+        result.get("ri_1y"),
+        result.get("ri_3y"),
+    )
     return result

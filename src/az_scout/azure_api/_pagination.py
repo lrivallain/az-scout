@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import logging
+
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 def _paginate(url: str, headers: dict[str, str], timeout: int = 30) -> list[dict]:
     """Fetch all pages from an ARM list endpoint and return the merged values."""
     items: list[dict] = []
+    page_count = 0
     while url:
         resp = requests.get(url, headers=headers, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
-        items.extend(data.get("value", []))
+        page_items = data.get("value", [])
+        items.extend(page_items)
+        page_count += 1
         url = data.get("nextLink")
+    logger.debug("ARM paginate: %d pages, %d items total", page_count, len(items))
     return items

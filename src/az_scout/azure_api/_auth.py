@@ -45,7 +45,9 @@ def _get_headers(tenant_id: str | None = None) -> dict[str, str]:
     kwargs: dict[str, str] = {}
     if tenant_id:
         kwargs["tenant_id"] = tenant_id
+    logger.debug("Acquiring ARM token (tenant=%s)", tenant_id or "default")
     token = credential.get_token(f"{AZURE_MGMT_URL}/.default", **kwargs)
+    logger.debug("ARM token acquired (tenant=%s)", tenant_id or "default")
     return {
         "Authorization": f"Bearer {token.token}",
         "Content-Type": "application/json",
@@ -60,8 +62,10 @@ def _get_default_tenant_id() -> str | None:
         payload += "=" * (-len(payload) % 4)
         claims = json.loads(base64.urlsafe_b64decode(payload))
         tid: str | None = claims.get("tid") or claims.get("tenant_id")
+        logger.debug("Default tenant ID resolved: %s", tid)
         return tid
     except Exception:
+        logger.debug("Could not resolve default tenant ID", exc_info=True)
         return None
 
 

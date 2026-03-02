@@ -63,12 +63,14 @@ def list_subscriptions(tenant_id: str | None = None) -> list[dict]:
     headers = _get_headers(tenant_id)
     url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
     all_subs = _paginate(url, headers)
+    logger.debug("list_subscriptions: %d total, tenant=%s", len(all_subs), tenant_id or "default")
 
     subs = [
         {"id": s["subscriptionId"], "name": s["displayName"]}
         for s in all_subs
         if s.get("state") == "Enabled"
     ]
+    logger.info("list_subscriptions: %d enabled (of %d total)", len(subs), len(all_subs))
     return sorted(subs, key=lambda x: x["name"].lower())
 
 
@@ -108,6 +110,12 @@ def list_regions(
         and loc.get("metadata", {}).get("regionType") == "Physical"
     ]
     result = sorted(regions, key=lambda x: x["displayName"])
+    logger.info(
+        "list_regions: %d AZ-enabled regions (of %d locations), sub=%s",
+        len(result),
+        len(locations),
+        sub_id[:8] + "…" if sub_id else "auto",
+    )
     return result
 
 
@@ -142,7 +150,7 @@ def list_locations(
     resp.raise_for_status()
 
     locations = resp.json().get("value", [])
-    return sorted(
+    result = sorted(
         [
             {"name": loc["name"], "displayName": loc["displayName"]}
             for loc in locations
@@ -150,6 +158,13 @@ def list_locations(
         ],
         key=lambda x: x["displayName"],
     )
+    logger.info(
+        "list_locations: %d physical regions (of %d locations), sub=%s",
+        len(result),
+        len(locations),
+        sub_id[:8] + "…" if sub_id else "auto",
+    )
+    return result
 
 
 def preload_discovery() -> None:
