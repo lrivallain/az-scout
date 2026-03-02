@@ -24,6 +24,9 @@ LABEL org.opencontainers.image.source="https://github.com/lrivallain/az-scout"
 LABEL org.opencontainers.image.description="Azure Scout — explore availability zones, capacity, pricing, and plan VM deployments"
 LABEL org.opencontainers.image.licenses="MIT"
 
+# Git is needed at runtime so the plugin manager can install from git URLs
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 # Non-root user
 RUN groupadd -r scout && useradd -r -g scout -d /app scout
 WORKDIR /app
