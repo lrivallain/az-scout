@@ -5,20 +5,20 @@ installed packages that expose an ``az_scout.plugins`` entry point.
 Then :func:`register_plugins` wires up routes, static files, MCP tools,
 and chat modes contributed by each plugin.
 
-Plugins may be installed in the main venv or in the dedicated
-``.venv-plugins`` environment managed by the Plugin Manager UI.
+Plugins may be installed in the main environment or in the dedicated
+``plugin-packages`` directory managed by the Plugin Manager UI.
 """
 
 import importlib.metadata
 import logging
 import sys
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from az_scout.plugin_api import AzScoutPlugin, ChatMode
+from az_scout.plugin_manager import _PACKAGES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +27,23 @@ _loaded_plugins: list[AzScoutPlugin] = []
 _plugin_dist_names: dict[str, str] = {}  # plugin.name → pip distribution name
 _plugin_chat_modes: dict[str, ChatMode] = {}
 
-_PLUGIN_VENV_DIR = Path(".venv-plugins")
 
-
-def _ensure_plugin_venv_on_path() -> None:
-    """Add ``.venv-plugins`` site-packages to ``sys.path`` if it exists."""
-    if not _PLUGIN_VENV_DIR.exists():
+def _ensure_plugin_packages_on_path() -> None:
+    """Add ``plugin-packages`` directory to ``sys.path`` if it exists."""
+    if not _PACKAGES_DIR.exists():
         return
-    sp_dirs = sorted(_PLUGIN_VENV_DIR.glob("lib/python*/site-packages"))
-    for sp in sp_dirs:
-        sp_str = str(sp)
-        if sp_str not in sys.path:
-            sys.path.insert(0, sp_str)
-            logger.info("Added plugin venv site-packages to sys.path: %s", sp_str)
+    pkg_str = str(_PACKAGES_DIR)
+    if pkg_str not in sys.path:
+        sys.path.insert(0, pkg_str)
+        logger.info("Added plugin packages to sys.path: %s", pkg_str)
 
 
-def _discover_plugin_venv_entry_points() -> list[importlib.metadata.EntryPoint]:
-    """Discover ``az_scout.plugins`` entry points from ``.venv-plugins``."""
-    if not _PLUGIN_VENV_DIR.exists():
-        return []
-    sp_dirs = [str(sp) for sp in sorted(_PLUGIN_VENV_DIR.glob("lib/python*/site-packages"))]
-    if not sp_dirs:
+def _discover_plugin_packages_entry_points() -> list[importlib.metadata.EntryPoint]:
+    """Discover ``az_scout.plugins`` entry points from ``plugin-packages``."""
+    if not _PACKAGES_DIR.exists():
         return []
     eps: list[importlib.metadata.EntryPoint] = []
-    for dist in importlib.metadata.distributions(path=sp_dirs):
+    for dist in importlib.metadata.distributions(path=[str(_PACKAGES_DIR)]):
         for ep in dist.entry_points:
             if ep.group == "az_scout.plugins":
                 eps.append(ep)
@@ -60,11 +53,11 @@ def _discover_plugin_venv_entry_points() -> list[importlib.metadata.EntryPoint]:
 def discover_plugins() -> list[AzScoutPlugin]:
     """Discover installed plugins via the ``az_scout.plugins`` entry-point group.
 
-    Scans both the main environment and the ``.venv-plugins`` venv.
+    Scans both the main environment and the ``plugin-packages`` directory.
     """
-    _ensure_plugin_venv_on_path()
+    _ensure_plugin_packages_on_path()
 
-    # Collect entry points from main env + plugin venv, deduplicating by name
+    # Collect entry points from main env + plugin packages, deduplicating by name
     seen: set[str] = set()
     all_eps: list[importlib.metadata.EntryPoint] = []
 
@@ -73,7 +66,7 @@ def discover_plugins() -> list[AzScoutPlugin]:
             seen.add(ep.name)
             all_eps.append(ep)
 
-    for ep in _discover_plugin_venv_entry_points():
+    for ep in _discover_plugin_packages_entry_points():
         if ep.name not in seen:
             seen.add(ep.name)
             all_eps.append(ep)

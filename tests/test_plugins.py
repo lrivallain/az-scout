@@ -19,11 +19,11 @@ from az_scout.plugins import (
 
 
 @pytest.fixture(autouse=True)
-def _isolate_plugin_venv():
-    """Prevent tests from picking up real packages in .venv-plugins."""
+def _isolate_plugin_packages():
+    """Prevent tests from picking up real packages in plugin-packages dir."""
     with (
-        patch("az_scout.plugins._ensure_plugin_venv_on_path"),
-        patch("az_scout.plugins._discover_plugin_venv_entry_points", return_value=[]),
+        patch("az_scout.plugins._ensure_plugin_packages_on_path"),
+        patch("az_scout.plugins._discover_plugin_packages_entry_points", return_value=[]),
     ):
         yield
 

@@ -136,6 +136,65 @@
         ]
       },
       {
+        "name": "networking",
+        "label": "Networking & Storage",
+        "elements": [
+          {
+            "name": "enableVnet",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Deploy a VNet for network isolation",
+            "toolTip": "Injects the Container Apps Environment into a dedicated VNet. Storage is locked down via a private endpoint.",
+            "defaultValue": true
+          },
+          {
+            "name": "vnetAddressPrefix",
+            "type": "Microsoft.Common.TextBox",
+            "label": "VNet address space",
+            "defaultValue": "10.0.0.0/16",
+            "toolTip": "Address space for the virtual network (at least /16).",
+            "visible": "[steps('networking').enableVnet]",
+            "constraints": {
+              "required": "[steps('networking').enableVnet]",
+              "regex": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$",
+              "validationMessage": "Must be a valid CIDR range."
+            }
+          },
+          {
+            "name": "infrastructureSubnetPrefix",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Infrastructure subnet (min /23)",
+            "defaultValue": "10.0.0.0/23",
+            "toolTip": "CIDR range for the Container Apps infrastructure subnet.",
+            "visible": "[steps('networking').enableVnet]",
+            "constraints": {
+              "required": "[steps('networking').enableVnet]",
+              "regex": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$",
+              "validationMessage": "Must be a valid CIDR range."
+            }
+          },
+          {
+            "name": "privateEndpointSubnetPrefix",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Private endpoint subnet",
+            "defaultValue": "10.0.2.0/27",
+            "toolTip": "CIDR range for the private endpoint subnet.",
+            "visible": "[steps('networking').enableVnet]",
+            "constraints": {
+              "required": "[steps('networking').enableVnet]",
+              "regex": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$",
+              "validationMessage": "Must be a valid CIDR range."
+            }
+          },
+          {
+            "name": "enablePersistentStorage",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable persistent storage (Azure Files)",
+            "toolTip": "Mount an Azure Files share so application data (plugins, caches) survives container restarts and scale-to-zero.",
+            "defaultValue": true
+          }
+        ]
+      },
+      {
         "name": "authentication",
         "label": "Authentication (EasyAuth)",
         "elements": [
@@ -199,6 +258,11 @@
       "maxReplicas": "[steps('container').maxReplicas]",
       "readerSubscriptionIds": "[steps('permissions').readerSubscriptionIds]",
       "enableSpotScoreRole": "[steps('permissions').enableSpotScoreRole]",
+      "enableVnet": "[steps('networking').enableVnet]",
+      "vnetAddressPrefix": "[if(steps('networking').enableVnet, steps('networking').vnetAddressPrefix, '10.0.0.0/16')]",
+      "infrastructureSubnetPrefix": "[if(steps('networking').enableVnet, steps('networking').infrastructureSubnetPrefix, '10.0.0.0/23')]",
+      "privateEndpointSubnetPrefix": "[if(steps('networking').enableVnet, steps('networking').privateEndpointSubnetPrefix, '10.0.2.0/27')]",
+      "enablePersistentStorage": "[steps('networking').enablePersistentStorage]",
       "enableAuth": "[steps('authentication').enableAuth]",
       "authClientId": "[if(steps('authentication').enableAuth, steps('authentication').authClientId, '')]",
       "authClientSecret": "[if(steps('authentication').enableAuth, steps('authentication').authClientSecret, '')]",

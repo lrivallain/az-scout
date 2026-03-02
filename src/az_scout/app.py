@@ -21,6 +21,7 @@ from starlette.responses import StreamingResponse
 
 from az_scout import __version__, azure_api
 from az_scout.models.deployment_plan import DeploymentIntentRequest
+from az_scout.plugin_manager import reconcile_installed_plugins
 from az_scout.plugins import get_plugin_metadata, register_plugins
 from az_scout.routes import router as plugin_manager_router
 from az_scout.scoring.admission_confidence import compute_admission_confidence
@@ -48,9 +49,12 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-    """Warm the tenant cache, register plugins, and start the MCP session manager."""
+    """Warm the tenant cache, reconcile & register plugins, and start the MCP session manager."""
     t = threading.Thread(target=azure_api.preload_discovery, daemon=True)
     t.start()
+    # Reconcile plugins: reinstall any that are in installed.json but missing
+    # from the venv (e.g. after a container scale-to-zero restart).
+    reconcile_installed_plugins()
     # Discover and register plugins (routes, static, MCP tools, chat modes)
     register_plugins(_app, _mcp_server)
     # The StreamableHTTP session manager needs a running task group;

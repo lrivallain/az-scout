@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.40.2.10011",
-      "templateHash": "13110913782615244126"
+      "version": "0.41.2.15936",
+      "templateHash": "5378561907880171158"
     }
   },
   "parameters": {
@@ -46,7 +46,7 @@
     },
     "minReplicas": {
       "type": "int",
-      "defaultValue": 0,
+      "defaultValue": 1,
       "minValue": 0,
       "maxValue": 10,
       "metadata": {
@@ -74,6 +74,48 @@
       "defaultValue": true,
       "metadata": {
         "description": "Assign Virtual Machine Contributor role for Spot Placement Scores. Set to false if you don't need spot scores."
+      }
+    },
+    "enablePersistentStorage": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable persistent Azure Files storage. When true, a Storage Account and file share are created and mounted so that application data (plugins, caches) survives container restarts / scale-to-zero."
+      }
+    },
+    "dataShareName": {
+      "type": "string",
+      "defaultValue": "az-scout-data",
+      "metadata": {
+        "description": "Name of the Azure Files share used for application data."
+      }
+    },
+    "enableVnet": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy a VNet and inject the Container Apps Environment into it. When combined with enablePersistentStorage, the storage account is locked down via a private endpoint."
+      }
+    },
+    "vnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.0.0/16",
+      "metadata": {
+        "description": "Address space for the virtual network (must be at least /24 to accommodate the /23 infrastructure subnet)."
+      }
+    },
+    "infrastructureSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.0.0/23",
+      "metadata": {
+        "description": "CIDR range for the Container Apps infrastructure subnet (minimum /23)."
+      }
+    },
+    "privateEndpointSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.2.0/27",
+      "metadata": {
+        "description": "CIDR range for the private endpoint subnet."
       }
     },
     "enableAuth": {
@@ -128,6 +170,172 @@
       }
     },
     {
+      "condition": "[parameters('enableVnet')]",
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}-vnet', parameters('baseName'))]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('vnetAddressPrefix')]"
+          ]
+        }
+      }
+    },
+    {
+      "condition": "[parameters('enableVnet')]",
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', format('{0}-vnet', parameters('baseName')), 'infrastructure')]",
+      "properties": {
+        "addressPrefix": "[parameters('infrastructureSubnetPrefix')]",
+        "serviceEndpoints": [
+          {
+            "service": "Microsoft.Storage"
+          }
+        ],
+        "delegations": [
+          {
+            "name": "aca-delegation",
+            "properties": {
+              "serviceName": "Microsoft.App/environments"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('baseName')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('enableVnet')]",
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', format('{0}-vnet', parameters('baseName')), 'private-endpoints')]",
+      "properties": {
+        "addressPrefix": "[parameters('privateEndpointSubnetPrefix')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}-vnet', parameters('baseName')), 'infrastructure')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('baseName')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('enablePersistentStorage')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[replace(format('{0}data', parameters('baseName')), '-', '')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "networkAcls": "[if(parameters('enableVnet'), createObject('defaultAction', 'Deny', 'bypass', 'AzureServices', 'virtualNetworkRules', createArray(createObject('id', resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}-vnet', parameters('baseName')), 'infrastructure'), 'action', 'Allow'))), createObject('defaultAction', 'Allow'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}-vnet', parameters('baseName')), 'infrastructure')]"
+      ]
+    },
+    {
+      "condition": "[parameters('enablePersistentStorage')]",
+      "type": "Microsoft.Storage/storageAccounts/fileServices",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', replace(format('{0}data', parameters('baseName')), '-', ''), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', replace(format('{0}data', parameters('baseName')), '-', ''))]"
+      ]
+    },
+    {
+      "condition": "[parameters('enablePersistentStorage')]",
+      "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', replace(format('{0}data', parameters('baseName')), '-', ''), 'default', parameters('dataShareName'))]",
+      "properties": {
+        "shareQuota": 1
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/fileServices', replace(format('{0}data', parameters('baseName')), '-', ''), 'default')]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enablePersistentStorage'), parameters('enableVnet'))]",
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}-storage-pe', parameters('baseName'))]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "subnet": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}-vnet', parameters('baseName')), 'private-endpoints')]"
+        },
+        "privateLinkServiceConnections": [
+          {
+            "name": "[format('{0}-storage-pls', parameters('baseName'))]",
+            "properties": {
+              "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', replace(format('{0}data', parameters('baseName')), '-', ''))]",
+              "groupIds": [
+                "file"
+              ]
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', replace(format('{0}data', parameters('baseName')), '-', ''))]",
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}-vnet', parameters('baseName')), 'private-endpoints')]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enablePersistentStorage'), parameters('enableVnet'))]",
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "2024-06-01",
+      "name": "[format('privatelink.file.{0}', environment().suffixes.storage)]",
+      "location": "global"
+    },
+    {
+      "condition": "[and(parameters('enablePersistentStorage'), parameters('enableVnet'))]",
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "2024-06-01",
+      "name": "[format('{0}/{1}', format('privatelink.file.{0}', environment().suffixes.storage), format('{0}-vnet-link', parameters('baseName')))]",
+      "location": "global",
+      "properties": {
+        "virtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('baseName')))]"
+        },
+        "registrationEnabled": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.file.{0}', environment().suffixes.storage))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('baseName')))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enablePersistentStorage'), parameters('enableVnet'))]",
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', format('{0}-storage-pe', parameters('baseName')), 'default')]",
+      "properties": {
+        "privateDnsZoneConfigs": [
+          {
+            "name": "file",
+            "properties": {
+              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.file.{0}', environment().suffixes.storage))]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.file.{0}', environment().suffixes.storage))]",
+        "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-storage-pe', parameters('baseName')))]"
+      ]
+    },
+    {
       "type": "Microsoft.App/managedEnvironments",
       "apiVersion": "2024-03-01",
       "name": "[format('{0}-env', parameters('baseName'))]",
@@ -139,10 +347,37 @@
             "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('baseName'))), '2023-09-01').customerId]",
             "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('baseName'))), '2023-09-01').primarySharedKey]"
           }
+        },
+        "vnetConfiguration": "[if(parameters('enableVnet'), createObject('infrastructureSubnetId', resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}-vnet', parameters('baseName')), 'infrastructure'), 'internal', false()), null())]",
+        "workloadProfiles": [
+          {
+            "name": "Consumption",
+            "workloadProfileType": "Consumption"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}-vnet', parameters('baseName')), 'infrastructure')]",
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('baseName')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('enablePersistentStorage')]",
+      "type": "Microsoft.App/managedEnvironments/storages",
+      "apiVersion": "2024-03-01",
+      "name": "[format('{0}/{1}', format('{0}-env', parameters('baseName')), 'appdata')]",
+      "properties": {
+        "azureFile": {
+          "accountName": "[replace(format('{0}data', parameters('baseName')), '-', '')]",
+          "accountKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', replace(format('{0}data', parameters('baseName')), '-', '')), '2023-05-01').keys[0].value]",
+          "shareName": "[parameters('dataShareName')]",
+          "accessMode": "ReadWrite"
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('baseName')))]"
+        "[resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('baseName')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', replace(format('{0}data', parameters('baseName')), '-', ''))]",
+        "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', format('{0}-storage-pe', parameters('baseName')), 'default')]"
       ]
     },
     {
@@ -169,6 +404,7 @@
           "secrets": "[if(parameters('enableAuth'), createArray(createObject('name', 'microsoft-provider-authentication-secret', 'value', parameters('authClientSecret'))), createArray())]"
         },
         "template": {
+          "volumes": "[if(parameters('enablePersistentStorage'), createArray(createObject('name', 'app-data', 'storageName', 'appdata', 'storageType', 'AzureFile')), createArray())]",
           "containers": [
             {
               "name": "az-scout",
@@ -181,8 +417,13 @@
                 {
                   "name": "AZURE_CLIENT_ID",
                   "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('baseName'))), '2023-01-31').clientId]"
+                },
+                {
+                  "name": "AZ_SCOUT_DATA_DIR",
+                  "value": "[if(parameters('enablePersistentStorage'), '/app/data', '')]"
                 }
-              ]
+              ],
+              "volumeMounts": "[if(parameters('enablePersistentStorage'), createArray(createObject('volumeName', 'app-data', 'mountPath', '/app/data')), createArray())]"
             }
           ],
           "scale": {
@@ -203,6 +444,7 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('baseName')))]",
+        "[resourceId('Microsoft.App/managedEnvironments/storages', format('{0}-env', parameters('baseName')), 'appdata')]",
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('baseName')))]"
       ]
     },
@@ -273,8 +515,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.40.2.10011",
-              "templateHash": "3269672281124974006"
+              "version": "0.41.2.15936",
+              "templateHash": "9338703194244260066"
             }
           },
           "parameters": {
@@ -339,8 +581,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.40.2.10011",
-              "templateHash": "1250306476753551681"
+              "version": "0.41.2.15936",
+              "templateHash": "14664762954764379265"
             }
           },
           "parameters": {
@@ -411,6 +653,13 @@
         "description": "Log Analytics workspace ID (for diagnostics queries)."
       },
       "value": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('baseName')))]"
+    },
+    "vnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Virtual Network ID (when VNet integration is enabled)."
+      },
+      "value": "[if(parameters('enableVnet'), resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('baseName'))), '')]"
     }
   }
 }

@@ -7,7 +7,8 @@
 //   2. Container Apps Environment
 //   3. Container App running az-scout from GHCR
 //   4. User-assigned Managed Identity with Reader on target subscriptions
-//   5. (Optional) Entra ID EasyAuth via authConfigs
+//   5. (Optional) VNet integration with network-isolated storage
+//   6. (Optional) Entra ID EasyAuth via authConfigs
 //
 // Usage:
 //   az deployment group create \
@@ -42,7 +43,7 @@ param containerMemory string = '1.0Gi'
 @description('Minimum number of replicas (0 allows scale-to-zero).')
 @minValue(0)
 @maxValue(10)
-param minReplicas int = 0
+param minReplicas int = 1
 
 @description('Maximum number of replicas.')
 @minValue(1)
@@ -54,6 +55,28 @@ param readerSubscriptionIds array = []
 
 @description('Assign Virtual Machine Contributor role for Spot Placement Scores. Set to false if you don\'t need spot scores.')
 param enableSpotScoreRole bool = true
+
+// -- Persistent storage parameters --
+
+@description('Enable persistent Azure Files storage. When true, a Storage Account and file share are created and mounted so that application data (plugins, caches) survives container restarts / scale-to-zero.')
+param enablePersistentStorage bool = true
+
+@description('Name of the Azure Files share used for application data.')
+param dataShareName string = 'az-scout-data'
+
+// -- VNet integration parameters --
+
+@description('Deploy a VNet and inject the Container Apps Environment into it. When combined with enablePersistentStorage, the storage account is locked down via a private endpoint.')
+param enableVnet bool = true
+
+@description('Address space for the virtual network (must be at least /24 to accommodate the /23 infrastructure subnet).')
+param vnetAddressPrefix string = '10.0.0.0/16'
+
+@description('CIDR range for the Container Apps infrastructure subnet (minimum /23).')
+param infrastructureSubnetPrefix string = '10.0.0.0/23'
+
+@description('CIDR range for the private endpoint subnet.')
+param privateEndpointSubnetPrefix string = '10.0.2.0/27'
 
 // -- EasyAuth parameters --
 
@@ -126,6 +149,146 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
+// ---------------------------------------------------------------------------
+// VNet + infrastructure subnet (optional)
+// ---------------------------------------------------------------------------
+
+resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = if (enableVnet) {
+  name: '${baseName}-vnet'
+  location: location
+  properties: {
+    addressSpace: {
+      addressPrefixes: [vnetAddressPrefix]
+    }
+  }
+}
+
+resource infraSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' = if (enableVnet) {
+  parent: vnet
+  name: 'infrastructure'
+  properties: {
+    addressPrefix: infrastructureSubnetPrefix
+    serviceEndpoints: [
+      { service: 'Microsoft.Storage' }
+    ]
+    delegations: [
+      {
+        name: 'aca-delegation'
+        properties: {
+          serviceName: 'Microsoft.App/environments'
+        }
+      }
+    ]
+  }
+}
+
+resource peSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' = if (enableVnet) {
+  parent: vnet
+  name: 'private-endpoints'
+  properties: {
+    addressPrefix: privateEndpointSubnetPrefix
+  }
+  dependsOn: [infraSubnet] // sequential subnet creation to avoid conflicts
+}
+
+// ---------------------------------------------------------------------------
+// Storage Account + File Share for persistent data (optional)
+// ---------------------------------------------------------------------------
+
+resource dataStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = if (enablePersistentStorage) {
+  name: replace('${baseName}data', '-', '')
+  location: location
+  tags: {
+    SecurityControl: 'Ignore'
+  }
+  kind: 'StorageV2'
+  sku: { name: 'Standard_LRS' }
+  properties: {
+    minimumTlsVersion: 'TLS1_2'
+    allowBlobPublicAccess: false
+    networkAcls: enableVnet ? {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'
+      virtualNetworkRules: [
+        {
+          id: infraSubnet.id
+          action: 'Allow'
+        }
+      ]
+    } : {
+      defaultAction: 'Allow'
+    }
+  }
+}
+
+resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = if (enablePersistentStorage) {
+  parent: dataStorage
+  name: 'default'
+}
+
+resource dataShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = if (enablePersistentStorage) {
+  parent: fileService
+  name: dataShareName
+  properties: {
+    shareQuota: 1   // 1 GiB – increase if needed
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private endpoint + DNS for storage (when VNet is enabled)
+// ---------------------------------------------------------------------------
+
+resource storagePrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (enablePersistentStorage && enableVnet) {
+  name: '${baseName}-storage-pe'
+  location: location
+  properties: {
+    subnet: {
+      id: peSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: '${baseName}-storage-pls'
+        properties: {
+          privateLinkServiceId: dataStorage.id
+          groupIds: ['file']
+        }
+      }
+    ]
+  }
+}
+
+resource storageDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (enablePersistentStorage && enableVnet) {
+  name: 'privatelink.file.${environment().suffixes.storage}'
+  location: 'global'
+}
+
+resource storageDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (enablePersistentStorage && enableVnet) {
+  parent: storageDnsZone
+  name: '${baseName}-vnet-link'
+  location: 'global'
+  properties: {
+    virtualNetwork: {
+      id: vnet.id
+    }
+    registrationEnabled: false
+  }
+}
+
+resource storageDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (enablePersistentStorage && enableVnet) {
+  parent: storagePrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'file'
+        properties: {
+          privateDnsZoneId: storageDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: '${baseName}-env'
   location: location
@@ -136,6 +299,32 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         customerId: logAnalytics.properties.customerId
         sharedKey: logAnalytics.listKeys().primarySharedKey
       }
+    }
+    vnetConfiguration: enableVnet ? {
+      infrastructureSubnetId: infraSubnet.id
+      internal: false
+    } : null
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+    ]
+  }
+}
+
+// Mount the Azure Files share into the Container Apps Environment
+resource envStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = if (enablePersistentStorage) {
+  parent: containerEnv
+  name: 'appdata'
+  dependsOn: [storageDnsZoneGroup] // ensure private DNS is ready before mount
+  properties: {
+    azureFile: {
+      accountName: dataStorage.name
+      #disable-next-line BCP422 // safe: envStorage and dataStorage share the same condition
+      accountKey: dataStorage.listKeys().keys[0].value
+      shareName: dataShareName
+      accessMode: 'ReadWrite'
     }
   }
 }
@@ -171,6 +360,13 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       ] : []
     }
     template: {
+      volumes: enablePersistentStorage ? [
+        {
+          name: 'app-data'
+          storageName: envStorage.name
+          storageType: 'AzureFile'
+        }
+      ] : []
       containers: [
         {
           name: 'az-scout'
@@ -185,7 +381,19 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_CLIENT_ID'
               value: managedIdentity.properties.clientId
             }
+            {
+              // Application data directory – points to mounted Azure Files
+              // volume when persistent storage is enabled, else uses default
+              name: 'AZ_SCOUT_DATA_DIR'
+              value: enablePersistentStorage ? '/app/data' : ''
+            }
           ]
+          volumeMounts: enablePersistentStorage ? [
+            {
+              volumeName: 'app-data'
+              mountPath: '/app/data'
+            }
+          ] : []
         }
       ]
       scale: {
@@ -264,3 +472,6 @@ output containerAppId string = containerApp.id
 
 @description('Log Analytics workspace ID (for diagnostics queries).')
 output logAnalyticsId string = logAnalytics.id
+
+@description('Virtual Network ID (when VNet integration is enabled).')
+output vnetId string = enableVnet ? vnet.id : ''

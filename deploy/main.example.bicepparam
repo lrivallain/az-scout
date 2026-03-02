@@ -32,6 +32,16 @@ param readerSubscriptionIds = [
 // Optional: disable the Virtual Machine Contributor role for Spot Placement Scores
 // param enableSpotScoreRole = false
 
+// Optional: disable persistent storage (enabled by default)
+// param enablePersistentStorage = false
+// param dataShareName = 'az-scout-data'
+
+// Optional: enable VNet integration (locks down storage via private endpoint)
+// param enableVnet = true
+// param vnetAddressPrefix = '10.0.0.0/16'
+// param infrastructureSubnetPrefix = '10.0.0.0/23'
+// param privateEndpointSubnetPrefix = '10.0.2.0/27'
+
 // Optional: enable Entra ID authentication (EasyAuth)
 // param enableAuth = true
 // param authClientId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'

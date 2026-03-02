@@ -8,6 +8,23 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
+### Added
+
+- **Plugin persistence in containers** – plugins installed via the Plugin Manager now survive
+  container restarts and scale-to-zero events (fixes #64). At startup the app reconciles
+  `installed.json` against the plugin venv and automatically reinstalls any missing plugins from
+  their pinned commit SHA.
+- **Bicep `enablePluginStorage` parameter** – when enabled, deploys an Azure Storage Account with an
+  Azure Files share mounted into the Container App for durable plugin data.
+- **Dockerfile sets `AZ_SCOUT_DATA_DIR`** – the container image now defaults to `/app/data` with a
+  declared `VOLUME`, ready for persistent volume mounts.
+
+### Fixed
+
+- **Unified plugin venv path** – `plugins.py` now uses the same `AZ_SCOUT_DATA_DIR`-aware path as
+  `plugin_manager.py` instead of a hardcoded relative `.venv-plugins`, fixing a mismatch where the
+  two modules could look at different directories.
+
 ### Changed
 
 - **Latency Stats extracted to plugin** – the inter-region latency dataset and MCP tool are no longer

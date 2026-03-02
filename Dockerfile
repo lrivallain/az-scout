@@ -24,6 +24,9 @@ LABEL org.opencontainers.image.source="https://github.com/lrivallain/az-scout"
 LABEL org.opencontainers.image.description="Azure Scout — explore availability zones, capacity, pricing, and plan VM deployments"
 LABEL org.opencontainers.image.licenses="MIT"
 
+# Git is needed at runtime so the plugin manager can install from git URLs
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 # Non-root user
 RUN groupadd -r scout && useradd -r -g scout -d /app scout
 WORKDIR /app
@@ -32,8 +35,18 @@ WORKDIR /app
 COPY --from=builder /build/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 
-# Install uv so the plugin manager can create venvs and install plugins
+# Install uv so the plugin manager can install packages quickly
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Plugin data directory.
+# Mount a persistent volume at /app/data so that installed.json (plugin
+# registry) and audit.jsonl survive restarts.  Plugin packages and the uv
+# cache live on the local filesystem (/tmp) because Azure Files (SMB) does
+# not support chmod/hardlinks.  On restart the reconcile loop reinstalls
+# every plugin from its pinned commit SHA recorded in installed.json.
+ENV AZ_SCOUT_DATA_DIR=/app/data
+RUN mkdir -p /app/data && chown scout:scout /app/data
+VOLUME /app/data
 
 USER scout
 

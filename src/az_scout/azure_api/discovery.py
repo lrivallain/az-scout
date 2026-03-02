@@ -28,7 +28,9 @@ def list_tenants(tenant_id: str | None = None) -> dict:
     Results are cached for ``_DISCOVERY_CACHE_TTL`` seconds.
     """
     cache_key = f"tenants:{tenant_id or ''}"
-    cached = _cached(cache_key)
+    cached = _cached(
+        cache_key, ttl=3600
+    )  # Tenants don't change often, so a long TTL is reasonable.
     if cached is not None:
         return cached  # type: ignore[return-value]
 

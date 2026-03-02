@@ -141,7 +141,21 @@ The deployment creates:
 
 #### Enable Entra ID authentication (EasyAuth)
 
-For a complete walkthrough (App Registration creation, client secret, user assignment, troubleshooting), see [`deploy/EASYAUTH.md`](deploy/EASYAUTH.md).
+The included setup script automates App Registration creation and is safe to re-run (idempotent). It works in two phases — before and after deployment:
+
+```bash
+# Phase 1: create App Registration + secret (before deploying)
+./deploy/setup-easyauth.sh --enable-mcp
+
+# Deploy with the output Client ID + Secret
+az deployment group create -g rg-az-scout -f deploy/main.bicep \
+  -p enableAuth=true -p authClientId='<id>' -p authClientSecret='<secret>' ...
+
+# Phase 2: add redirect URIs (auto-detected from resource group)
+./deploy/setup-easyauth.sh --resource-group rg-az-scout --enable-mcp --enable-vscode
+```
+
+For a complete manual walkthrough, troubleshooting, and MCP client configuration, see [`deploy/EASYAUTH.md`](deploy/EASYAUTH.md).
 
 ## Usage
 
