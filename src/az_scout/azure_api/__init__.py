@@ -66,6 +66,7 @@ from az_scout.azure_api.quotas import (  # noqa: F401
 # -- SKUs --------------------------------------------------------------------
 from az_scout.azure_api.skus import (  # noqa: F401
     _parse_capability_value,
+    _sku_list_cache,
     _sku_name_matches,
     _sku_profile_cache,
     get_mappings,

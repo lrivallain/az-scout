@@ -91,3 +91,13 @@ def _clear_sku_profile_cache():
     _sku_profile_cache.clear()
     yield
     _sku_profile_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_sku_list_cache():
+    """Clear the SKU list cache between tests."""
+    from az_scout.azure_api import _sku_list_cache
+
+    _sku_list_cache.clear()
+    yield
+    _sku_list_cache.clear()

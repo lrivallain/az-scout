@@ -1945,6 +1945,8 @@ class TestDeploymentConfidence:
 
     def test_confidence_with_restrictions(self, client):
         """Restrictions lower the confidence score."""
+        from az_scout.azure_api import _sku_list_cache
+
         restricted_resp = self._sku_response(
             restrictions=[{"type": "Zone", "restrictionInfo": {"zones": ["3"]}}]
         )
@@ -1955,6 +1957,8 @@ class TestDeploymentConfidence:
             side_effect=self._mock_dispatch(restricted_resp),
         ):
             resp_r = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        _sku_list_cache.clear()  # clear cache so second call uses new mock
 
         with patch(
             "az_scout.azure_api.requests.get",

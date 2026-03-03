@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 _SKU_PROFILE_CACHE_TTL = 600  # 10 minutes
 _sku_profile_cache: dict[str, tuple[float, dict | None]] = {}
 
+# SKU list cache – keyed by (subscription, region, resource_type, tenant)
+_SKU_LIST_CACHE_TTL = 600  # 10 minutes
+_sku_list_cache: dict[str, tuple[float, list[dict]]] = {}
+
 
 def _sku_name_matches(filter_val: str, sku_name: str) -> bool:
     """Check if *filter_val* matches *sku_name* with fuzzy multi-part logic.
@@ -48,6 +52,46 @@ def _sku_name_matches(filter_val: str, sku_name: str) -> bool:
     return True
 
 
+def _fetch_sku_list(
+    region: str,
+    subscription_id: str,
+    resource_type: str,
+    tenant_id: str | None,
+) -> list[dict]:
+    """Fetch the raw SKU list from ARM with retry on timeout."""
+    headers = _get_headers(tenant_id)
+    # ARM SKU API only reliably supports `location` in $filter.
+    # The `resourceType` condition is filtered client-side in get_skus().
+    url = (
+        f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}/providers/"
+        f"Microsoft.Compute/skus?api-version={AZURE_API_VERSION}"
+        f"&$filter=location eq '{region}'"
+    )
+
+    for attempt in range(3):
+        try:
+            result = _paginate(url, headers, timeout=60)
+            logger.info(
+                "Fetched %d SKUs from ARM: region=%s, type=%s",
+                len(result),
+                region,
+                resource_type,
+            )
+            return result
+        except requests.ReadTimeout:
+            if attempt < 2:
+                wait_time = 2**attempt
+                logger.warning(
+                    "SKU API timeout, retrying in %ss (attempt %s/3)",
+                    wait_time,
+                    attempt + 1,
+                )
+                time.sleep(wait_time)
+            else:
+                raise
+    return []  # unreachable but satisfies type checker
+
+
 def get_skus(
     region: str,
     subscription_id: str,
@@ -73,29 +117,21 @@ def get_skus(
     When no filters are provided all SKUs for the requested resource type are
     returned (current behaviour).
     """
-    headers = _get_headers(tenant_id)
-    url = (
-        f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}/providers/"
-        f"Microsoft.Compute/skus?api-version={AZURE_API_VERSION}"
-        f"&$filter=location eq '{region}'"
-    )
-
-    all_skus: list[dict] = []
-
-    # Simple retry with exponential backoff for transient timeouts
-    for attempt in range(3):
-        try:
-            all_skus = _paginate(url, headers, timeout=60)
-            break
-        except requests.ReadTimeout:
-            if attempt < 2:
-                wait_time = 2**attempt
-                logger.warning(
-                    "SKU API timeout, retrying in %ss (attempt %s/3)", wait_time, attempt + 1
-                )
-                time.sleep(wait_time)
-            else:
-                raise
+    # Check cache first
+    cache_key = f"{subscription_id}:{region}:{resource_type}:{tenant_id or ''}"
+    now = time.monotonic()
+    cached = _sku_list_cache.get(cache_key)
+    if cached is not None:
+        ts, data = cached
+        if now - ts < _SKU_LIST_CACHE_TTL:
+            logger.debug("get_skus cache HIT: %s (%d SKUs)", cache_key, len(data))
+            all_skus = data
+        else:
+            all_skus = _fetch_sku_list(region, subscription_id, resource_type, tenant_id)
+            _sku_list_cache[cache_key] = (time.monotonic(), all_skus)
+    else:
+        all_skus = _fetch_sku_list(region, subscription_id, resource_type, tenant_id)
+        _sku_list_cache[cache_key] = (time.monotonic(), all_skus)
 
     name_lower = name.lower() if name else None
     family_lower = family.lower() if family else None
@@ -257,15 +293,15 @@ def get_sku_profile(
         if now - ts < _SKU_PROFILE_CACHE_TTL:
             return data
 
-    headers = _get_headers(tenant_id)
-    url = (
-        f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}/providers/"
-        f"Microsoft.Compute/skus?api-version={AZURE_API_VERSION}"
-        f"&$filter=location eq '{region}'"
-    )
-
     try:
-        all_skus = _paginate(url, headers, timeout=60)
+        # Reuse the cached SKU list when possible
+        list_cache_key = f"{subscription_id}:{region}:virtualMachines:{tenant_id or ''}"
+        list_cached = _sku_list_cache.get(list_cache_key)
+        if list_cached is not None and (time.monotonic() - list_cached[0]) < _SKU_LIST_CACHE_TTL:
+            all_skus = list_cached[1]
+        else:
+            all_skus = _fetch_sku_list(region, subscription_id, "virtualMachines", tenant_id)
+            _sku_list_cache[list_cache_key] = (time.monotonic(), all_skus)
     except Exception:
         logger.warning("Failed to fetch SKU profile for %s in %s", sku_name, region)
         return None
