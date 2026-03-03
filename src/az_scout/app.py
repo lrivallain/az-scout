@@ -4,6 +4,7 @@ Interactive web tool to visualize how Azure maps logical availability zones
 to physical zones across subscriptions in a given region.
 """
 
+import asyncio
 import logging
 import threading
 from collections.abc import AsyncGenerator
@@ -273,7 +274,7 @@ async def list_tenants() -> JSONResponse:
     tenant ID for the current auth context.
     """
     try:
-        return JSONResponse(azure_api.list_tenants())
+        return JSONResponse(await asyncio.to_thread(azure_api.list_tenants))
     except Exception as exc:
         logger.exception("Failed to list tenants")
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -287,7 +288,7 @@ async def list_subscriptions(
 ) -> JSONResponse:
     """Return all enabled Azure subscriptions, sorted alphabetically."""
     try:
-        return JSONResponse(azure_api.list_subscriptions(tenantId))
+        return JSONResponse(await asyncio.to_thread(azure_api.list_subscriptions, tenantId))
     except Exception as exc:
         logger.exception("Failed to list subscriptions")
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -302,7 +303,9 @@ async def list_regions(
 ) -> JSONResponse:
     """Return Azure regions that support Availability Zones."""
     try:
-        return JSONResponse(azure_api.list_regions(subscriptionId, tenantId))
+        return JSONResponse(
+            await asyncio.to_thread(azure_api.list_regions, subscriptionId, tenantId)
+        )
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
     except Exception as exc:
@@ -319,7 +322,9 @@ async def list_locations(
 ) -> JSONResponse:
     """Return all Azure ARM locations, including those without Availability Zones."""
     try:
-        return JSONResponse(azure_api.list_locations(subscriptionId, tenantId))
+        return JSONResponse(
+            await asyncio.to_thread(azure_api.list_locations, subscriptionId, tenantId)
+        )
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
@@ -347,7 +352,7 @@ async def get_mappings(
             {"error": "Both 'region' and 'subscriptions' query parameters are required"},
             status_code=400,
         )
-    return JSONResponse(azure_api.get_mappings(region, sub_ids, tenantId))
+    return JSONResponse(await asyncio.to_thread(azure_api.get_mappings, region, sub_ids, tenantId))
 
 
 @app.get("/api/skus", tags=["SKUs"], summary="Get SKU availability per zone")
@@ -399,7 +404,8 @@ async def get_skus(
         )
 
     try:
-        skus = azure_api.get_skus(
+        skus = await asyncio.to_thread(
+            azure_api.get_skus,
             region,
             subscriptionId,
             tenantId,
@@ -411,9 +417,11 @@ async def get_skus(
             min_memory_gb=minMemoryGB,
             max_memory_gb=maxMemoryGB,
         )
-        azure_api.enrich_skus_with_quotas(skus, region, subscriptionId, tenantId)
+        await asyncio.to_thread(
+            azure_api.enrich_skus_with_quotas, skus, region, subscriptionId, tenantId
+        )
         if includePrices:
-            azure_api.enrich_skus_with_prices(skus, region, currencyCode)
+            await asyncio.to_thread(azure_api.enrich_skus_with_prices, skus, region, currencyCode)
 
         # Compute Deployment Confidence Score for each SKU (canonical module)
         for sku in skus:
@@ -471,14 +479,23 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
 
     try:
         # Fetch SKU data (zones, restrictions, capabilities, quota)
-        all_skus = azure_api.get_skus(
+        all_skus = await asyncio.to_thread(
+            azure_api.get_skus,
             body.region,
             body.subscriptionId,
             body.tenantId,
             "virtualMachines",
         )
-        azure_api.enrich_skus_with_quotas(all_skus, body.region, body.subscriptionId, body.tenantId)
-        azure_api.enrich_skus_with_prices(all_skus, body.region, body.currencyCode)
+        await asyncio.to_thread(
+            azure_api.enrich_skus_with_quotas,
+            all_skus,
+            body.region,
+            body.subscriptionId,
+            body.tenantId,
+        )
+        await asyncio.to_thread(
+            azure_api.enrich_skus_with_prices, all_skus, body.region, body.currencyCode
+        )
 
         sku_map = {s["name"]: s for s in all_skus}
 
@@ -486,7 +503,8 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
         spot_scores: dict[str, dict[str, str]] = {}
         if body.preferSpot:
             try:
-                spot_result = azure_api.get_spot_placement_scores(
+                spot_result = await asyncio.to_thread(
+                    azure_api.get_spot_placement_scores,
                     body.region,
                     body.subscriptionId,
                     body.skus,
@@ -564,7 +582,8 @@ async def get_spot_scores(body: SpotScoresRequest) -> JSONResponse:
             status_code=400,
         )
     try:
-        result = azure_api.get_spot_placement_scores(
+        result = await asyncio.to_thread(
+            azure_api.get_spot_placement_scores,
             body.region,
             body.subscriptionId,
             body.skus,
@@ -597,9 +616,13 @@ async def get_sku_pricing(
     restrictions, zones).
     """
     try:
-        result = azure_api.get_sku_pricing_detail(region, skuName, currencyCode)
+        result = await asyncio.to_thread(
+            azure_api.get_sku_pricing_detail, region, skuName, currencyCode
+        )
         if subscriptionId:
-            profile = azure_api.get_sku_profile(region, subscriptionId, skuName, tenantId)
+            profile = await asyncio.to_thread(
+                azure_api.get_sku_profile, region, subscriptionId, skuName, tenantId
+            )
             if profile is not None:
                 result["profile"] = profile
         return JSONResponse(result)
@@ -626,7 +649,7 @@ async def deployment_plan(body: DeploymentIntentRequest) -> JSONResponse:
     with business and technical views.
     """
     try:
-        result = plan_deployment(body)
+        result = await asyncio.to_thread(plan_deployment, body)
         return JSONResponse(result.model_dump())
     except Exception as exc:
         logger.exception("Failed to generate deployment plan")

@@ -1,5 +1,6 @@
 """Plugin manager API routes – thin wrappers over :mod:`az_scout.plugin_manager`."""
 
+import asyncio
 from dataclasses import asdict
 
 from fastapi import APIRouter, Request
@@ -70,9 +71,13 @@ async def list_plugins() -> JSONResponse:
 async def validate_plugin(body: ValidateRequest) -> JSONResponse:
     """Validate a plugin from a GitHub repository or PyPI package."""
     if plugin_manager.is_pypi_source(body.repo_url):
-        result = plugin_manager.validate_pypi_plugin(body.repo_url.strip(), body.ref.strip())
+        result = await asyncio.to_thread(
+            plugin_manager.validate_pypi_plugin, body.repo_url.strip(), body.ref.strip()
+        )
     else:
-        result = plugin_manager.validate_plugin_repo(body.repo_url, body.ref.strip())
+        result = await asyncio.to_thread(
+            plugin_manager.validate_plugin_repo, body.repo_url, body.ref.strip()
+        )
     return JSONResponse(asdict(result))
 
 
@@ -81,7 +86,8 @@ async def install_plugin(body: InstallRequest, request: Request) -> JSONResponse
     """Install a plugin from a GitHub repository or PyPI."""
     actor, client_ip, user_agent = _actor(request)
     if plugin_manager.is_pypi_source(body.repo_url):
-        ok, warnings, errors = plugin_manager.install_pypi_plugin(
+        ok, warnings, errors = await asyncio.to_thread(
+            plugin_manager.install_pypi_plugin,
             body.repo_url.strip(),
             body.ref.strip(),
             actor,
@@ -89,7 +95,8 @@ async def install_plugin(body: InstallRequest, request: Request) -> JSONResponse
             user_agent,
         )
     else:
-        ok, warnings, errors = plugin_manager.install_plugin(
+        ok, warnings, errors = await asyncio.to_thread(
+            plugin_manager.install_plugin,
             body.repo_url,
             body.ref.strip(),
             actor,
@@ -111,7 +118,8 @@ async def install_plugin(body: InstallRequest, request: Request) -> JSONResponse
 async def uninstall_plugin(body: UninstallRequest, request: Request) -> JSONResponse:
     """Uninstall a plugin by its distribution name."""
     actor, client_ip, user_agent = _actor(request)
-    ok, errors = plugin_manager.uninstall_plugin(
+    ok, errors = await asyncio.to_thread(
+        plugin_manager.uninstall_plugin,
         body.distribution_name,
         actor,
         client_ip,
@@ -131,7 +139,7 @@ async def uninstall_plugin(body: UninstallRequest, request: Request) -> JSONResp
 async def check_updates(request: Request) -> JSONResponse:
     """Check all installed plugins for available updates."""
     actor, client_ip, user_agent = _actor(request)
-    results = plugin_manager.check_updates(actor, client_ip, user_agent)
+    results = await asyncio.to_thread(plugin_manager.check_updates, actor, client_ip, user_agent)
     return JSONResponse({"plugins": results})
 
 
@@ -139,7 +147,8 @@ async def check_updates(request: Request) -> JSONResponse:
 async def update_plugin(body: UpdateRequest, request: Request) -> JSONResponse:
     """Update a single plugin to the latest GitHub release/tag."""
     actor, client_ip, user_agent = _actor(request)
-    ok, errors = plugin_manager.update_plugin(
+    ok, errors = await asyncio.to_thread(
+        plugin_manager.update_plugin,
         body.distribution_name,
         actor,
         client_ip,
@@ -159,7 +168,8 @@ async def update_plugin(body: UpdateRequest, request: Request) -> JSONResponse:
 async def update_all_plugins(request: Request) -> JSONResponse:
     """Update all installed plugins that have available updates."""
     actor, client_ip, user_agent = _actor(request)
-    updated, failed, details = plugin_manager.update_all_plugins(
+    updated, failed, details = await asyncio.to_thread(
+        plugin_manager.update_all_plugins,
         actor,
         client_ip,
         user_agent,
