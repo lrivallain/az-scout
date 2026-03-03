@@ -386,6 +386,7 @@ select.no-arrow {
 .confidence-medium { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
 .confidence-low { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 .confidence-very-low { background: #f5c6cb; color: #721c24; border: 1px solid #f1b0b7; }
+.confidence-blocked { background: #f8d7da; color: #58151c; border: 1px solid #f1aeb5; }
 
 /* ---- Confidence breakdown / VM profile inside pricing modal ---- */
 .confidence-section {
@@ -548,6 +549,7 @@ select.no-arrow {
 [data-bs-theme="dark"] .confidence-medium { background: #4a3c00; color: #ffe066; border-color: #6b5700; }
 [data-bs-theme="dark"] .confidence-low { background: #4a1c1e; color: #f5a3a7; border-color: #6b2a2d; }
 [data-bs-theme="dark"] .confidence-very-low { background: #3b1c1e; color: #f5a3a7; border-color: #5c2426; }
+[data-bs-theme="dark"] .confidence-blocked { background: #4a1a1e; color: #f5a3a7; border-color: #6c2428; }
 [data-bs-theme="dark"] .vm-badge-yes { background: #1e4620; color: #a3d9a5; }
 [data-bs-theme="dark"] .vm-badge-no { background: #4a1c1e; color: #f5a3a7; }
 [data-bs-theme="dark"] .vm-badge-limited { background: #4a3c00; color: #ffe066; }

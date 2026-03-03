@@ -56,6 +56,7 @@ The MCP server (`mcp_server.py`) exposes these tools. When calling them, use the
 | `list_regions` | `subscription_id?`, `tenant_id?` | List AZ-enabled regions |
 | `get_zone_mappings` | `region`, `subscription_ids`, `tenant_id?` | Logical-to-physical zone mappings |
 | `get_sku_availability` | `region`, `subscription_id`, `tenant_id?`, `resource_type?`, `name?`, `family?`, `min_vcpus?`, `max_vcpus?`, `min_memory_gb?`, `max_memory_gb?` | SKU availability per zone |
+| `get_sku_deployment_confidence` | `region`, `subscription_id`, `skus`, `prefer_spot?`, `instance_count?`, `include_signals?`, `include_provenance?`, `tenant_id?` | Deployment confidence scoring per SKU |
 
 ### `get_sku_availability` filter parameters
 

@@ -50,7 +50,7 @@ Your browser opens automatically at `http://127.0.0.1:5001`.
 
 ## Known plugins
 
-az-scout can be extended with pip-installable plugins discovered automatically at startup. See [docs/plugins.md](docs/plugins.md) for the plugin development guide and the [scaffold](docs/plugin-scaffold/) for a ready-to-use template.
+az-scout can be extended with pip-installable plugins discovered automatically at startup. See [docs/PLUGINS.md](docs/PLUGINS.md) for the plugin development guide and the [scaffold](docs/plugin-scaffold/) for a ready-to-use template.
 
 | Plugin | Description |
 |---|---|
@@ -206,14 +206,12 @@ An [MCP](https://modelcontextprotocol.io/) server is included, allowing AI agent
 | `list_subscriptions` | List enabled subscriptions (optionally scoped to a tenant) |
 | `list_regions` | List regions that support Availability Zones |
 | `get_zone_mappings` | Get logical→physical zone mappings for subscriptions in a region |
-| `get_sku_availability` | Get VM SKU availability per zone with restrictions, capabilities, and vCPU quota per family |
+| `get_sku_availability` | Get VM SKU availability per zone with restrictions, capabilities, quota, and deployment confidence |
 | `get_spot_scores` | Get Spot Placement Scores (High / Medium / Low) for a list of VM sizes in a region |
+| `get_sku_deployment_confidence` | Compute Deployment Confidence Scores (0–100) for one or more VM SKUs with full signal breakdown |
 | `get_sku_pricing_detail` | Get detailed Linux pricing (PayGo, Spot, RI 1Y/3Y, SP 1Y/3Y) and VM profile for a single SKU |
 
 > **Plugin tools:** Plugins can register additional MCP tools. For example, the [Strategy Advisor plugin](https://github.com/lrivallain/az-scout-plugin-strategy-advisor) adds a `capacity_strategy` tool.
-
-`get_sku_availability` supports optional filters to reduce output size:
-`name`, `family`, `min_vcpus`, `max_vcpus`, `min_memory_gb`, `max_memory_gb`.
 
 #### stdio transport (default – for Claude Desktop, VS Code, etc.)
 

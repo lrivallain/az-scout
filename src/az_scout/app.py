@@ -533,7 +533,11 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
                 )
             elif body.preferSpot and not sku_spot_zones and not warnings:
                 warnings.append(f"No Spot Placement Score data available for '{sku_name}'.")
-            sig = signals_from_sku(sku_data, spot_score_label=spot_label)
+            sig = signals_from_sku(
+                sku_data,
+                spot_score_label=spot_label,
+                instance_count=body.instanceCount,
+            )
             result = compute_deployment_confidence(sig)
 
             entry: dict = {

@@ -7,13 +7,13 @@ recomputation is permitted.
 
 Score types
 -----------
-**Basic** (default):  Four signals – quota, zones, restrictions, price
-pressure.  Spot Placement is *excluded* (``spot_score_label=None``) and
-the remaining weights are renormalised.  This is what appears in the SKU
-table listing and the default modal view.
+**Basic** (default):  Four signals – quotaPressure, zones,
+restrictionDensity, pricePressure.  Spot Placement is *excluded*
+(``spot_score_label=None``) and the remaining weights are renormalised.
+This is what appears in the SKU table listing and the default modal view.
 
-**Basic + Spot**:  Same five signals as v1 – quota, spot, zones,
-restrictions, price pressure.  Activated when the caller supplies a
+**Basic + Spot**:  All five signals – quotaPressure, spot, zones,
+restrictionDensity, pricePressure.  Activated when the caller supplies a
 ``spot_score_label`` to ``signals_from_sku`` (typically after fetching
 Spot Placement Scores with a specific instance count).
 
@@ -24,11 +24,11 @@ Missing signals are excluded and the remaining weights are renormalised so
 the score stays meaningful.
 
 Weights (sum = 1.0):
-    quota          0.25     Quota headroom relative to vCPU demand
-    spot           0.35     Spot Placement Score (Azure API)
-    zones          0.15     Available (non-restricted) AZ breadth
-    restrictions   0.15     Whether any subscription/zone restrictions exist
-    pricePressure  0.10     Spot-to-PAYGO price ratio
+    quotaPressure      0.25   Demand-adjusted, non-linear quota pressure (Protean-inspired)
+    spot               0.35   Spot Placement Score (Azure API)
+    zones              0.15   Available (non-restricted) AZ breadth
+    restrictionDensity 0.15   Fraction of zones *not* restricted
+    pricePressure      0.10   Spot-to-PAYGO price ratio
 
 Label mapping:
     >=80  High
@@ -55,18 +55,13 @@ from typing import Any
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
-# Version – bump when weights or normalisation rules change
-# ---------------------------------------------------------------------------
-SCORING_VERSION = "v2"
-
-# ---------------------------------------------------------------------------
 # Weights (must sum to 1.0)
 # ---------------------------------------------------------------------------
 WEIGHTS: dict[str, float] = {
-    "quota": 0.25,
+    "quotaPressure": 0.25,
     "spot": 0.35,
     "zones": 0.15,
-    "restrictions": 0.15,
+    "restrictionDensity": 0.15,
     "pricePressure": 0.10,
 }
 
@@ -106,11 +101,24 @@ class DeploymentSignals(BaseModel):
     treated as missing and excluded from the score (with renormalisation).
     """
 
+    # Quota pressure (v3) – replaces old linear quota headroom
+    quota_used_vcpu: int | None = None
+    quota_limit_vcpu: int | None = None
     quota_remaining_vcpu: int | None = None
     vcpus: int | None = None
+    instance_count: int = 1
+
+    # Spot
     spot_score_label: str | None = None
+
+    # Zones
     zones_available_count: int | None = None
-    restrictions_present: bool | None = None
+    zones_total_count: int | None = None
+
+    # Restriction density (v3) – replaces old binary restrictions
+    restricted_zones_count: int | None = None
+
+    # Pricing
     paygo_price: float | None = None
     spot_price: float | None = None
 
@@ -140,7 +148,6 @@ class Provenance(BaseModel):
     """Traceability metadata."""
 
     computedAtUtc: str
-    scoringVersion: str
     cacheTtlSeconds: int | None = None
 
 
@@ -149,12 +156,12 @@ class DeploymentConfidenceResult(BaseModel):
 
     score: int
     label: str
-    scoreType: str  # "basic" | "basic+spot"
+    scoreType: str  # "basic" | "basic+spot" | "blocked"
     breakdown: BreakdownDetail
     missingSignals: list[str]
+    knockoutReasons: list[str]
     disclaimers: list[str]
     provenance: Provenance
-    scoringVersion: str
 
 
 # ===================================================================
@@ -162,13 +169,50 @@ class DeploymentConfidenceResult(BaseModel):
 # ===================================================================
 
 
-def _normalize_quota(remaining: int | None, vcpus: int | None) -> float | None:
-    """Quota headroom: remaining_vcpus / vcpus_per_vm, capped at 10 VMs."""
+def _normalize_quota_pressure(
+    used: int | None,
+    limit: int | None,
+    remaining: int | None,
+    vcpus: int | None,
+    instance_count: int = 1,
+) -> float | None:
+    """Demand-adjusted, non-linear quota usage pressure (Protean-inspired).
+
+    Combines two perspectives:
+    1. **Hard headroom** – can the requested fleet fit?
+    2. **Projected usage band** – non-linear penalty based on utilisation
+       *after* accounting for the requested deployment.
+
+    The ``instance_count`` parameter makes the score demand-aware: deploying
+    10×16-vCPU VMs into a 100-vCPU quota is far more critical than deploying 1.
+    When ``instance_count`` is 1 (the default), behaviour is identical to pure
+    supply-side pressure.
+
+    Bands (projected_usage = (used + vcpus × instance_count) / limit):
+        projected < 60%  → 1.0  (healthy)
+        projected < 80%  → 0.7  (moderate pressure)
+        projected < 95%  → 0.3  (danger zone)
+        projected ≥ 95%  → 0.1  (critical)
+        remaining < fleet → 0.0  (hard failure, regardless of band)
+    """
     if remaining is None or vcpus is None:
         return None
-    if remaining <= 0:
+    fleet_vcpus = max(vcpus, 1) * max(instance_count, 1)
+    # Hard failure: cannot fit the requested fleet
+    if remaining < fleet_vcpus:
         return 0.0
-    return min(remaining / max(vcpus, 1) / 10.0, 1.0)
+    # Need used & limit for pressure bands
+    if used is None or limit is None or limit <= 0:
+        # Fall back to simple headroom when usage data is missing
+        return min(remaining / fleet_vcpus / 10.0, 1.0)
+    projected_usage = (used + fleet_vcpus) / limit
+    if projected_usage < 0.60:
+        return 1.0
+    if projected_usage < 0.80:
+        return 0.7
+    if projected_usage < 0.95:
+        return 0.3
+    return 0.1
 
 
 # Labels from the Azure Spot Placement Scores API that mean
@@ -208,11 +252,27 @@ def _normalize_zones(zones_available_count: int | None) -> float | None:
     return min(zones_available_count / 3.0, 1.0)
 
 
-def _normalize_restrictions(restrictions_present: bool | None) -> float | None:
-    """Binary: no restrictions → 1.0, any restriction → 0.0."""
-    if restrictions_present is None:
+def _normalize_restriction_density(
+    restricted_count: int | None,
+    total_count: int | None,
+) -> float | None:
+    """Fraction of zones that are *not* restricted.
+
+    Replaces the old binary signal: a SKU restricted in 1 of 3 zones now
+    scores 0.67 instead of 0.0.
+
+    Returns:
+        1.0 – no restrictions
+        0.67 – 1 of 3 zones restricted
+        0.33 – 2 of 3 zones restricted
+        0.0 – all zones restricted
+        None – data unavailable
+    """
+    if restricted_count is None or total_count is None:
         return None
-    return 0.0 if restrictions_present else 1.0
+    if total_count <= 0:
+        return 0.0
+    return max(0.0, 1.0 - restricted_count / total_count)
 
 
 def _normalize_price_pressure(
@@ -229,24 +289,20 @@ def _normalize_price_pressure(
     return max(0.0, min(1.0, (0.8 - ratio) / 0.6))
 
 
-# Mapping: signal name → (normalizer callable, missing-reason text)
-_NORMALIZERS: dict[str, tuple[str, str]] = {
-    "quota": ("_do_quota", "quota_remaining_vcpu or vcpus not provided"),
-    "spot": ("_do_spot", "spot_score_label not provided"),
-    "zones": ("_do_zones", "zones_available_count not provided"),
-    "restrictions": ("_do_restrictions", "restrictions_present not provided"),
-    "pricePressure": ("_do_price", "paygo_price or spot_price not provided"),
-}
-
-
 def _compute_normalized(
     signals: DeploymentSignals,
 ) -> dict[str, tuple[float | None, str]]:
     """Return ``{name: (normalised_value_or_None, missing_reason)}``."""
     return {
-        "quota": (
-            _normalize_quota(signals.quota_remaining_vcpu, signals.vcpus),
-            "quota_remaining_vcpu or vcpus not provided",
+        "quotaPressure": (
+            _normalize_quota_pressure(
+                signals.quota_used_vcpu,
+                signals.quota_limit_vcpu,
+                signals.quota_remaining_vcpu,
+                signals.vcpus,
+                signals.instance_count,
+            ),
+            "quota data or vcpus not provided",
         ),
         "spot": (
             _normalize_spot(signals.spot_score_label),
@@ -256,15 +312,50 @@ def _compute_normalized(
             _normalize_zones(signals.zones_available_count),
             "zones_available_count not provided",
         ),
-        "restrictions": (
-            _normalize_restrictions(signals.restrictions_present),
-            "restrictions_present not provided",
+        "restrictionDensity": (
+            _normalize_restriction_density(
+                signals.restricted_zones_count,
+                signals.zones_total_count,
+            ),
+            "restricted_zones_count or zones_total_count not provided",
         ),
         "pricePressure": (
             _normalize_price_pressure(signals.paygo_price, signals.spot_price),
             "paygo_price or spot_price not provided",
         ),
     }
+
+
+# ===================================================================
+# Knockout checks — hard blockers that force score to 0
+# ===================================================================
+
+
+def _check_knockouts(signals: DeploymentSignals) -> list[str]:
+    """Return a list of knockout reasons (empty if deployment is feasible).
+
+    Knockout conditions represent **impossible** deployments — situations
+    where the Azure ARM API would deterministically reject the request.
+    Unlike low signal scores (which reduce confidence), knockouts force
+    the overall score to 0 with label ``Blocked``.
+
+    Current knockouts:
+    - Quota exhausted: ``remaining < vcpus × instance_count``
+    - No zones available: ``zones_available_count == 0``
+    """
+    reasons: list[str] = []
+    # Quota knockout: fleet cannot fit
+    if signals.quota_remaining_vcpu is not None and signals.vcpus is not None and signals.vcpus > 0:
+        fleet = signals.vcpus * max(signals.instance_count, 1)
+        if signals.quota_remaining_vcpu < fleet:
+            reasons.append(
+                f"Insufficient quota: {signals.quota_remaining_vcpu} vCPUs remaining, "
+                f"{fleet} required ({signals.vcpus} × {max(signals.instance_count, 1)})"
+            )
+    # Zone knockout: no available zone
+    if signals.zones_available_count is not None and signals.zones_available_count == 0:
+        reasons.append("No availability zones available (all zones restricted or SKU not offered)")
+    return reasons
 
 
 # ===================================================================
@@ -291,6 +382,9 @@ def compute_deployment_confidence(
     """
     normalized = _compute_normalized(signals)
 
+    # ----- knockout gate: hard blockers → score 0, label Blocked ------
+    knockout_reasons = _check_knockouts(signals)
+
     # ----- identify used vs missing -----------------------------------
     missing_signals: list[str] = []
     used_weights_sum = 0.0
@@ -306,19 +400,26 @@ def compute_deployment_confidence(
 
     # ----- determine score type ---------------------------------------
     has_spot = "spot" not in missing_signals
-    score_type = "basic+spot" if has_spot else "basic"
+    score_type: str
+    if knockout_reasons:
+        score_type = "blocked"
+    elif has_spot:
+        score_type = "basic+spot"
+    else:
+        score_type = "basic"
 
     # ----- too few signals → Unknown ---------------------------------
     if signals_available < MIN_SIGNALS:
         all_components = _build_all_missing_components(normalized)
         return _make_result(
             score=0,
-            label="Unknown",
+            label="Blocked" if knockout_reasons else "Unknown",
             score_type=score_type,
             components=all_components,
             weights_used_sum=0.0,
             renormalized=False,
             missing_signals=missing_signals,
+            knockout_reasons=knockout_reasons,
         )
 
     # ----- weighted sum with renormalisation --------------------------
@@ -357,6 +458,19 @@ def compute_deployment_confidence(
 
     score = round(weighted_sum * 100)
 
+    # ----- knockout override ------------------------------------------
+    if knockout_reasons:
+        return _make_result(
+            score=0,
+            label="Blocked",
+            score_type=score_type,
+            components=components,
+            weights_used_sum=round(used_weights_sum, 4),
+            renormalized=renormalized,
+            missing_signals=missing_signals,
+            knockout_reasons=knockout_reasons,
+        )
+
     # ----- label mapping ----------------------------------------------
     label = "Very Low"
     for threshold, lbl in LABEL_THRESHOLDS:
@@ -372,6 +486,7 @@ def compute_deployment_confidence(
         weights_used_sum=round(used_weights_sum, 4),
         renormalized=renormalized,
         missing_signals=missing_signals,
+        knockout_reasons=knockout_reasons,
     )
 
 
@@ -407,6 +522,7 @@ def signals_from_sku(
     sku: dict[str, Any],
     *,
     spot_score_label: str | None = None,
+    instance_count: int = 1,
 ) -> DeploymentSignals:
     """Build ``DeploymentSignals`` from a raw SKU dict (as returned by ``azure_api``)."""
     caps = sku.get("capabilities", {})
@@ -423,11 +539,15 @@ def signals_from_sku(
     available_zones = [z for z in zones if z not in restrictions]
 
     return DeploymentSignals(
+        quota_used_vcpu=quota.get("used"),
+        quota_limit_vcpu=quota.get("limit"),
         quota_remaining_vcpu=quota.get("remaining"),
         vcpus=vcpus,
+        instance_count=instance_count,
         spot_score_label=spot_score_label,
         zones_available_count=len(available_zones),
-        restrictions_present=len(restrictions) > 0 if restrictions is not None else None,
+        zones_total_count=len(zones),
+        restricted_zones_count=len(restrictions),
         paygo_price=pricing.get("paygo") if pricing else None,
         spot_price=pricing.get("spot") if pricing else None,
     )
@@ -480,6 +600,7 @@ def _make_result(
     weights_used_sum: float,
     renormalized: bool,
     missing_signals: list[str],
+    knockout_reasons: list[str] | None = None,
 ) -> DeploymentConfidenceResult:
     return DeploymentConfidenceResult(
         score=score,
@@ -492,10 +613,9 @@ def _make_result(
             renormalized=renormalized,
         ),
         missingSignals=missing_signals,
+        knockoutReasons=knockout_reasons or [],
         disclaimers=list(DISCLAIMERS),
         provenance=Provenance(
             computedAtUtc=datetime.datetime.now(datetime.UTC).isoformat(),
-            scoringVersion=SCORING_VERSION,
         ),
-        scoringVersion=SCORING_VERSION,
     )

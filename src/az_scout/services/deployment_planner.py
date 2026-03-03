@@ -179,8 +179,12 @@ def _evaluate_sku(
     confidence_result = compute_deployment_confidence(
         DeploymentSignals(
             vcpus=vcpu_per_vm,
+            instance_count=instance_count,
             zones_available_count=zones_count,
-            restrictions_present=restrictions_present,
+            zones_total_count=len(zones),
+            restricted_zones_count=len(restrictions),
+            quota_used_vcpu=quota_data.get("used"),
+            quota_limit_vcpu=quota_data.get("limit"),
             quota_remaining_vcpu=remaining,
             spot_score_label=conf_spot_label,
             paygo_price=pricing_data.get("paygo"),

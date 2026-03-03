@@ -257,7 +257,7 @@ def get_spot_scores(
 
 
 @mcp.tool()
-def deployment_confidence(
+def get_sku_deployment_confidence(
     region: Annotated[str, Field(description="Azure region name (e.g. eastus).")],
     subscription_id: Annotated[str, Field(description="Subscription ID to query.")],
     skus: Annotated[list[str], Field(description="List of VM SKU names to score.")],
@@ -339,7 +339,11 @@ def deployment_confidence(
         elif prefer_spot and not sku_spot_zones and not warnings:
             warnings.append(f"No Spot Placement Score data available for '{sku_name}'.")
 
-        sig = signals_from_sku(sku_data, spot_score_label=spot_label)
+        sig = signals_from_sku(
+            sku_data,
+            spot_score_label=spot_label,
+            instance_count=instance_count,
+        )
         result = compute_deployment_confidence(sig)
 
         exclude: set[str] = set()

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
+## [Unreleased]
+
+### Changed
+
+- **Deployment Confidence Scoring** – reworked scoring signals for better accuracy (#36):
+  - Replaced `quota` with **Quota Pressure** (`quotaPressure`) – non-linear bands that penalise
+    heavily above 80% family usage and when remaining vCPUs cannot fit the requested instance count.
+  - Replaced `restrictions` with **Restriction Density** (`restrictionDensity`) – per-zone
+    granularity instead of a binary flag, so partial restrictions reduce the score proportionally.
+  - Added **knockout layer** – hard blockers (zero quota headroom, zero available zones) force
+    score = 0, label = "Blocked", `scoreType = "blocked"` with explicit `knockoutReasons`.
+  - `instanceCount` parameter now affects quota pressure calculation (demand-adjusted).
+- **Frontend JS split** – monolithic `app.js` (3 000+ lines) split into four domain-specific files:
+  `app.js` (core), `az-mapping.js` (topology), `planner.js` (deployment planner), `chat.js`
+  (AI chat panel).
+- **Spot Placement Score cache TTL** increased from 10 minutes to 1 hour to reduce pressure on the
+  rate-limited Azure API.
+
+### Removed
+
+- Removed `scoringVersion` field from scoring results and provenance – no longer maintained.
+
 
 ## [2026.3.1] - 2026-03-02
 
@@ -54,8 +76,6 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
   [`az-scout-plugin-strategy-advisor`](https://github.com/lrivallain/az-scout-plugin-strategy-advisor).
 - Use calver in the plugin scaffold structure.
 - Plugin Manager UI: validate/install/uninstall from GitHub repos (#50).
-
-## [Unreleased]
 
 ## [2026.2.8] - 2026-02-28
 

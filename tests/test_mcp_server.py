@@ -401,12 +401,12 @@ class TestMcpGetSpotScores:
 
 
 # ---------------------------------------------------------------------------
-# deployment_confidence
+# get_sku_deployment_confidence
 # ---------------------------------------------------------------------------
 
 
 class TestMcpDeploymentConfidence:
-    """Tests for the deployment_confidence MCP tool."""
+    """Tests for the get_sku_deployment_confidence MCP tool."""
 
     @pytest.mark.anyio()
     async def test_basic_confidence(self, _mock_credential):
@@ -436,7 +436,7 @@ class TestMcpDeploymentConfidence:
             patch("az_scout.azure_api.enrich_skus_with_prices"),
         ):
             content, _ = await mcp.call_tool(
-                "deployment_confidence",
+                "get_sku_deployment_confidence",
                 {
                     "region": "eastus",
                     "subscription_id": "sub-1",
@@ -486,7 +486,7 @@ class TestMcpDeploymentConfidence:
             patch("az_scout.azure_api.get_spot_placement_scores", return_value=mock_spot),
         ):
             content, _ = await mcp.call_tool(
-                "deployment_confidence",
+                "get_sku_deployment_confidence",
                 {
                     "region": "eastus",
                     "subscription_id": "sub-1",
@@ -509,7 +509,7 @@ class TestMcpDeploymentConfidence:
             patch("az_scout.azure_api.enrich_skus_with_prices"),
         ):
             content, _ = await mcp.call_tool(
-                "deployment_confidence",
+                "get_sku_deployment_confidence",
                 {
                     "region": "eastus",
                     "subscription_id": "sub-1",
@@ -549,7 +549,7 @@ class TestMcpDeploymentConfidence:
             patch("az_scout.azure_api.enrich_skus_with_prices"),
         ):
             content, _ = await mcp.call_tool(
-                "deployment_confidence",
+                "get_sku_deployment_confidence",
                 {
                     "region": "eastus",
                     "subscription_id": "sub-1",
