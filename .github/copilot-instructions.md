@@ -16,18 +16,42 @@
 
 ```
 src/az_scout/
-├── azure_api.py      # Shared Azure ARM logic (auth, pagination, data functions)
-├── app.py            # FastAPI routes, CLI entry point (thin wrappers over azure_api)
-├── mcp_server.py     # MCP server exposing tools (thin wrappers over azure_api)
+├── app.py              # FastAPI bootstrap, lifespan, MCP mount, index + chat routes
+├── logging_config.py   # Unified coloured logging (shared by core + plugins)
+├── cli.py              # Click CLI (web + mcp subcommands)
+├── plugin_api.py       # Public protocol + dataclasses for plugin authors
+├── plugin_manager.py   # Install/validate/uninstall plugins (GitHub + PyPI)
+├── plugins.py          # Plugin discovery, registration, hot-reload
+├── azure_api/          # Shared Azure ARM logic (auth, pagination, data functions)
+│   ├── __init__.py     # Public API surface (PLUGIN_API_VERSION, __all__)
+│   ├── discovery.py    # Tenants, subscriptions, regions
+│   ├── skus.py         # SKU catalogue + zone mappings
+│   ├── pricing.py      # Retail prices API
+│   ├── quotas.py       # Compute usage / quota
+│   └── spot.py         # Spot Placement Scores
+├── scoring/            # Deployment Confidence Score (shared by plugins)
+├── services/           # Business logic (deployment planner, AI chat, etc.)
+├── models/             # Pydantic models (deployment plan)
+├── routes/
+│   ├── __init__.py     # Plugin manager API routes
+│   └── discovery.py    # Discovery routes (tenants, subscriptions, regions, locations)
+├── internal_plugins/
+│   ├── __init__.py     # discover_internal_plugins()
+│   ├── topology/       # AZ Topology tab (routes, MCP tool, JS, CSS, HTML)
+│   └── planner/        # Deployment Planner tab (routes, MCP tools, JS, CSS, HTML, ChatMode)
 ├── templates/
-│   └── index.html    # Single-page Jinja2 template
+│   └── index.html      # Single-page Jinja2 template (dynamic plugin tabs)
 └── static/
-    ├── js/app.js     # All frontend logic (D3 graph, table, filters, theme)
-    ├── css/style.css  # Styles with CSS variables for light/dark mode
-    └── img/           # SVG icons (favicon, filter icons)
+    ├── js/app.js       # Core frontend logic (shared utilities, init)
+    ├── js/chat.js      # AI chat panel
+    ├── js/plugins.js   # Plugin Manager UI
+    ├── css/style.css   # Core + chat styles (plugin CSS loaded via TabDefinition)
+    └── img/            # SVG icons (favicon, filter icons)
 tests/
-├── test_routes.py    # pytest tests for FastAPI routes (mocked Azure API)
-└── test_mcp_server.py # pytest tests for MCP tools
+├── test_routes.py      # pytest tests for FastAPI routes (mocked Azure API)
+├── test_mcp_server.py  # pytest tests for MCP tools
+├── test_plugins.py     # pytest tests for plugin system
+└── e2e/                # Playwright E2E tests
 ```
 
 ## Code conventions
@@ -47,16 +71,18 @@ tests/
 
 ## MCP tools reference
 
-The MCP server (`mcp_server.py`) exposes these tools. When calling them, use the **exact parameter names** listed below.
+The MCP server exposes discovery tools directly (in `mcp_server.py`) and feature-specific
+tools via internal plugins (topology, planner). When calling them, use the **exact parameter
+names** listed below.
 
-| Tool | Parameters | Description |
-|---|---|---|
-| `list_tenants` | *(none)* | List Azure AD tenants with auth status |
-| `list_subscriptions` | `tenant_id?` | List enabled subscriptions |
-| `list_regions` | `subscription_id?`, `tenant_id?` | List AZ-enabled regions |
-| `get_zone_mappings` | `region`, `subscription_ids`, `tenant_id?` | Logical-to-physical zone mappings |
-| `get_sku_availability` | `region`, `subscription_id`, `tenant_id?`, `resource_type?`, `name?`, `family?`, `min_vcpus?`, `max_vcpus?`, `min_memory_gb?`, `max_memory_gb?` | SKU availability per zone |
-| `get_sku_deployment_confidence` | `region`, `subscription_id`, `skus`, `prefer_spot?`, `instance_count?`, `include_signals?`, `include_provenance?`, `tenant_id?` | Deployment confidence scoring per SKU |
+| Tool | Source | Parameters | Description |
+|---|---|---|---|
+| `list_tenants` | core | *(none)* | List Azure AD tenants with auth status |
+| `list_subscriptions` | core | `tenant_id?` | List enabled subscriptions |
+| `list_regions` | core | `subscription_id?`, `tenant_id?` | List AZ-enabled regions |
+| `get_zone_mappings` | topology plugin | `region`, `subscription_ids`, `tenant_id?` | Logical-to-physical zone mappings |
+| `get_sku_availability` | planner plugin | `region`, `subscription_id`, `tenant_id?`, `resource_type?`, `name?`, `family?`, `min_vcpus?`, `max_vcpus?`, `min_memory_gb?`, `max_memory_gb?` | SKU availability per zone |
+| `get_sku_deployment_confidence` | planner plugin | `region`, `subscription_id`, `skus`, `prefer_spot?`, `instance_count?`, `include_signals?`, `include_provenance?`, `tenant_id?` | Deployment confidence scoring per SKU |
 
 ### `get_sku_availability` filter parameters
 
@@ -245,7 +271,7 @@ strict = true
 
 ### Do
 
-- Reuse `azure_api.py` for all Azure ARM interactions.
+- Reuse `azure_api/` for all Azure ARM interactions.
 - Keep FastAPI routes as thin wrappers.
 - Keep MCP tools as thin wrappers over `azure_api`.
 - Include full type annotations on all public functions.
@@ -253,8 +279,8 @@ strict = true
 
 ### Do NOT
 
-- Do NOT call Azure ARM APIs directly from `app.py` or `mcp_server.py`.
-- Do NOT duplicate Azure API logic outside `azure_api.py`.
+- Do NOT call Azure ARM APIs directly from route handlers or MCP tools.
+- Do NOT duplicate Azure API logic outside `azure_api/`.
 - Do NOT introduce frontend frameworks, npm, or build tooling.
 - Do NOT introduce global mutable state.
 - Do NOT perform heavy imports at module import time.
@@ -264,8 +290,10 @@ strict = true
 
 ## Backend design principles
 
-- All business logic lives in `azure_api.py`.
-- `app.py` and `mcp_server.py` contain no business logic.
+- All Azure ARM logic lives in `azure_api/`.
+- Scoring logic lives in `scoring/` (shared by internal + external plugins).
+- `app.py` is bootstrap-only — routes live in `routes/` or internal plugins.
+- `mcp_server.py` contains only core discovery tools — feature tools live in internal plugins.
 - Per-subscription failures must not break global execution.
 - Functions must be deterministic and side-effect free unless explicitly documented.
 - No hidden state between requests.

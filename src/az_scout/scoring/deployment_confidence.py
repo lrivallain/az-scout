@@ -619,3 +619,15 @@ def _make_result(
             computedAtUtc=datetime.datetime.now(datetime.UTC).isoformat(),
         ),
     )
+
+
+def enrich_skus_with_confidence(skus: list[dict[str, Any]]) -> None:
+    """Add a ``confidence`` dict to each SKU in *skus* in place.
+
+    Convenience wrapper around :func:`signals_from_sku` +
+    :func:`compute_deployment_confidence` to reduce boilerplate in
+    route handlers and MCP tools.
+    """
+    for sku in skus:
+        sig = signals_from_sku(sku)
+        sku["confidence"] = compute_deployment_confidence(sig).model_dump()

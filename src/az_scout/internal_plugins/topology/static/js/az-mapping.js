@@ -318,7 +318,7 @@ function highlightSub(subIdx, validData) {
     d3.selectAll(".sub-group").style("opacity", function () { return +d3.select(this).attr("data-sub") === subIdx ? 1 : 0.25; });
     d3.selectAll(".lz-node-group").style("opacity", function () { return +d3.select(this).attr("data-sub") === subIdx ? 1 : 0.25; });
     const targetPZs = new Set();
-    if (validData?.[subIdx]) validData[subIdx].mappings.forEach(m => targetPZs.add(m.physicalZone));
+    if (validData?.[subIdx]) validData[subIdx].mappings.forEach(m => { targetPZs.add(m.physicalZone); });
     d3.selectAll(".pz-node-group").style("opacity", function () { return targetPZs.has(d3.select(this).attr("data-pz")) ? 1 : 0.25; });
 }
 

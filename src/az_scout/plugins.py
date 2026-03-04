@@ -140,7 +140,7 @@ def _register_one(app: FastAPI, mcp_server: Any, plugin: AzScoutPlugin) -> None:
     internal = _is_internal(plugin)
 
     # Configure the plugin's logger to use the same format as core
-    from az_scout.app import setup_plugin_logger
+    from az_scout.logging_config import setup_plugin_logger
 
     setup_plugin_logger(name)
 

@@ -29,6 +29,7 @@ from az_scout.plugin_manager import (
     validate_plugin_repo,
     validate_pypi_plugin,
 )
+from az_scout.plugin_manager import _storage as _pm_storage
 
 # ---------------------------------------------------------------------------
 # Sample data
@@ -138,7 +139,7 @@ class TestValidatePluginRepo:
                 return mock_raw_resp
             return mock_ref_resp
 
-        with patch("az_scout.plugin_manager.requests.get", side_effect=side_effect):
+        with patch("az_scout.plugin_manager._github.requests.get", side_effect=side_effect):
             result = validate_plugin_repo("https://github.com/owner/repo", "v1.0.0")
 
         assert result.ok
@@ -164,7 +165,7 @@ class TestValidatePluginRepo:
                 return mock_raw_resp
             return mock_ref_resp
 
-        with patch("az_scout.plugin_manager.requests.get", side_effect=side_effect):
+        with patch("az_scout.plugin_manager._github.requests.get", side_effect=side_effect):
             result = validate_plugin_repo("https://github.com/owner/repo", SAMPLE_SHA)
 
         assert not result.ok
@@ -187,7 +188,7 @@ class TestValidatePluginRepo:
                 return mock_raw_resp
             return mock_ref_resp
 
-        with patch("az_scout.plugin_manager.requests.get", side_effect=side_effect):
+        with patch("az_scout.plugin_manager._github.requests.get", side_effect=side_effect):
             result = validate_plugin_repo("https://github.com/owner/repo", SAMPLE_SHA)
 
         assert not result.ok
@@ -201,7 +202,7 @@ class TestValidatePluginRepo:
 
 class TestPersistence:
     def test_load_empty(self, tmp_path: Path) -> None:
-        with patch.object(plugin_manager, "_INSTALLED_FILE", tmp_path / "none.json"):
+        with patch.object(_pm_storage, "_INSTALLED_FILE", tmp_path / "none.json"):
             assert load_installed() == []
 
     def test_save_and_load(self, tmp_path: Path) -> None:
@@ -217,8 +218,8 @@ class TestPersistence:
             actor="tester",
         )
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", data_dir),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", data_dir),
         ):
             save_installed([record])
             loaded = load_installed()
@@ -230,8 +231,8 @@ class TestPersistence:
     def test_audit_appends(self, tmp_path: Path) -> None:
         audit_file = tmp_path / "audit.jsonl"
         with (
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
         ):
             plugin_manager.append_audit({"action": "test1"})
             plugin_manager.append_audit({"action": "test2"})
@@ -252,7 +253,7 @@ class TestPersistence:
 class TestPluginRoutes:
     def test_list_plugins(self, client) -> None:  # type: ignore[no-untyped-def]
         with (
-            patch.object(plugin_manager, "load_installed", return_value=[]),
+            patch.object(_pm_storage, "load_installed", return_value=[]),
         ):
             resp = client.get("/api/plugins")
 
@@ -398,7 +399,7 @@ class TestFetchLatestRef:
                 return mock_release_resp
             return mock_ref_resp
 
-        with patch("az_scout.plugin_manager.requests.get", side_effect=side_effect):
+        with patch("az_scout.plugin_manager._github.requests.get", side_effect=side_effect):
             ref, sha = fetch_latest_ref("owner", "repo")
 
         assert ref == "v2.0.0"
@@ -426,7 +427,7 @@ class TestFetchLatestRef:
                 return mock_tags_resp
             return mock_ref_resp
 
-        with patch("az_scout.plugin_manager.requests.get", side_effect=side_effect):
+        with patch("az_scout.plugin_manager._github.requests.get", side_effect=side_effect):
             ref, sha = fetch_latest_ref("owner", "repo")
 
         assert ref == "v1.5.0"
@@ -446,7 +447,7 @@ class TestFetchLatestRef:
             return mock_tags_resp
 
         with (
-            patch("az_scout.plugin_manager.requests.get", side_effect=side_effect),
+            patch("az_scout.plugin_manager._github.requests.get", side_effect=side_effect),
             pytest.raises(ValueError, match="No releases or tags"),
         ):
             fetch_latest_ref("owner", "repo")
@@ -474,7 +475,7 @@ class TestBackwardCompatibility:
         ]
         installed_file.write_text(json.dumps(old_data), encoding="utf-8")
 
-        with patch.object(plugin_manager, "_INSTALLED_FILE", installed_file):
+        with patch.object(_pm_storage, "_INSTALLED_FILE", installed_file):
             loaded = load_installed()
 
         assert len(loaded) == 1
@@ -503,7 +504,7 @@ class TestBackwardCompatibility:
         ]
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
-        with patch.object(plugin_manager, "_INSTALLED_FILE", installed_file):
+        with patch.object(_pm_storage, "_INSTALLED_FILE", installed_file):
             loaded = load_installed()
 
         assert len(loaded) == 1
@@ -569,11 +570,11 @@ class TestCheckUpdates:
         )
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_latest_ref",
+                "az_scout.plugin_manager._operations.fetch_latest_ref",
                 return_value=("v2.0.0", SAMPLE_SHA_2),
             ),
         ):
@@ -601,11 +602,11 @@ class TestCheckUpdates:
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_latest_ref",
+                "az_scout.plugin_manager._operations.fetch_latest_ref",
                 return_value=("v1.0.0", SAMPLE_SHA),
             ),
         ):
@@ -642,14 +643,14 @@ class TestUpdatePlugin:
         mock_uv.stderr = ""
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_latest_ref",
+                "az_scout.plugin_manager._operations.fetch_latest_ref",
                 return_value=("v2.0.0", SAMPLE_SHA_2),
             ),
-            patch("az_scout.plugin_manager.run_pip", return_value=mock_uv),
+            patch("az_scout.plugin_manager._operations.run_pip", return_value=mock_uv),
         ):
             ok, errors = plugin_manager.update_plugin(
                 "az-scout-example", "actor", "127.0.0.1", "test-agent"
@@ -670,9 +671,9 @@ class TestUpdatePlugin:
         installed_file.write_text("[]", encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
         ):
             ok, errors = plugin_manager.update_plugin(
                 "nonexistent", "actor", "127.0.0.1", "test-agent"
@@ -698,11 +699,11 @@ class TestUpdatePlugin:
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_latest_ref",
+                "az_scout.plugin_manager._operations.fetch_latest_ref",
                 return_value=("v1.0.0", SAMPLE_SHA),
             ),
         ):
@@ -734,14 +735,14 @@ class TestUpdatePlugin:
         mock_uv.stderr = "pip error"
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_latest_ref",
+                "az_scout.plugin_manager._operations.fetch_latest_ref",
                 return_value=("v2.0.0", SAMPLE_SHA_2),
             ),
-            patch("az_scout.plugin_manager.run_pip", return_value=mock_uv),
+            patch("az_scout.plugin_manager._operations.run_pip", return_value=mock_uv),
         ):
             ok, errors = plugin_manager.update_plugin(
                 "az-scout-example", "actor", "127.0.0.1", "test-agent"
@@ -787,14 +788,14 @@ class TestUpdateAllPlugins:
         mock_uv.stderr = ""
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_latest_ref",
+                "az_scout.plugin_manager._operations.fetch_latest_ref",
                 side_effect=mock_fetch_latest,
             ),
-            patch("az_scout.plugin_manager.run_pip", return_value=mock_uv),
+            patch("az_scout.plugin_manager._operations.run_pip", return_value=mock_uv),
         ):
             updated, failed, details = plugin_manager.update_all_plugins(
                 "actor", "127.0.0.1", "test-agent"
@@ -917,9 +918,11 @@ class TestRunPip:
         mock_proc.returncode = 0
 
         with (
-            patch.object(plugin_manager, "_PACKAGES_DIR", pkg_dir),
-            patch("az_scout.plugin_manager._find_uv", return_value="/usr/bin/uv"),
-            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+            patch.object(_pm_storage, "_PACKAGES_DIR", pkg_dir),
+            patch("az_scout.plugin_manager._installer._find_uv", return_value="/usr/bin/uv"),
+            patch(
+                "az_scout.plugin_manager._installer.subprocess.run", return_value=mock_proc
+            ) as mock_run,
         ):
             plugin_manager.run_pip(["pip", "install", "some-pkg"])
 
@@ -937,9 +940,11 @@ class TestRunPip:
         mock_proc.returncode = 0
 
         with (
-            patch.object(plugin_manager, "_PACKAGES_DIR", pkg_dir),
-            patch("az_scout.plugin_manager._find_uv", return_value=None),
-            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+            patch.object(_pm_storage, "_PACKAGES_DIR", pkg_dir),
+            patch("az_scout.plugin_manager._installer._find_uv", return_value=None),
+            patch(
+                "az_scout.plugin_manager._installer.subprocess.run", return_value=mock_proc
+            ) as mock_run,
         ):
             plugin_manager.run_pip(["pip", "install", "some-pkg"])
 
@@ -958,9 +963,11 @@ class TestRunPip:
         mock_proc.returncode = 0
 
         with (
-            patch.object(plugin_manager, "_PACKAGES_DIR", pkg_dir),
-            patch("az_scout.plugin_manager._find_uv", return_value=None),
-            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc) as mock_run,
+            patch.object(_pm_storage, "_PACKAGES_DIR", pkg_dir),
+            patch("az_scout.plugin_manager._installer._find_uv", return_value=None),
+            patch(
+                "az_scout.plugin_manager._installer.subprocess.run", return_value=mock_proc
+            ) as mock_run,
         ):
             plugin_manager.run_pip(["pip", "uninstall", "some-pkg"])
 
@@ -976,9 +983,9 @@ class TestRunPip:
         mock_proc.returncode = 0
 
         with (
-            patch.object(plugin_manager, "_PACKAGES_DIR", pkg_dir),
-            patch("az_scout.plugin_manager._find_uv", return_value="/usr/bin/uv"),
-            patch("az_scout.plugin_manager.subprocess.run", return_value=mock_proc),
+            patch.object(_pm_storage, "_PACKAGES_DIR", pkg_dir),
+            patch("az_scout.plugin_manager._installer._find_uv", return_value="/usr/bin/uv"),
+            patch("az_scout.plugin_manager._installer.subprocess.run", return_value=mock_proc),
         ):
             plugin_manager.run_pip(["pip", "install", "some-pkg"])
 
@@ -1009,7 +1016,7 @@ class TestReconcileInstalledPlugins:
 
     def test_no_installed_file(self, tmp_path: Path) -> None:
         """When installed.json does not exist, reconcile returns empty list."""
-        with patch.object(plugin_manager, "_INSTALLED_FILE", tmp_path / "none.json"):
+        with patch.object(_pm_storage, "_INSTALLED_FILE", tmp_path / "none.json"):
             results = reconcile_installed_plugins()
         assert results == []
 
@@ -1017,9 +1024,9 @@ class TestReconcileInstalledPlugins:
         """When all plugins are already installed, no reinstall happens."""
         installed_file = self._make_installed_json(tmp_path, [self._sample_record()])
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
             patch(
-                "az_scout.plugin_manager._is_plugin_installed",
+                "az_scout.plugin_manager._operations._is_plugin_installed",
                 return_value=True,
             ),
         ):
@@ -1038,15 +1045,15 @@ class TestReconcileInstalledPlugins:
         mock_pip.stderr = ""
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
             patch(
-                "az_scout.plugin_manager._is_plugin_installed",
+                "az_scout.plugin_manager._operations._is_plugin_installed",
                 return_value=False,
             ),
             patch(
-                "az_scout.plugin_manager.run_pip",
+                "az_scout.plugin_manager._operations.run_pip",
                 return_value=mock_pip,
             ) as mock_run,
         ):
@@ -1087,15 +1094,15 @@ class TestReconcileInstalledPlugins:
             return mock_fail if call_count == 1 else mock_ok
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
             patch(
-                "az_scout.plugin_manager._is_plugin_installed",
+                "az_scout.plugin_manager._operations._is_plugin_installed",
                 side_effect=lambda name: False,
             ),
             patch(
-                "az_scout.plugin_manager.run_pip",
+                "az_scout.plugin_manager._operations.run_pip",
                 side_effect=run_side_effect,
             ),
         ):
@@ -1165,7 +1172,9 @@ class TestFetchPypiMetadata:
         mock_resp = MagicMock()
         mock_resp.json.return_value = SAMPLE_PYPI_RESPONSE
         mock_resp.raise_for_status = MagicMock()
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp) as mock_get:
+        with patch(
+            ("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp
+        ) as mock_get:
             data = fetch_pypi_metadata("az-scout-example")
 
         assert data == SAMPLE_PYPI_RESPONSE
@@ -1176,7 +1185,9 @@ class TestFetchPypiMetadata:
         mock_resp = MagicMock()
         mock_resp.json.return_value = SAMPLE_PYPI_RESPONSE
         mock_resp.raise_for_status = MagicMock()
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp) as mock_get:
+        with patch(
+            ("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp
+        ) as mock_get:
             fetch_pypi_metadata("az-scout-example", "0.1.0")
 
         assert "/az-scout-example/0.1.0/json" in mock_get.call_args[0][0]
@@ -1187,7 +1198,7 @@ class TestValidatePypiPlugin:
         mock_resp = MagicMock()
         mock_resp.json.return_value = SAMPLE_PYPI_RESPONSE
         mock_resp.raise_for_status = MagicMock()
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp):
+        with patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp):
             result = validate_pypi_plugin("az-scout-example")
 
         assert result.ok
@@ -1209,7 +1220,7 @@ class TestValidatePypiPlugin:
             },
         }
         mock_resp.raise_for_status = MagicMock()
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp):
+        with patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp):
             result = validate_pypi_plugin("az-scout-example", "0.1.0")
 
         assert result.ok
@@ -1220,7 +1231,7 @@ class TestValidatePypiPlugin:
         mock_resp.status_code = 404
         http_err = requests.HTTPError(response=mock_resp)
         mock_resp.raise_for_status.side_effect = http_err
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp):
+        with patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp):
             result = validate_pypi_plugin("nonexistent-pkg")
 
         assert not result.ok
@@ -1231,7 +1242,7 @@ class TestValidatePypiPlugin:
         mock_resp.status_code = 404
         http_err = requests.HTTPError(response=mock_resp)
         mock_resp.raise_for_status.side_effect = http_err
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp):
+        with patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp):
             result = validate_pypi_plugin("az-scout-example", "99.99.99")
 
         assert not result.ok
@@ -1248,7 +1259,7 @@ class TestValidatePypiPlugin:
             },
         }
         mock_resp.raise_for_status = MagicMock()
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp):
+        with patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp):
             result = validate_pypi_plugin("some-random-pkg")
 
         assert result.ok
@@ -1265,7 +1276,7 @@ class TestValidatePypiPlugin:
             },
         }
         mock_resp.raise_for_status = MagicMock()
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp):
+        with patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp):
             result = validate_pypi_plugin("az-scout-example")
 
         assert result.ok
@@ -1282,7 +1293,7 @@ class TestFetchPypiLatestVersion:
         mock_resp = MagicMock()
         mock_resp.json.return_value = SAMPLE_PYPI_RESPONSE
         mock_resp.raise_for_status = MagicMock()
-        with patch("az_scout.plugin_manager.requests.get", return_value=mock_resp):
+        with patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp):
             version = fetch_pypi_latest_version("az-scout-example")
 
         assert version == "0.2.0"
@@ -1293,7 +1304,7 @@ class TestFetchPypiLatestVersion:
         http_err = requests.HTTPError(response=mock_resp)
         mock_resp.raise_for_status.side_effect = http_err
         with (
-            patch("az_scout.plugin_manager.requests.get", return_value=mock_resp),
+            patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp),
             pytest.raises(ValueError, match="not found"),
         ):
             fetch_pypi_latest_version("nonexistent")
@@ -1319,11 +1330,11 @@ class TestInstallPypiPlugin:
         mock_pip.stderr = ""
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
-            patch("az_scout.plugin_manager.requests.get", return_value=mock_resp),
-            patch("az_scout.plugin_manager.run_pip", return_value=mock_pip),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
+            patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp),
+            patch("az_scout.plugin_manager._operations.run_pip", return_value=mock_pip),
         ):
             ok, warnings, errors = install_pypi_plugin(
                 "az-scout-example", "", "actor", "127.0.0.1", "test-agent"
@@ -1350,10 +1361,10 @@ class TestInstallPypiPlugin:
         mock_resp.raise_for_status.side_effect = http_err
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
-            patch("az_scout.plugin_manager.requests.get", return_value=mock_resp),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
+            patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp),
         ):
             ok, warnings, errors = install_pypi_plugin(
                 "nonexistent", "", "actor", "127.0.0.1", "test-agent"
@@ -1376,11 +1387,11 @@ class TestInstallPypiPlugin:
         mock_pip.stderr = "pip error"
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
-            patch("az_scout.plugin_manager.requests.get", return_value=mock_resp),
-            patch("az_scout.plugin_manager.run_pip", return_value=mock_pip),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
+            patch(("az_scout.plugin_manager._pypi.requests.get"), return_value=mock_resp),
+            patch("az_scout.plugin_manager._operations.run_pip", return_value=mock_pip),
         ):
             ok, warnings, errors = install_pypi_plugin(
                 "az-scout-example", "", "actor", "127.0.0.1", "test-agent"
@@ -1414,11 +1425,11 @@ class TestCheckUpdatesPypi:
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_pypi_latest_version",
+                "az_scout.plugin_manager._operations.fetch_pypi_latest_version",
                 return_value="0.2.0",
             ),
         ):
@@ -1447,11 +1458,11 @@ class TestCheckUpdatesPypi:
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_pypi_latest_version",
+                "az_scout.plugin_manager._operations.fetch_pypi_latest_version",
                 return_value="0.2.0",
             ),
         ):
@@ -1489,14 +1500,14 @@ class TestUpdatePypiPlugin:
         mock_pip.stderr = ""
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_pypi_latest_version",
+                "az_scout.plugin_manager._operations.fetch_pypi_latest_version",
                 return_value="0.2.0",
             ),
-            patch("az_scout.plugin_manager.run_pip", return_value=mock_pip),
+            patch("az_scout.plugin_manager._operations.run_pip", return_value=mock_pip),
         ):
             ok, errors = plugin_manager.update_plugin(
                 "az-scout-example", "actor", "127.0.0.1", "test-agent"
@@ -1527,11 +1538,11 @@ class TestUpdatePypiPlugin:
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
             patch(
-                "az_scout.plugin_manager.fetch_pypi_latest_version",
+                "az_scout.plugin_manager._operations.fetch_pypi_latest_version",
                 return_value="0.2.0",
             ),
         ):
@@ -1572,11 +1583,11 @@ class TestReconcilePypiPlugin:
         mock_pip.stderr = ""
 
         with (
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
-            patch.object(plugin_manager, "_DATA_DIR", tmp_path),
-            patch.object(plugin_manager, "_AUDIT_FILE", audit_file),
-            patch("az_scout.plugin_manager._is_plugin_installed", return_value=False),
-            patch("az_scout.plugin_manager.run_pip", return_value=mock_pip) as mock_run,
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_DATA_DIR", tmp_path),
+            patch.object(_pm_storage, "_AUDIT_FILE", audit_file),
+            patch("az_scout.plugin_manager._operations._is_plugin_installed", return_value=False),
+            patch("az_scout.plugin_manager._operations.run_pip", return_value=mock_pip) as mock_run,
         ):
             results = reconcile_installed_plugins()
 
@@ -1704,7 +1715,7 @@ class TestSourceBackwardCompat:
         ]
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
-        with patch.object(plugin_manager, "_INSTALLED_FILE", installed_file):
+        with patch.object(_pm_storage, "_INSTALLED_FILE", installed_file):
             loaded = load_installed()
 
         assert len(loaded) == 1
@@ -1727,7 +1738,7 @@ class TestSourceBackwardCompat:
         ]
         installed_file.write_text(json.dumps(data), encoding="utf-8")
 
-        with patch.object(plugin_manager, "_INSTALLED_FILE", installed_file):
+        with patch.object(_pm_storage, "_INSTALLED_FILE", installed_file):
             loaded = load_installed()
 
         assert len(loaded) == 1
@@ -1766,8 +1777,8 @@ class TestLoadRecommendedPlugins:
         installed_file.write_text("[]", encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_RECOMMENDED_FILE", rec_file),
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_RECOMMENDED_FILE", rec_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
         ):
             result = plugin_manager.load_recommended_plugins()
 
@@ -1813,8 +1824,8 @@ class TestLoadRecommendedPlugins:
         )
 
         with (
-            patch.object(plugin_manager, "_RECOMMENDED_FILE", rec_file),
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_RECOMMENDED_FILE", rec_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
         ):
             result = plugin_manager.load_recommended_plugins()
 
@@ -1824,7 +1835,7 @@ class TestLoadRecommendedPlugins:
     def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
         """When the recommended file does not exist, return an empty list."""
         missing = tmp_path / "does_not_exist.json"
-        with patch.object(plugin_manager, "_RECOMMENDED_FILE", missing):
+        with patch.object(_pm_storage, "_RECOMMENDED_FILE", missing):
             result = plugin_manager.load_recommended_plugins()
         assert result == []
 
@@ -1848,8 +1859,8 @@ class TestLoadRecommendedPlugins:
         installed_file.write_text("[]", encoding="utf-8")
 
         with (
-            patch.object(plugin_manager, "_RECOMMENDED_FILE", rec_file),
-            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+            patch.object(_pm_storage, "_RECOMMENDED_FILE", rec_file),
+            patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
         ):
             result = plugin_manager.load_recommended_plugins()
 

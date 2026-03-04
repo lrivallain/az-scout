@@ -29,6 +29,10 @@ jobs:
       - name: Run mypy
         run: uv run --group dev mypy src/
 
+      - name: Lint JavaScript (Biome)
+        uses: biomejs/setup-biome@v2
+      - run: biome lint .
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

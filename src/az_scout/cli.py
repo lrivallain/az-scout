@@ -58,7 +58,8 @@ def web(
 
     import uvicorn
 
-    from az_scout.app import _PKG_DIR, _setup_logging, app
+    from az_scout.app import _PKG_DIR, app
+    from az_scout.logging_config import _setup_logging
 
     log_level = "debug" if verbose else "warning"
     env_level = "DEBUG" if verbose else "WARNING"
@@ -138,7 +139,7 @@ def mcp(http: bool, port: int, verbose: bool) -> None:
     import logging
     import os
 
-    from az_scout.app import _setup_logging
+    from az_scout.logging_config import _setup_logging
     from az_scout.mcp_server import mcp as mcp_server
 
     env_level = "DEBUG" if verbose else "WARNING"

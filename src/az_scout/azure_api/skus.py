@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import requests
 
@@ -18,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 # SKU profile cache
 _SKU_PROFILE_CACHE_TTL = 600  # 10 minutes
-_sku_profile_cache: dict[str, tuple[float, dict | None]] = {}
+_sku_profile_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
 
 # SKU list cache – keyed by (subscription, region, resource_type, tenant)
 _SKU_LIST_CACHE_TTL = 600  # 10 minutes
-_sku_list_cache: dict[str, tuple[float, list[dict]]] = {}
+_sku_list_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 def _sku_name_matches(filter_val: str, sku_name: str) -> bool:
@@ -57,7 +58,7 @@ def _fetch_sku_list(
     subscription_id: str,
     resource_type: str,
     tenant_id: str | None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch the raw SKU list from ARM with retry on timeout."""
     headers = _get_headers(tenant_id)
     # ARM SKU API only reliably supports `location` in $filter.
@@ -104,7 +105,7 @@ def get_skus(
     max_vcpus: int | None = None,
     min_memory_gb: float | None = None,
     max_memory_gb: float | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return resource SKUs with zone/restriction info for *region*.
 
     Optional filters (all case-insensitive substring matches unless noted):
@@ -136,7 +137,7 @@ def get_skus(
     name_lower = name.lower() if name else None
     family_lower = family.lower() if family else None
 
-    filtered: list[dict] = []
+    filtered: list[dict[str, Any]] = []
     for sku in all_skus:
         if sku.get("resourceType") != resource_type:
             continue
@@ -206,10 +207,10 @@ def get_mappings(
     region: str,
     subscription_ids: list[str],
     tenant_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return logical→physical zone mappings per subscription."""
     headers = _get_headers(tenant_id)
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
 
     for sub_id in subscription_ids:
         url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
@@ -218,7 +219,7 @@ def get_mappings(
             resp.raise_for_status()
             locations = resp.json().get("value", [])
 
-            mappings: list[dict] = []
+            mappings: list[dict[str, str]] = []
             for loc in locations:
                 if loc["name"] == region:
                     for m in loc.get("availabilityZoneMappings", []):
@@ -271,7 +272,7 @@ def get_sku_profile(
     subscription_id: str,
     sku_name: str,
     tenant_id: str | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Return full capabilities, restrictions and zones for a single VM SKU.
 
     Calls the ARM ``Microsoft.Compute/skus`` endpoint and returns::
@@ -324,7 +325,7 @@ def get_sku_profile(
                     capabilities[cap_name] = _parse_capability_value(cap_value)
 
             # Restrictions – full details
-            restrictions: list[dict] = []
+            restrictions: list[dict[str, Any]] = []
             for restriction in sku.get("restrictions", []):
                 restrictions.append(
                     {
@@ -335,7 +336,7 @@ def get_sku_profile(
                     }
                 )
 
-            result: dict = {
+            result: dict[str, Any] = {
                 "zones": sorted(zones),
                 "capabilities": capabilities,
                 "restrictions": restrictions,

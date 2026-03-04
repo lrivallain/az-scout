@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import requests
 
@@ -12,15 +13,15 @@ logger = logging.getLogger(__name__)
 RETAIL_PRICES_URL = "https://prices.azure.com/api/retail/prices"
 RETAIL_PRICES_API_VERSION = "2023-01-01-preview"
 _PRICE_CACHE_TTL = 3600  # 1 hour
-_price_cache: dict[str, tuple[float, dict[str, dict]]] = {}
+_price_cache: dict[str, tuple[float, dict[str, dict[str, Any]]]] = {}
 _DETAIL_PRICE_CACHE_TTL = 3600  # 1 hour
-_detail_price_cache: dict[str, tuple[float, dict]] = {}
+_detail_price_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def _fetch_retail_prices(
     region: str,
     currency_code: str = "USD",
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch all VM retail prices for a region from the Azure Retail Prices API.
 
     This API is unauthenticated.  Handles pagination via ``NextPageLink``
@@ -32,7 +33,7 @@ def _fetch_retail_prices(
         f"and priceType eq 'Consumption'"
     )
     logger.info("Fetching retail prices for region=%s, currency=%s", region, currency_code)
-    items: list[dict] = []
+    items: list[dict[str, Any]] = []
     url: str | None = RETAIL_PRICES_URL
     params: dict[str, str] | None = {
         "api-version": RETAIL_PRICES_API_VERSION,
@@ -81,7 +82,7 @@ def _fetch_retail_prices(
     return items
 
 
-def _select_price_line(lines: list[dict]) -> dict | None:
+def _select_price_line(lines: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Pick the best price line from a list of retail-price items.
 
     Prefers non-Windows (Linux) lines.  Among candidates picks the
@@ -100,7 +101,7 @@ def _select_price_line(lines: list[dict]) -> dict | None:
 def get_retail_prices(
     region: str,
     currency_code: str = "USD",
-) -> dict[str, dict]:
+) -> dict[str, dict[str, Any]]:
     """Return retail prices for all VM SKUs in *region*.
 
     Returns ``{armSkuName: {"paygo": float|None, "spot": float|None,
@@ -124,8 +125,8 @@ def get_retail_prices(
         logger.warning("Failed to fetch retail prices for %s", region, exc_info=True)
         return {}
 
-    paygo_by_sku: dict[str, list[dict]] = {}
-    spot_by_sku: dict[str, list[dict]] = {}
+    paygo_by_sku: dict[str, list[dict[str, Any]]] = {}
+    spot_by_sku: dict[str, list[dict[str, Any]]] = {}
 
     for item in items:
         sku_name = item.get("armSkuName", "")
@@ -140,7 +141,7 @@ def get_retail_prices(
             paygo_by_sku.setdefault(sku_name, []).append(item)
 
     all_skus = set(paygo_by_sku) | set(spot_by_sku)
-    result: dict[str, dict] = {}
+    result: dict[str, dict[str, Any]] = {}
     for sku_name in all_skus:
         paygo_line = _select_price_line(paygo_by_sku.get(sku_name, []))
         spot_line = _select_price_line(spot_by_sku.get(sku_name, []))
@@ -162,10 +163,10 @@ def get_retail_prices(
 
 
 def enrich_skus_with_prices(
-    skus: list[dict],
+    skus: list[dict[str, Any]],
     region: str,
     currency_code: str = "USD",
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Add per-SKU pricing to each dict **in-place**.
 
     Each SKU gets a ``"pricing"`` key with ``paygo``, ``spot`` and
@@ -191,7 +192,7 @@ def _fetch_all_retail_prices(
     region: str,
     sku_name: str,
     currency_code: str = "USD",
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch all retail price items for a single SKU (all price types)."""
     odata_filter = (
         f"armRegionName eq '{region}' "
@@ -226,10 +227,10 @@ def _fetch_all_retail_prices(
 def _fetch_retail_prices_with_filter(
     odata_filter: str,
     currency_code: str = "USD",
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch retail price items matching an OData filter."""
     logger.debug("Retail prices filter: %s (currency=%s)", odata_filter, currency_code)
-    items: list[dict] = []
+    items: list[dict[str, Any]] = []
     url: str | None = RETAIL_PRICES_URL
     params: dict[str, str] | None = {
         "api-version": RETAIL_PRICES_API_VERSION,
@@ -269,7 +270,7 @@ def _fetch_retail_prices_with_filter(
     return items
 
 
-def _is_linux(item: dict) -> bool:
+def _is_linux(item: dict[str, Any]) -> bool:
     """Return True if the price item is for Linux (non-Windows)."""
     product = (item.get("productName") or "").lower()
     sku = (item.get("skuName") or "").lower()
@@ -280,7 +281,7 @@ def get_sku_pricing_detail(
     region: str,
     sku_name: str,
     currency_code: str = "USD",
-) -> dict:
+) -> dict[str, Any]:
     """Return detailed pricing for a single SKU: PayGo, Spot, RI, SP.
 
     Returns::
@@ -309,7 +310,7 @@ def get_sku_pricing_detail(
             return data
     logger.debug("get_sku_pricing_detail cache MISS: %s", cache_key)
 
-    result: dict = {
+    result: dict[str, Any] = {
         "skuName": sku_name,
         "region": region,
         "currency": currency_code,

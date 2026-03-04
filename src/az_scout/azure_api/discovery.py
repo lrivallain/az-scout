@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 import requests
 
@@ -21,7 +22,7 @@ from az_scout.azure_api._pagination import _paginate
 logger = logging.getLogger(__name__)
 
 
-def list_tenants(tenant_id: str | None = None) -> dict:
+def list_tenants(tenant_id: str | None = None) -> dict[str, Any]:
     """Return tenants with auth status and the default tenant ID.
 
     Returns ``{"tenants": [...], "defaultTenantId": ...}``.
@@ -60,7 +61,7 @@ def list_tenants(tenant_id: str | None = None) -> dict:
     return result
 
 
-def list_subscriptions(tenant_id: str | None = None) -> list[dict]:
+def list_subscriptions(tenant_id: str | None = None) -> list[dict[str, Any]]:
     """Return enabled subscriptions as ``[{"id": ..., "name": ...}, ...]``."""
     headers = _get_headers(tenant_id)
     url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
@@ -79,7 +80,7 @@ def list_subscriptions(tenant_id: str | None = None) -> list[dict]:
 def list_regions(
     subscription_id: str | None = None,
     tenant_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return AZ-enabled regions as ``[{"name": ..., "displayName": ...}, ...]``.
 
     When *subscription_id* is ``None`` the first enabled subscription is used.

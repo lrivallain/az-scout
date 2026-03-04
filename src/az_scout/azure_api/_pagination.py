@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import requests
 
 logger = logging.getLogger(__name__)
 
 
-def _paginate(url: str, headers: dict[str, str], timeout: int = 30) -> list[dict]:
+def _paginate(url: str, headers: dict[str, str], timeout: int = 30) -> list[dict[str, Any]]:
     """Fetch all pages from an ARM list endpoint and return the merged values."""
-    items: list[dict] = []
+    items: list[dict[str, Any]] = []
     page_count = 0
     while url:
         resp = requests.get(url, headers=headers, timeout=timeout)

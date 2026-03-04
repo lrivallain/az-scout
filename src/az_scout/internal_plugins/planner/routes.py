@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from az_scout.models.deployment_plan import DeploymentIntentRequest
 from az_scout.scoring.deployment_confidence import (
     best_spot_label,
     compute_deployment_confidence,
+    enrich_skus_with_confidence,
     signals_from_sku,
 )
 from az_scout.services.deployment_planner import plan_deployment
@@ -92,9 +94,7 @@ async def get_skus(
         if includePrices:
             await asyncio.to_thread(azure_api.enrich_skus_with_prices, skus, region, currencyCode)
 
-        for sku in skus:
-            sig = signals_from_sku(sku)
-            sku["confidence"] = compute_deployment_confidence(sig).model_dump()
+        enrich_skus_with_confidence(skus)
 
         return JSONResponse(skus)
     except Exception as exc:
@@ -135,7 +135,7 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
         )
 
     evaluated_at = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     warnings: list[str] = []
     errors: list[str] = []
 
@@ -199,7 +199,7 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
             )
             result = compute_deployment_confidence(sig)
 
-            entry: dict = {
+            entry: dict[str, Any] = {
                 "sku": sku_name,
                 "deploymentConfidence": result.model_dump(
                     exclude={"provenance"} if not body.includeProvenance else set()

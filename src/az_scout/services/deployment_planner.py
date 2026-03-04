@@ -8,7 +8,7 @@ No LLM, no probabilistic inference: every decision is traceable to data.
 
 import logging
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from az_scout import azure_api
 from az_scout.models.deployment_plan import (
@@ -105,7 +105,7 @@ def _evaluate_quota(
 
 
 def _evaluate_pricing(
-    pricing_data: dict,
+    pricing_data: dict[str, Any],
     instance_count: int,
 ) -> PricingEvaluation:
     """Build a PricingEvaluation from enriched SKU pricing data."""
@@ -138,7 +138,7 @@ def _resolve_candidate_regions(
 
 
 def _evaluate_sku(
-    sku: dict,
+    sku: dict[str, Any],
     region: str,
     intent: DeploymentIntentRequest,
     requirements: DerivedRequirements,
