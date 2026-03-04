@@ -109,7 +109,10 @@ class SkuInfo(BaseModel):
     capabilities: dict[str, str] = Field(default_factory=dict)
     quota: SkuQuota | None = None
     confidence: SkuConfidence | None = None
-    prices: dict[str, Any] | None = None
+    prices: dict[str, Any] | None = Field(
+        default=None,
+        description="Retail pricing data (paygo/spot per-hour costs) when includePrices=true.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -121,8 +124,19 @@ class DeploymentConfidenceResultEntry(BaseModel):
     """One SKU's deployment confidence evaluation."""
 
     sku: str
-    deploymentConfidence: dict[str, Any]
-    rawSignals: dict[str, Any] | None = None
+    deploymentConfidence: dict[str, Any] = Field(
+        description=(
+            "Confidence result with keys: score (int 0–100), label, "
+            "signalContributions, and optionally provenance."
+        ),
+    )
+    rawSignals: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Raw signal values (quotaPressure, zones, restrictionDensity, "
+            "pricePressure, spot) when includeSignals=true."
+        ),
+    )
 
 
 class DeploymentConfidenceResponse(BaseModel):
@@ -144,7 +158,9 @@ class DeploymentConfidenceResponse(BaseModel):
 class SpotScoresResponse(BaseModel):
     """Response for ``POST /api/spot-scores``."""
 
-    scores: dict[str, dict[str, str]]
+    scores: dict[str, dict[str, str]] = Field(
+        description="Mapping of SKU name → {zone → score label (High/Medium/Low/Unknown)}.",
+    )
     errors: list[str] = Field(default_factory=list)
 
 
