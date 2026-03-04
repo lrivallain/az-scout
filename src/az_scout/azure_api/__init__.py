@@ -1,12 +1,25 @@
-"""Shared Azure ARM API helpers.
+"""Shared Azure ARM API helpers – **stable plugin API surface**.
 
-Provides pure-data functions that both the FastAPI web UI and the MCP server
-can call.  Every public function returns plain Python objects (dicts / lists)
-– no framework ``Response`` wrappers.
+Provides pure-data functions that both the FastAPI web UI, the MCP server,
+and **plugins** can call.  Every public function returns plain Python objects
+(dicts / lists) – no framework ``Response`` wrappers.
 
-This package re-exports all public names so that existing
-``from az_scout.azure_api import X`` and ``from az_scout import azure_api``
-imports keep working without changes.
+Stability guarantee
+-------------------
+Names listed in ``__all__`` form the **public API** and follow semantic
+versioning tracked by :data:`PLUGIN_API_VERSION`.  Breaking changes
+(signature removals, incompatible return-type changes) bump the major
+version; additive changes bump the minor version.
+
+Names prefixed with ``_`` are **internal** – they are re-exported for
+backward compatibility (tests, core modules) but plugins **must not**
+rely on them.  They can change without notice.
+
+Plugin compatibility check::
+
+    from az_scout.azure_api import PLUGIN_API_VERSION
+    major, minor = (int(x) for x in PLUGIN_API_VERSION.split("."))
+    assert major == 1, f"Incompatible azure_api version: {PLUGIN_API_VERSION}"
 """
 
 import time as time  # noqa: F401  # re-export for mock patching
@@ -80,3 +93,43 @@ from az_scout.azure_api.spot import (  # noqa: F401
     _spot_cache,
     get_spot_placement_scores,
 )
+
+# ---------------------------------------------------------------------------
+# API version – bump major for breaking changes, minor for additions.
+# ---------------------------------------------------------------------------
+PLUGIN_API_VERSION = "1.0"
+"""Semantic version of the plugin-facing API surface (``__all__``)."""
+
+# ---------------------------------------------------------------------------
+# Public API surface – plugins should only use names listed here.
+# ---------------------------------------------------------------------------
+__all__ = [
+    # Meta
+    "PLUGIN_API_VERSION",
+    # Constants
+    "AZURE_API_VERSION",
+    "AZURE_MGMT_URL",
+    "COMPUTE_API_VERSION",
+    "RETAIL_PRICES_API_VERSION",
+    "RETAIL_PRICES_URL",
+    "SPOT_API_VERSION",
+    # Discovery
+    "list_tenants",
+    "list_subscriptions",
+    "list_regions",
+    "list_locations",
+    "preload_discovery",
+    # Zone mappings
+    "get_mappings",
+    # SKU catalogue
+    "get_skus",
+    "get_sku_profile",
+    # Enrichment (mutate SKU dicts in-place)
+    "enrich_skus_with_prices",
+    "enrich_skus_with_quotas",
+    # Standalone data fetchers
+    "get_retail_prices",
+    "get_sku_pricing_detail",
+    "get_compute_usages",
+    "get_spot_placement_scores",
+]

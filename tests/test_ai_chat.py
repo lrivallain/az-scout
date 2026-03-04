@@ -3,8 +3,8 @@
 import json
 from unittest.mock import patch
 
+from az_scout.internal_plugins.planner.chat_mode import PLANNER_CHAT_MODE
 from az_scout.services.ai_chat import (
-    PLANNER_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     TOOL_DEFINITIONS,
     _build_openai_tools,
@@ -46,7 +46,11 @@ class TestBuildSystemPrompt:
         assert "Deployment Planner" not in prompt
 
     def test_planner_mode_uses_planner_prompt(self):
-        prompt = _build_system_prompt(mode="planner")
+        with patch(
+            "az_scout.plugins.get_plugin_chat_modes",
+            return_value={"planner": PLANNER_CHAT_MODE},
+        ):
+            prompt = _build_system_prompt(mode="planner")
         assert "Azure Scout Planner" in prompt
         assert "directive" in prompt.lower()
 
@@ -59,19 +63,24 @@ class TestBuildSystemPrompt:
         assert "tid-123" in prompt
 
     def test_region_context_appended(self):
-        prompt = _build_system_prompt(region="eastus", mode="planner")
+        with patch(
+            "az_scout.plugins.get_plugin_chat_modes",
+            return_value={"planner": PLANNER_CHAT_MODE},
+        ):
+            prompt = _build_system_prompt(region="eastus", mode="planner")
         assert "eastus" in prompt
 
     def test_planner_prompt_contains_planning_paths(self):
         """The planner prompt should describe the three independent planning paths."""
-        assert "Path A" in PLANNER_SYSTEM_PROMPT
-        assert "Path B" in PLANNER_SYSTEM_PROMPT
-        assert "Path C" in PLANNER_SYSTEM_PROMPT
-        assert "region" in PLANNER_SYSTEM_PROMPT
-        assert "SKU" in PLANNER_SYSTEM_PROMPT
-        assert "zone" in PLANNER_SYSTEM_PROMPT
-        assert "virtual machine" in PLANNER_SYSTEM_PROMPT
-        assert "Spot" in PLANNER_SYSTEM_PROMPT
+        prompt = PLANNER_CHAT_MODE.system_prompt
+        assert "Path A" in prompt
+        assert "Path B" in prompt
+        assert "Path C" in prompt
+        assert "region" in prompt
+        assert "SKU" in prompt
+        assert "zone" in prompt
+        assert "virtual machine" in prompt
+        assert "Spot" in prompt
 
     def test_assistant_prompt_contains_guidelines(self):
         assert "Interactive choices" in SYSTEM_PROMPT

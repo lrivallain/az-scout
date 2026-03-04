@@ -1,9 +1,34 @@
 /* ===================================================================
-   Azure Scout – AZ Mapping / Topology Tab
+   Azure Scout – AZ Mapping / Topology Tab  (internal plugin)
    Requires: app.js (globals: subscriptions, apiFetch, tenantQS,
              escapeHtml, truncate, getSubName, showError, hideError,
              showPanel, getEffectiveTheme, downloadCSV)
    =================================================================== */
+
+// ---------------------------------------------------------------------------
+// HTML fragment bootstrap – load the tab markup at init
+// ---------------------------------------------------------------------------
+(async function initTopologyTab() {
+    const container = document.getElementById("plugin-tab-topology");
+    if (!container) return;
+    try {
+        const resp = await fetch("/internal/topology/static/html/topology-tab.html");
+        if (resp.ok) container.innerHTML = await resp.text();
+    } catch { /* template already inline – nothing to do */ }
+
+    // Bind subscription filter input once the DOM is ready
+    const filterInput = document.getElementById("topo-sub-filter");
+    if (filterInput) {
+        filterInput.addEventListener("input", () => renderTopoSubList(filterInput.value));
+    }
+
+    // Re-render subscription list + load button in case fetchSubscriptions()
+    // already ran before the HTML fragment was injected.
+    if (typeof subscriptions !== "undefined" && subscriptions.length) {
+        renderTopoSubList();
+    }
+    updateTopoLoadButton();
+})();
 
 // ---------------------------------------------------------------------------
 // Topology tab state
@@ -16,6 +41,7 @@ let lastMappingData = null;                 // cached /api/mappings result
 // ---------------------------------------------------------------------------
 function renderTopoSubList(filter) {
     const container = document.getElementById("topo-sub-list");
+    if (!container) return;
     const list = filter
         ? subscriptions.filter(s => s.name.toLowerCase().includes(filter.toLowerCase()))
         : subscriptions;
@@ -64,6 +90,7 @@ function updateTopoSubCount() {
 
 function updateTopoLoadButton() {
     const btn = document.getElementById("topo-load-btn");
+    if (!btn) return;
     const region = document.getElementById("region-select").value;
     btn.disabled = !(topoSelectedSubs.size > 0 && region);
 }

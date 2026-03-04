@@ -10,13 +10,37 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 #### Added
 
+- **Internal plugin architecture** – core features (AZ Topology, Deployment Planner) are now
+  structured as internal plugins using the same `AzScoutPlugin` protocol as external plugins.
+  Internal plugins ship inside the core package and are discovered automatically at startup.
+  Routes mount at `/api` (backward-compatible URLs), static assets at `/internal/{name}/static`,
+  and tabs render dynamically via the Jinja2 template (#76).
+- **`azure_api` stable plugin API surface** – added `PLUGIN_API_VERSION = "1.0"` and `__all__`
+  to `az_scout.azure_api`, formally declaring the 20 public functions/constants that plugins
+  can rely on. Internal helpers are still accessible but excluded from the stability guarantee.
+- **Planner chat mode as `ChatMode`** – the Planner system prompt (previously hardcoded in
+  `ai_chat.py`) is now a `ChatMode` contributed by the planner internal plugin, discovered
+  dynamically via `get_plugin_chat_modes()`.
 - **Plugin catalog (recommendations)** – the Plugin Manager now shows a curated list of
   recommended plugins loaded from `recommended_plugins.json`, with quick-install buttons and
   installed status badges. New `GET /api/plugins/recommended` endpoint and
   `load_recommended_plugins()` helper in `plugin_manager`.
+- **Built-in badge in Plugin Manager** – loaded plugins list now shows a "built-in" badge
+  for internal plugins (topology, planner). The `GET /api/plugins` response includes an
+  `internal` field.
 
 ### Changed
 
+- **AZ Topology extracted to internal plugin** – the `/api/mappings` route, `get_zone_mappings`
+  MCP tool, tab HTML, and `az-mapping.js` moved from core to
+  `internal_plugins/topology/`. The tab markup is loaded as an HTML fragment at runtime.
+- **Deployment Planner extracted to internal plugin** – 5 API routes (`/api/skus`,
+  `/api/deployment-confidence`, `/api/spot-scores`, `/api/sku-pricing`, `/api/deployment-plan`),
+  4 MCP tools, the planner tab HTML + modals (spot, pricing), and `planner.js` moved to
+  `internal_plugins/planner/`. All API URLs are preserved.
+- **`app.py` and `mcp_server.py` slimmed down** – removed ~620 lines of route handlers and
+  MCP tool definitions that now live in internal plugins. Core only retains discovery endpoints
+  (tenants, subscriptions, regions, locations) and the chat endpoint.
 - **Deployment Confidence Scoring** – reworked scoring signals for better accuracy (#36):
   - Replaced `quota` with **Quota Pressure** (`quotaPressure`) – non-linear bands that penalise
     heavily above 80% family usage and when remaining vCPUs cannot fit the requested instance count.

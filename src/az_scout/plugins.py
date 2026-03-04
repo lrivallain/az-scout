@@ -23,6 +23,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from az_scout.internal_plugins import discover_internal_plugins
 from az_scout.plugin_api import AzScoutPlugin, ChatMode
 from az_scout.plugin_manager import _PACKAGES_DIR
 
@@ -61,12 +62,17 @@ def _discover_plugin_packages_entry_points() -> list[importlib.metadata.EntryPoi
 def discover_plugins() -> list[AzScoutPlugin]:
     """Discover installed plugins via the ``az_scout.plugins`` entry-point group.
 
-    Scans both the main environment and the ``plugin-packages`` directory.
+    Scans internal plugins first (shipped with the core package), then
+    external plugins from the main environment and the ``plugin-packages``
+    directory.
     """
+    # Internal plugins – always loaded first
+    plugins: list[AzScoutPlugin] = discover_internal_plugins()
+
     _ensure_plugin_packages_on_path()
 
     # Collect entry points from main env + plugin packages, deduplicating by name
-    seen: set[str] = set()
+    seen: set[str] = {p.name for p in plugins}
     all_eps: list[importlib.metadata.EntryPoint] = []
 
     for ep in importlib.metadata.entry_points(group="az_scout.plugins"):
@@ -79,7 +85,6 @@ def discover_plugins() -> list[AzScoutPlugin]:
             seen.add(ep.name)
             all_eps.append(ep)
 
-    plugins: list[AzScoutPlugin] = []
     for ep in all_eps:
         try:
             obj = ep.load()
@@ -124,35 +129,49 @@ def register_plugins(app: FastAPI, mcp_server: Any) -> list[AzScoutPlugin]:
     return plugins
 
 
+def _is_internal(plugin: AzScoutPlugin) -> bool:
+    """Return True if *plugin* is an internal plugin (shipped with core)."""
+    return bool(getattr(plugin, "internal", False))
+
+
 def _register_one(app: FastAPI, mcp_server: Any, plugin: AzScoutPlugin) -> None:
     """Wire a single plugin into the application."""
     name = plugin.name
+    internal = _is_internal(plugin)
 
     # Configure the plugin's logger to use the same format as core
     from az_scout.app import setup_plugin_logger
 
     setup_plugin_logger(name)
 
-    # API routes
+    # API routes — internal plugins mount at /api, external at /plugins/{name}
     try:
         router = plugin.get_router()
         if router is not None:
-            prefix = f"/plugins/{name}"
-            app.include_router(router, prefix=prefix, tags=[f"Plugin: {name}"])
-            _plugin_route_prefixes.add(prefix)
-            logger.info("Registered API routes for plugin '%s'", name)
+            prefix = "/api" if internal else f"/plugins/{name}"
+            tag = name if internal else f"Plugin: {name}"
+            app.include_router(router, prefix=prefix, tags=[tag])
+            if internal:
+                # Track individual route paths so _unregister_all doesn't nuke
+                # all /api/* routes (which includes core routes).
+                for route in router.routes:
+                    route_path = prefix + getattr(route, "path", "")
+                    _plugin_route_prefixes.add(route_path)
+            else:
+                _plugin_route_prefixes.add(prefix)
+            logger.info("Registered API routes for plugin '%s' (internal=%s)", name, internal)
     except Exception:
         logger.exception("Failed to register routes for plugin '%s'", name)
 
-    # Static assets
+    # Static assets — internal plugins mount at /internal/{name}/static
     try:
         static_dir = plugin.get_static_dir()
         if static_dir is not None:
-            mount_path = f"/plugins/{name}/static"
+            mount_path = f"/internal/{name}/static" if internal else f"/plugins/{name}/static"
             app.mount(
                 mount_path,
                 StaticFiles(directory=str(static_dir)),
-                name=f"plugin-{name}-static",
+                name=f"{'internal' if internal else 'plugin'}-{name}-static",
             )
             logger.info("Mounted static assets for plugin '%s'", name)
     except Exception:
@@ -201,9 +220,12 @@ def _unregister_all(app: FastAPI, mcp_server: Any) -> None:
     """Remove all plugin routes, static mounts, MCP tools, and chat modes."""
     # Remove FastAPI routes whose path starts with a known plugin prefix
     prefixes_to_remove = set(_plugin_route_prefixes)
-    # Also remove static mounts at /plugins/*/static
+    # Also remove static mounts
     for plugin in _loaded_plugins:
-        prefixes_to_remove.add(f"/plugins/{plugin.name}/static")
+        if _is_internal(plugin):
+            prefixes_to_remove.add(f"/internal/{plugin.name}/static")
+        else:
+            prefixes_to_remove.add(f"/plugins/{plugin.name}/static")
 
     if prefixes_to_remove:
         app.routes[:] = [
@@ -285,11 +307,16 @@ def get_plugin_metadata() -> list[dict[str, Any]]:
     for p in _loaded_plugins:
         tabs = p.get_tabs() or []
         modes = p.get_chat_modes() or []
+        internal = _is_internal(p)
         result.append(
             {
                 "name": p.name,
                 "version": p.version,
                 "homepage": _get_plugin_homepage(p.name),
+                "internal": internal,
+                "static_prefix": (
+                    f"/internal/{p.name}/static" if internal else f"/plugins/{p.name}/static"
+                ),
                 "tabs": [
                     {
                         "id": t.id,

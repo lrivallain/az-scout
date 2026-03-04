@@ -8,6 +8,30 @@ import pytest
 from az_scout.mcp_server import mcp
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _register_internal_tools():
+    """Register MCP tools contributed by internal plugins."""
+    import contextlib
+
+    from az_scout.internal_plugins.planner.tools import (
+        get_sku_availability,
+        get_sku_deployment_confidence,
+        get_sku_pricing_detail,
+        get_spot_scores,
+    )
+    from az_scout.internal_plugins.topology.tools import get_zone_mappings
+
+    for fn in [
+        get_zone_mappings,
+        get_sku_availability,
+        get_spot_scores,
+        get_sku_deployment_confidence,
+        get_sku_pricing_detail,
+    ]:
+        with contextlib.suppress(Exception):
+            mcp.tool()(fn)
+
+
 @pytest.fixture()
 def _mock_credential():
     """Prevent real Azure credential calls."""
