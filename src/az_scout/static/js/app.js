@@ -59,26 +59,11 @@ async function init() {
     // Restore chat state immediately (before any async work to avoid flash)
     _restoreChatHistory();
 
-    // Topology subscription filter
-    document.getElementById("topo-sub-filter").addEventListener("input", e => renderTopoSubList(e.target.value));
-
     // Tenant change
     document.getElementById("tenant-select").addEventListener("change", onTenantChange);
 
-    // Event delegation for SKU table interactive cells
-    document.getElementById("sku-table-container").addEventListener("click", (e) => {
-        const btn = e.target.closest("[data-action]");
-        if (!btn) return;
-        const sku = btn.dataset.sku;
-        if (btn.dataset.action === "pricing") openPricingModal(sku);
-        else if (btn.dataset.action === "spot") openSpotModal(sku);
-    });
-
     // Init shared region combobox
     initRegionCombobox();
-
-    // Init planner subscription combobox
-    initPlannerSubCombobox();
 
     // Hash-based tab routing (supports built-in + plugin tabs)
     const tabEl = document.querySelector('#mainTabs');
@@ -105,7 +90,7 @@ async function init() {
     await Promise.all([fetchRegions(), fetchSubscriptions()]);
 
     updateTopoLoadButton();
-    updatePlannerLoadButton();
+    if (typeof updatePlannerLoadButton === "function") updatePlannerLoadButton();
 }
 
 // ---------------------------------------------------------------------------
@@ -223,18 +208,21 @@ async function fetchTenants() {
 
 async function onTenantChange() {
     // Reset all downstream state
-    topoSelectedSubs.clear();
+    if (typeof topoSelectedSubs !== "undefined") topoSelectedSubs.clear();
     lastMappingData = null;
-    plannerSubscriptionId = null;
-    plannerZoneMappings = null;
-    lastSkuData = null;
-    lastSpotScores = null;
+    if (typeof plannerSubscriptionId !== "undefined") plannerSubscriptionId = null;
+    if (typeof plannerZoneMappings !== "undefined") plannerZoneMappings = null;
+    if (typeof lastSkuData !== "undefined") lastSkuData = null;
+    if (typeof lastSpotScores !== "undefined") lastSpotScores = null;
 
     document.getElementById("region-select").value = "";
     document.getElementById("region-search").value = "";
-    document.getElementById("topo-sub-filter").value = "";
-    document.getElementById("planner-sub-select").value = "";
-    document.getElementById("planner-sub-search").value = "";
+    const topoFilter = document.getElementById("topo-sub-filter");
+    if (topoFilter) topoFilter.value = "";
+    const plannerSubSel = document.getElementById("planner-sub-select");
+    if (plannerSubSel) plannerSubSel.value = "";
+    const plannerSubSearch = document.getElementById("planner-sub-search");
+    if (plannerSubSearch) plannerSubSearch.value = "";
 
     // Reset UI panels
     showPanel("topo", "empty");
@@ -244,7 +232,7 @@ async function onTenantChange() {
 
     await Promise.all([fetchRegions(), fetchSubscriptions()]);
     updateTopoLoadButton();
-    updatePlannerLoadButton();
+    if (typeof updatePlannerLoadButton === "function") updatePlannerLoadButton();
 }
 
 // ---------------------------------------------------------------------------
@@ -340,8 +328,8 @@ function selectRegion(name) {
 function onRegionChange() {
     // Region is shared – update both tabs
     updateTopoLoadButton();
-    resetPlannerResults();
-    updatePlannerLoadButton();
+    if (typeof resetPlannerResults === "function") resetPlannerResults();
+    if (typeof updatePlannerLoadButton === "function") updatePlannerLoadButton();
 }
 
 // ---------------------------------------------------------------------------
@@ -367,8 +355,8 @@ function showPanel(prefix, state) {
 async function fetchSubscriptions() {
     try {
         subscriptions = await apiFetch("/api/subscriptions" + tenantQS("?"));
-        renderTopoSubList();
-        renderPlannerSubDropdown("");
+        if (typeof renderTopoSubList === "function") renderTopoSubList();
+        if (typeof renderPlannerSubDropdown === "function") renderPlannerSubDropdown("");
     } catch (err) {
         showError("topo-error", "Failed to load subscriptions: " + err.message);
     }

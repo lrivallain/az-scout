@@ -62,7 +62,14 @@ async def list_plugins() -> JSONResponse:
     return JSONResponse(
         {
             "installed": [asdict(r) for r in installed],
-            "loaded": [{"name": p.name, "version": p.version} for p in loaded],
+            "loaded": [
+                {
+                    "name": p.name,
+                    "version": p.version,
+                    "internal": bool(getattr(p, "internal", False)),
+                }
+                for p in loaded
+            ],
         }
     )
 

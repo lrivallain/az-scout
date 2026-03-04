@@ -203,7 +203,10 @@
         tbody.innerHTML = "";
         for (const p of list) {
             const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${escHtml(p.name)}</td><td>${escHtml(p.version)}</td>`;
+            const badge = p.internal
+                ? ' <span class="badge text-bg-secondary">built-in</span>'
+                : '';
+            tr.innerHTML = `<td>${escHtml(p.name)}${badge}</td><td>${escHtml(p.version)}</td>`;
             tbody.appendChild(tr);
         }
     }

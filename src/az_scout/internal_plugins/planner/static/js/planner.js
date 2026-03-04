@@ -1,9 +1,42 @@
 /* ===================================================================
-   Azure Scout – Deployment Planner Tab
+   Azure Scout – Deployment Planner Tab  (internal plugin)
    Requires: app.js (globals: subscriptions, apiFetch, apiPost,
              tenantQS, escapeHtml, formatNum, getSubName, showError,
              hideError, showPanel, downloadCSV)
    =================================================================== */
+
+// ---------------------------------------------------------------------------
+// HTML fragment bootstrap – load the tab markup at init
+// ---------------------------------------------------------------------------
+(async function initPlannerTab() {
+    const container = document.getElementById("plugin-tab-planner");
+    if (!container) return;
+    try {
+        const resp = await fetch("/internal/planner/static/html/planner-tab.html");
+        if (resp.ok) container.innerHTML = await resp.text();
+    } catch { /* template already inline – nothing to do */ }
+
+    // Bind event delegation for SKU table interactive cells
+    const skuTableContainer = document.getElementById("sku-table-container");
+    if (skuTableContainer) {
+        skuTableContainer.addEventListener("click", (e) => {
+            const btn = e.target.closest("[data-action]");
+            if (!btn) return;
+            const sku = btn.dataset.sku;
+            if (btn.dataset.action === "pricing") openPricingModal(sku);
+            else if (btn.dataset.action === "spot") openSpotModal(sku);
+        });
+    }
+
+    // Init planner subscription combobox
+    initPlannerSubCombobox();
+
+    // Re-populate subscription dropdown if subscriptions already loaded
+    if (typeof subscriptions !== "undefined" && subscriptions.length) {
+        renderPlannerSubDropdown("");
+    }
+    updatePlannerLoadButton();
+})();
 
 // ---------------------------------------------------------------------------
 // Planner tab state
@@ -124,6 +157,7 @@ function initPlannerSubCombobox() {
 
 function renderPlannerSubDropdown(filter) {
     const dropdown = document.getElementById("planner-sub-dropdown");
+    if (!dropdown) return;
     const lc = (filter || "").toLowerCase();
     const matches = lc
         ? subscriptions.filter(s => s.name.toLowerCase().includes(lc) || s.id.toLowerCase().includes(lc))
@@ -155,6 +189,7 @@ function selectPlannerSub(id) {
 
 function updatePlannerLoadButton() {
     const btn = document.getElementById("planner-load-btn");
+    if (!btn) return;
     const region = document.getElementById("region-select").value;
     btn.disabled = !(plannerSubscriptionId && region);
 }

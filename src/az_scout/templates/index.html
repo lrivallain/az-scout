@@ -14,7 +14,7 @@
     {% for p in plugins %}
     {% for tab in p.tabs %}
     {% if tab.css_entry %}
-    <link rel="stylesheet" href="/plugins/{{ p.name }}/static/{{ tab.css_entry }}">
+    <link rel="stylesheet" href="{{ p.static_prefix }}/{{ tab.css_entry }}">
     {% endif %}
     {% endfor %}
     {% endfor %}
@@ -85,19 +85,22 @@
 
     <!-- Tabs -->
     <ul class="nav nav-tabs" id="mainTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="topology-tab" data-bs-toggle="tab" data-bs-target="#tab-topology"
-                    type="button" role="tab" aria-controls="tab-topology" aria-selected="true">
-                <i class="bi bi-diagram-3"></i> AZ Topology
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="planner-tab" data-bs-toggle="tab" data-bs-target="#tab-planner"
-                    type="button" role="tab" aria-controls="tab-planner" aria-selected="false">
-                <i class="bi bi-grid-3x3-gap"></i> Deployment Planner
-            </button>
-        </li>
+        {% set ns = namespace(first_tab=true) %}
         {% for p in plugins %}
+        {% if p.internal %}
+        {% for tab in p.tabs %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link{% if ns.first_tab %} active{% endif %}" id="{{ tab.id }}-tab" data-bs-toggle="tab" data-bs-target="#tab-{{ tab.id }}"
+                    type="button" role="tab" aria-controls="tab-{{ tab.id }}" aria-selected="{{ 'true' if ns.first_tab else 'false' }}">
+                <i class="{{ tab.icon }}"></i> {{ tab.label }}
+            </button>
+        </li>
+        {% set ns.first_tab = false %}
+        {% endfor %}
+        {% endif %}
+        {% endfor %}
+        {% for p in plugins %}
+        {% if not p.internal %}
         {% for tab in p.tabs %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="{{ tab.id }}-tab" data-bs-toggle="tab" data-bs-target="#tab-{{ tab.id }}"
@@ -106,172 +109,30 @@
             </button>
         </li>
         {% endfor %}
+        {% endif %}
         {% endfor %}
     </ul>
 
     <div class="tab-content" id="mainTabContent">
 
-        <!-- ====== AZ Topology Tab ====== -->
-        <div class="tab-pane fade show active" id="tab-topology" role="tabpanel" aria-labelledby="topology-tab">
+        {% set ns2 = namespace(first_pane=true) %}
+        {% for p in plugins %}
+        {% if p.internal %}
+        {% for tab in p.tabs %}
+        <div class="tab-pane fade{% if ns2.first_pane %} show active{% endif %}" id="tab-{{ tab.id }}" role="tabpanel" aria-labelledby="{{ tab.id }}-tab">
             <div class="card border-top-0 rounded-top-0">
-                <div class="card-body">
-                    <div class="row g-3">
-                        <!-- Left sidebar: subscriptions -->
-                        <div class="col-md-3 col-xl-2">
-                            <div class="topo-sidebar">
-                                <label class="form-label form-label-sm mb-1">
-                                    <i class="bi bi-collection"></i> Subscriptions
-                                </label>
-                                <div class="input-group input-group-sm mb-1">
-                                    <input type="search" class="form-control" id="topo-sub-filter"
-                                           placeholder="Filter…" autocomplete="off" spellcheck="false">
-                                    <button type="button" class="btn btn-outline-secondary" onclick="topoSelectAllVisible()" title="Select visible">
-                                        <i class="bi bi-check-all"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-outline-secondary" onclick="topoDeselectAll()" title="Clear all">
-                                        <i class="bi bi-x-lg"></i>
-                                    </button>
-                                </div>
-                                <div id="topo-sub-list" data-testid="topo-sub-list" class="subscription-checklist"></div>
-                                <div class="d-flex justify-content-between align-items-center mt-2">
-                                    <small class="text-body-secondary" id="topo-sub-count">0 selected</small>
-                                    <button type="button" class="btn btn-primary btn-sm" id="topo-load-btn" data-testid="topo-load-btn" onclick="loadMappings()" disabled>
-                                        <i class="bi bi-arrow-repeat"></i> Load
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Right content: results -->
-                        <div class="col-md-9 col-xl-10">
-                            <!-- Error -->
-                            <div id="topo-error" data-testid="topo-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
-
-                            <!-- Empty state -->
-                            <div id="topo-empty" data-testid="topo-empty" class="text-center text-body-secondary py-5">
-                                <i class="bi bi-diagram-3 fs-1 d-block mb-2"></i>
-                                <p>Select subscriptions and click <strong>Load</strong>.</p>
-                            </div>
-
-                            <!-- Loading -->
-                            <div id="topo-loading" data-testid="topo-loading" class="text-center py-5 d-none">
-                                <div class="spinner-border text-primary" role="status"></div>
-                                <p class="mt-2 text-body-secondary">Fetching zone mappings…</p>
-                            </div>
-
-                            <!-- Results -->
-                            <div id="topo-results" data-testid="topo-results" class="d-none">
-                                <!-- Graph -->
-                                <div class="card mb-3">
-                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                        <span><i class="bi bi-diagram-3"></i> Zone Mapping Graph</span>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportGraphPNG()" title="Export as PNG">
-                                            <i class="bi bi-download"></i> PNG
-                                        </button>
-                                    </div>
-                                    <div class="card-body">
-                                        <div id="graph-container" data-testid="graph-container" class="graph-container mx-auto"></div>
-                                        <div id="graph-legend" class="d-flex flex-wrap gap-3 mt-2 justify-content-center"></div>
-                                    </div>
-                                </div>
-
-                                <!-- Table -->
-                                <div class="card">
-                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                        <span><i class="bi bi-table"></i> Zone Mapping Table</span>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportTableCSV()" title="Export as CSV">
-                                            <i class="bi bi-download"></i> CSV
-                                        </button>
-                                    </div>
-                                    <div class="card-body">
-                                        <div id="table-container" data-testid="table-container" class="table-responsive"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <div class="card-body" id="plugin-tab-{{ tab.id }}">
+                    <!-- Internal plugin "{{ tab.label }}" content is populated by its JS entry -->
                 </div>
             </div>
         </div>
-
-        <!-- ====== Deployment Planner Tab ====== -->
-        <div class="tab-pane fade" id="tab-planner" role="tabpanel" aria-labelledby="planner-tab">
-            <div class="card border-top-0 rounded-top-0">
-                <div class="card-body">
-                    <!-- Controls row -->
-                    <div class="row g-2 align-items-end mb-3">
-                        <div class="col-md-3 col-lg-3">
-                            <label for="planner-sub-search" class="form-label form-label-sm mb-1">
-                                <i class="bi bi-collection"></i> Subscription
-                            </label>
-                            <div class="position-relative" id="planner-sub-combobox">
-                                <input type="search" class="form-control form-control-sm" id="planner-sub-search" data-testid="planner-sub-search"
-                                       placeholder="Loading subscriptions…" autocomplete="off" spellcheck="false" disabled>
-                                <input type="hidden" id="planner-sub-select" data-testid="planner-sub-select" value="">
-                                <ul class="dropdown-menu w-100" id="planner-sub-dropdown"></ul>
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <select class="form-select form-select-sm" id="planner-currency" title="Currency" style="width:80px;">
-                                <option value="USD" selected>USD</option>
-                                <option value="EUR">EUR</option>
-                                <option value="GBP">GBP</option>
-                                <option value="JPY">JPY</option>
-                                <option value="AUD">AUD</option>
-                                <option value="CAD">CAD</option>
-                                <option value="CHF">CHF</option>
-                                <option value="SEK">SEK</option>
-                                <option value="BRL">BRL</option>
-                                <option value="INR">INR</option>
-                            </select>
-                        </div>
-                        <div class="col-auto">
-                            <button type="button" class="btn btn-primary btn-sm" id="planner-load-btn" data-testid="planner-load-btn" onclick="loadSkus()" disabled>
-                                <i class="bi bi-arrow-repeat"></i> Load SKUs
-                            </button>
-                        </div>
-                        <div class="col d-none" id="planner-csv-btn">
-                            <div class="d-flex justify-content-end gap-2 align-items-center">
-                                <div class="form-check form-switch mb-0">
-                                    <input class="form-check-input" type="checkbox" id="planner-show-spot" checked onchange="toggleTableColumns()">
-                                    <label class="form-check-label small" for="planner-show-spot">Spot</label>
-                                </div>
-                                <div class="form-check form-switch mb-0">
-                                    <input class="form-check-input" type="checkbox" id="planner-show-prices" checked onchange="toggleTableColumns()">
-                                    <label class="form-check-label small" for="planner-show-prices">Prices</label>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportSkuCSV()" title="Export as CSV">
-                                    <i class="bi bi-download"></i> CSV
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Error -->
-                    <div id="planner-error" data-testid="planner-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
-
-                    <!-- Empty state -->
-                    <div id="planner-empty" data-testid="planner-empty" class="text-center text-body-secondary py-5">
-                        <i class="bi bi-grid-3x3-gap fs-1 d-block mb-2"></i>
-                        <p>Select a subscription, then click <strong>Load SKUs</strong>.</p>
-                    </div>
-
-                    <!-- Loading -->
-                    <div id="planner-loading" data-testid="planner-loading" class="text-center py-5 d-none">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2 text-body-secondary">Fetching SKU data…</p>
-                    </div>
-
-                    <!-- SKU results -->
-                    <div id="planner-results" data-testid="planner-results" class="d-none">
-                        <div id="region-summary" class="d-none"></div>
-                        <div id="sku-table-container" data-testid="sku-table-container"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        {% set ns2.first_pane = false %}
+        {% endfor %}
+        {% endif %}
+        {% endfor %}
 
         {% for p in plugins %}
+        {% if not p.internal %}
         {% for tab in p.tabs %}
         <div class="tab-pane fade" id="tab-{{ tab.id }}" role="tabpanel" aria-labelledby="{{ tab.id }}-tab">
             <div class="card border-top-0 rounded-top-0">
@@ -281,6 +142,7 @@
             </div>
         </div>
         {% endfor %}
+        {% endif %}
         {% endfor %}
 
     </div><!-- /tab-content -->
@@ -362,51 +224,6 @@
     </div>
 </div>
 
-<!-- ===== Spot Score Modal ===== -->
-<div class="modal fade" id="spotModal" tabindex="-1" aria-labelledby="spotModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="spotModalLabel">Spot Placement Score</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="fw-semibold mb-2" id="spot-modal-sku"></p>
-                <label for="spot-modal-instances" class="form-label small">Number of instances:</label>
-                <input type="number" class="form-control form-control-sm mb-3" id="spot-modal-instances" value="1" min="1" max="1000">
-                <div id="spot-modal-loading" class="text-center d-none">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                    <span class="ms-2 small">Fetching score…</span>
-                </div>
-                <div id="spot-modal-result" class="d-none"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="confirmSpotScore()">Get Score</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ===== Pricing Detail Modal ===== -->
-<div class="modal fade" id="pricingModal" tabindex="-1" aria-labelledby="pricingModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-fullscreen-md-down modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="pricingModalLabel">SKU Detail — <span id="pricing-modal-sku"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="pricing-modal-loading" class="text-center d-none">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                    <span class="ms-2 small">Fetching prices…</span>
-                </div>
-                <div id="pricing-modal-content" class="d-none"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% if chat_enabled %}
 <!-- ===== AI Chat Panel ===== -->
 <button type="button" class="chat-fab" id="chat-fab" onclick="toggleChatPanel()" title="AI Chat Assistant">
@@ -420,7 +237,6 @@
             <i class="bi bi-robot"></i>
             <div class="chat-mode-toggle" id="chat-mode-toggle">
                 <button type="button" class="active" data-mode="discussion" onclick="switchChatMode('discussion')">Discussion</button>
-                <button type="button" data-mode="planner" onclick="switchChatMode('planner')">Planner</button>
                 {% for p in plugins %}
                 {% for mode in p.chat_modes %}
                 <button type="button" data-mode="{{ mode.id }}" onclick="switchChatMode('{{ mode.id }}')">{{ mode.label }}</button>
@@ -464,13 +280,11 @@
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/json.min.js"></script>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
-<script src="{{ url_for('static', path='js/az-mapping.js') }}"></script>
-<script src="{{ url_for('static', path='js/planner.js') }}"></script>
 <script src="{{ url_for('static', path='js/chat.js') }}"></script>
 <script src="{{ url_for('static', path='js/plugins.js') }}"></script>
 {% for p in plugins %}
 {% for tab in p.tabs %}
-<script src="/plugins/{{ p.name }}/static/{{ tab.js_entry }}"></script>
+<script src="{{ p.static_prefix }}/{{ tab.js_entry }}"></script>
 {% endfor %}
 {% endfor %}
 <script>

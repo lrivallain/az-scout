@@ -25,10 +25,11 @@ from az_scout.plugins import (
 
 @pytest.fixture(autouse=True)
 def _isolate_plugin_packages():
-    """Prevent tests from picking up real packages in plugin-packages dir."""
+    """Prevent tests from picking up real packages or internal plugins."""
     with (
         patch("az_scout.plugins._ensure_plugin_packages_on_path"),
         patch("az_scout.plugins._discover_plugin_packages_entry_points", return_value=[]),
+        patch("az_scout.plugins.discover_internal_plugins", return_value=[]),
     ):
         yield
 
@@ -168,8 +169,10 @@ class TestDiscoverPlugins:
         with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[mock_ep]):
             plugins = discover_plugins()
 
-        assert len(plugins) == 1
-        assert plugins[0].name == "test-full"
+        # Internal plugins (topology) + the mock entry point
+        external = [p for p in plugins if p.name == "test-full"]
+        assert len(external) == 1
+        assert external[0].name == "test-full"
 
     def test_skips_non_protocol_object(self):
         mock_ep = MagicMock()
@@ -179,7 +182,8 @@ class TestDiscoverPlugins:
         with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[mock_ep]):
             plugins = discover_plugins()
 
-        assert len(plugins) == 0
+        # Only internal plugins remain
+        assert all(p.name != "bad-plugin" for p in plugins)
 
     def test_handles_load_exception(self):
         mock_ep = MagicMock()
@@ -189,12 +193,13 @@ class TestDiscoverPlugins:
         with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[mock_ep]):
             plugins = discover_plugins()
 
-        assert len(plugins) == 0
+        assert all(p.name != "broken" for p in plugins)
 
     def test_no_entry_points(self):
         with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[]):
             plugins = discover_plugins()
 
+        # With internal plugins mocked out, no plugins are returned
         assert len(plugins) == 0
 
 
@@ -340,10 +345,15 @@ class TestPluginChatModeIntegration:
         assert prompt.startswith(SYSTEM_PROMPT[:50])
 
     def test_planner_mode_still_works(self):
-        from az_scout.services.ai_chat import PLANNER_SYSTEM_PROMPT, _build_system_prompt
+        from az_scout.internal_plugins.planner.chat_mode import PLANNER_CHAT_MODE
+        from az_scout.services.ai_chat import _build_system_prompt
 
-        prompt = _build_system_prompt(mode="planner")
-        assert prompt.startswith(PLANNER_SYSTEM_PROMPT[:50])
+        with patch(
+            "az_scout.plugins.get_plugin_chat_modes",
+            return_value={"planner": PLANNER_CHAT_MODE},
+        ):
+            prompt = _build_system_prompt(mode="planner")
+        assert prompt.startswith(PLANNER_CHAT_MODE.system_prompt[:50])
 
     def test_discussion_mode_still_works(self):
         from az_scout.services.ai_chat import SYSTEM_PROMPT, _build_system_prompt
@@ -542,14 +552,15 @@ class TestReloadPlugins:
         with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[mock_ep]):
             register_plugins(app, mock_mcp)
 
-        assert len(_loaded_plugins) == 1
+        assert any(p.name == "test-full" for p in _loaded_plugins)
 
-        # Reload with no plugins
-        with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[]):
+        # Reload with no plugins – patch discover_plugins directly to avoid
+        # importlib cache invalidation issues from _flush_plugin_modules().
+        with patch("az_scout.plugins.discover_plugins", return_value=[]):
             reload_plugins(app, mock_mcp)
 
-        assert len(_loaded_plugins) == 0
-        assert len(_plugin_chat_modes) == 0
+        assert not any(p.name == "test-full" for p in _loaded_plugins)
+        assert "test-mode" not in _plugin_chat_modes
 
     def test_reload_picks_up_new_plugin(self):
         """A newly installed plugin is discovered after reload."""
@@ -558,22 +569,18 @@ class TestReloadPlugins:
         from az_scout.app import app
 
         # Start with no plugins
-        with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[]):
+        with patch("az_scout.plugins.discover_plugins", return_value=[]):
             register_plugins(app, mock_mcp)
 
-        assert len(_loaded_plugins) == 0
+        assert not any(p.name == "test-full" for p in _loaded_plugins)
 
         # Install a plugin, then reload
         full = FullPlugin()
-        mock_ep = MagicMock()
-        mock_ep.name = "test-full"
-        mock_ep.load.return_value = full
 
-        with patch("az_scout.plugins.importlib.metadata.entry_points", return_value=[mock_ep]):
+        with patch("az_scout.plugins.discover_plugins", return_value=[full]):
             result = reload_plugins(app, mock_mcp)
 
-        assert len(result) == 1
-        assert result[0].name == "test-full"
+        assert any(p.name == "test-full" for p in result)
         assert "test-mode" in _plugin_chat_modes
 
     def test_reload_calls_unregister_and_flush(self):

@@ -1,0 +1,114 @@
+<!-- Controls row -->
+<div class="row g-2 align-items-end mb-3">
+    <div class="col-md-3 col-lg-3">
+        <label for="planner-sub-search" class="form-label form-label-sm mb-1">
+            <i class="bi bi-collection"></i> Subscription
+        </label>
+        <div class="position-relative" id="planner-sub-combobox">
+            <input type="search" class="form-control form-control-sm" id="planner-sub-search" data-testid="planner-sub-search"
+                   placeholder="Loading subscriptions…" autocomplete="off" spellcheck="false" disabled>
+            <input type="hidden" id="planner-sub-select" data-testid="planner-sub-select" value="">
+            <ul class="dropdown-menu w-100" id="planner-sub-dropdown"></ul>
+        </div>
+    </div>
+    <div class="col-auto">
+        <select class="form-select form-select-sm" id="planner-currency" title="Currency" style="width:80px;">
+            <option value="USD" selected>USD</option>
+            <option value="EUR">EUR</option>
+            <option value="GBP">GBP</option>
+            <option value="JPY">JPY</option>
+            <option value="AUD">AUD</option>
+            <option value="CAD">CAD</option>
+            <option value="CHF">CHF</option>
+            <option value="SEK">SEK</option>
+            <option value="BRL">BRL</option>
+            <option value="INR">INR</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="button" class="btn btn-primary btn-sm" id="planner-load-btn" data-testid="planner-load-btn" onclick="loadSkus()" disabled>
+            <i class="bi bi-arrow-repeat"></i> Load SKUs
+        </button>
+    </div>
+    <div class="col d-none" id="planner-csv-btn">
+        <div class="d-flex justify-content-end gap-2 align-items-center">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="planner-show-spot" checked onchange="toggleTableColumns()">
+                <label class="form-check-label small" for="planner-show-spot">Spot</label>
+            </div>
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="planner-show-prices" checked onchange="toggleTableColumns()">
+                <label class="form-check-label small" for="planner-show-prices">Prices</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportSkuCSV()" title="Export as CSV">
+                <i class="bi bi-download"></i> CSV
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Error -->
+<div id="planner-error" data-testid="planner-error" class="alert alert-danger alert-sm d-none" role="alert"></div>
+
+<!-- Empty state -->
+<div id="planner-empty" data-testid="planner-empty" class="text-center text-body-secondary py-5">
+    <i class="bi bi-grid-3x3-gap fs-1 d-block mb-2"></i>
+    <p>Select a subscription, then click <strong>Load SKUs</strong>.</p>
+</div>
+
+<!-- Loading -->
+<div id="planner-loading" data-testid="planner-loading" class="text-center py-5 d-none">
+    <div class="spinner-border text-primary" role="status"></div>
+    <p class="mt-2 text-body-secondary">Fetching SKU data…</p>
+</div>
+
+<!-- SKU results -->
+<div id="planner-results" data-testid="planner-results" class="d-none">
+    <div id="region-summary" class="d-none"></div>
+    <div id="sku-table-container" data-testid="sku-table-container"></div>
+</div>
+
+<!-- ===== Spot Score Modal ===== -->
+<div class="modal fade" id="spotModal" tabindex="-1" aria-labelledby="spotModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="spotModalLabel">Spot Placement Score</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="fw-semibold mb-2" id="spot-modal-sku"></p>
+                <label for="spot-modal-instances" class="form-label small">Number of instances:</label>
+                <input type="number" class="form-control form-control-sm mb-3" id="spot-modal-instances" value="1" min="1" max="1000">
+                <div id="spot-modal-loading" class="text-center d-none">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 small">Fetching score…</span>
+                </div>
+                <div id="spot-modal-result" class="d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="confirmSpotScore()">Get Score</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Pricing Detail Modal ===== -->
+<div class="modal fade" id="pricingModal" tabindex="-1" aria-labelledby="pricingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-fullscreen-md-down modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pricingModalLabel">SKU Detail — <span id="pricing-modal-sku"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="pricing-modal-loading" class="text-center d-none">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 small">Fetching prices…</span>
+                </div>
+                <div id="pricing-modal-content" class="d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
