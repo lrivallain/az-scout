@@ -6,11 +6,22 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from az_scout import azure_api
+from az_scout.models.responses import (
+    ErrorResponse,
+    RegionInfo,
+    SubscriptionInfo,
+    TenantListResponse,
+)
 
 router = APIRouter(tags=["Discovery"])
 
 
-@router.get("/tenants", summary="List Azure AD tenants")
+@router.get(
+    "/tenants",
+    summary="List Azure AD tenants",
+    response_model=TenantListResponse,
+    responses={500: {"model": ErrorResponse}},
+)
 async def list_tenants() -> JSONResponse:
     """Return Azure AD tenants accessible by the current credential.
 
@@ -20,7 +31,12 @@ async def list_tenants() -> JSONResponse:
     return JSONResponse(await asyncio.to_thread(azure_api.list_tenants))
 
 
-@router.get("/subscriptions", summary="List enabled Azure subscriptions")
+@router.get(
+    "/subscriptions",
+    summary="List enabled Azure subscriptions",
+    response_model=list[SubscriptionInfo],
+    responses={500: {"model": ErrorResponse}},
+)
 async def list_subscriptions(
     tenantId: str | None = Query(  # noqa: N803
         None, description="Optional tenant ID to scope the query."
@@ -30,7 +46,12 @@ async def list_subscriptions(
     return JSONResponse(await asyncio.to_thread(azure_api.list_subscriptions, tenantId))
 
 
-@router.get("/regions", summary="List AZ-enabled regions")
+@router.get(
+    "/regions",
+    summary="List AZ-enabled regions",
+    response_model=list[RegionInfo],
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
 async def list_regions(
     subscriptionId: str | None = Query(  # noqa: N803
         None, description="Subscription ID. Auto-discovered if omitted."
@@ -46,7 +67,12 @@ async def list_regions(
         return JSONResponse({"error": str(exc)}, status_code=404)
 
 
-@router.get("/locations", summary="List all ARM locations")
+@router.get(
+    "/locations",
+    summary="List all ARM locations",
+    response_model=list[RegionInfo],
+    responses={400: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},
+)
 async def list_locations(
     subscriptionId: str | None = Query(  # noqa: N803
         None, description="Subscription ID. Auto-discovered if omitted."

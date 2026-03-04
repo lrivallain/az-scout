@@ -2018,3 +2018,182 @@ class TestDeploymentConfidence:
         conf1 = resp1.json()[0]["confidence"]
         conf3 = resp3.json()[0]["confidence"]
         assert conf3["score"] >= conf1["score"]
+
+
+# ---------------------------------------------------------------------------
+# Response model validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestResponseModels:
+    """Verify API responses conform to the Pydantic response models."""
+
+    def test_tenants_response_validates(self, client):
+        from az_scout.models.responses import TenantListResponse
+
+        azure_response = {
+            "value": [
+                {"tenantId": "tid-1", "displayName": "Tenant One"},
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with (
+            patch("az_scout.azure_api.requests.get", return_value=mock_resp),
+            patch("az_scout.azure_api.discovery._get_default_tenant_id", return_value="tid-1"),
+            patch("az_scout.azure_api.discovery._check_tenant_auth", return_value=True),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 200
+        TenantListResponse.model_validate(resp.json())
+
+    def test_subscriptions_response_validates(self, client):
+        from az_scout.models.responses import SubscriptionInfo
+
+        azure_response = {
+            "value": [
+                {"subscriptionId": "aaa", "displayName": "Alpha Sub", "state": "Enabled"},
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/subscriptions")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        for item in data:
+            SubscriptionInfo.model_validate(item)
+
+    def test_regions_response_validates(self, client):
+        from az_scout.models.responses import RegionInfo
+
+        azure_response = {
+            "value": [
+                {
+                    "name": "eastus",
+                    "displayName": "East US",
+                    "availabilityZoneMappings": [{"logicalZone": "1", "physicalZone": "az1"}],
+                    "metadata": {"regionType": "Physical"},
+                },
+            ]
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/regions?subscriptionId=sub-1")
+
+        assert resp.status_code == 200
+        for item in resp.json():
+            RegionInfo.model_validate(item)
+
+    def test_mappings_response_validates(self, client):
+        from az_scout.models.responses import SubscriptionMappingResult
+
+        azure_response = {
+            "value": [
+                {
+                    "name": "eastus",
+                    "availabilityZoneMappings": [
+                        {"logicalZone": "1", "physicalZone": "eastus-az1"},
+                    ],
+                }
+            ]
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/mappings?region=eastus&subscriptions=sub1")
+
+        assert resp.status_code == 200
+        for item in resp.json():
+            SubscriptionMappingResult.model_validate(item)
+
+    def test_skus_response_validates(self, client):
+        from az_scout.models.responses import SkuInfo
+
+        azure_response = {
+            "value": [
+                {
+                    "name": "Standard_D2s_v3",
+                    "resourceType": "virtualMachines",
+                    "tier": "Standard",
+                    "size": "D2s_v3",
+                    "family": "standardDSv3Family",
+                    "locations": ["eastus"],
+                    "locationInfo": [{"location": "eastus", "zones": ["1", "2"]}],
+                    "capabilities": [
+                        {"name": "vCPUs", "value": "2"},
+                        {"name": "MemoryGB", "value": "8"},
+                    ],
+                    "restrictions": [],
+                },
+            ],
+            "nextLink": None,
+        }
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = azure_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_scout.azure_api.requests.get", return_value=mock_resp):
+            resp = client.get("/api/skus?region=eastus&subscriptionId=sub1")
+
+        assert resp.status_code == 200
+        for item in resp.json():
+            SkuInfo.model_validate(item)
+
+    def test_spot_scores_response_validates(self, client):
+        from az_scout.models.responses import SpotScoresResponse
+
+        spot_response = {
+            "placementScores": [
+                {
+                    "sku": "Standard_D2s_v3",
+                    "score": "High",
+                    "region": "eastus",
+                    "availabilityZone": "1",
+                },
+            ]
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = spot_response
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("az_scout.azure_api.requests.post", return_value=mock_resp):
+            resp = client.post(
+                "/api/spot-scores",
+                json={
+                    "region": "eastus",
+                    "subscriptionId": "sub-1",
+                    "skus": ["Standard_D2s_v3"],
+                },
+            )
+
+        assert resp.status_code == 200
+        SpotScoresResponse.model_validate(resp.json())
+
+    def test_error_response_validates(self, client):
+        from az_scout.models.responses import ErrorResponse
+
+        with patch("az_scout.azure_api.requests.get", side_effect=Exception("Azure down")):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 500
+        ErrorResponse.model_validate(resp.json())

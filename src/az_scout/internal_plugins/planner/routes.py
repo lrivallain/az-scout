@@ -11,7 +11,13 @@ from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
 from az_scout import azure_api
-from az_scout.models.deployment_plan import DeploymentIntentRequest
+from az_scout.models.deployment_plan import DeploymentIntentRequest, DeploymentPlanResponse
+from az_scout.models.responses import (
+    DeploymentConfidenceResponse,
+    ErrorResponse,
+    SkuInfo,
+    SpotScoresResponse,
+)
 from az_scout.scoring.deployment_confidence import (
     best_spot_label,
     compute_deployment_confidence,
@@ -30,7 +36,13 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 
-@router.get("/skus", tags=["SKUs"], summary="Get SKU availability per zone")
+@router.get(
+    "/skus",
+    tags=["SKUs"],
+    summary="Get SKU availability per zone",
+    response_model=list[SkuInfo],
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
 async def get_skus(
     region: str | None = Query(None, description="Azure region name."),
     subscriptionId: str | None = Query(None, description="Subscription ID."),  # noqa: N803
@@ -121,6 +133,8 @@ class DeploymentConfidenceRequest(BaseModel):
     "/deployment-confidence",
     tags=["SKUs"],
     summary="Compute Deployment Confidence Scores (bulk)",
+    response_model=DeploymentConfidenceResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONResponse:
     """Compute the canonical Deployment Confidence Score for a set of SKUs."""
@@ -232,7 +246,13 @@ class SpotScoresRequest(BaseModel):
     tenantId: str | None = None
 
 
-@router.post("/spot-scores", tags=["SKUs"], summary="Get Spot Placement Scores")
+@router.post(
+    "/spot-scores",
+    tags=["SKUs"],
+    summary="Get Spot Placement Scores",
+    response_model=SpotScoresResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
 async def get_spot_scores(body: SpotScoresRequest) -> JSONResponse:
     """Return Spot Placement Scores for a list of VM sizes."""
     if not body.region or not body.subscriptionId or not body.skus:
@@ -290,6 +310,8 @@ async def get_sku_pricing(
     "/deployment-plan",
     tags=["Deployment"],
     summary="Generate a deployment plan",
+    response_model=DeploymentPlanResponse,
+    responses={500: {"model": ErrorResponse}},
 )
 async def deployment_plan(body: DeploymentIntentRequest) -> JSONResponse:
     """Generate a deterministic deployment plan from a deployment intent."""

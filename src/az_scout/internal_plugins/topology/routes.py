@@ -8,11 +8,17 @@ from fastapi import APIRouter, Query
 from starlette.responses import JSONResponse
 
 from az_scout import azure_api
+from az_scout.models.responses import ErrorResponse, SubscriptionMappingResult
 
 router = APIRouter(tags=["Mappings"])
 
 
-@router.get("/mappings", summary="Get zone mappings")
+@router.get(
+    "/mappings",
+    summary="Get zone mappings",
+    response_model=list[SubscriptionMappingResult],
+    responses={400: {"model": ErrorResponse}},
+)
 async def get_mappings(
     region: str | None = Query(None, description="Azure region name (e.g. eastus)."),
     subscriptions: str | None = Query(
