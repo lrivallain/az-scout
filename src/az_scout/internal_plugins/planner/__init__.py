@@ -55,6 +55,7 @@ class PlannerPlugin:
                 label="Deployment Planner",
                 icon="bi bi-grid-3x3-gap",
                 js_entry="js/planner.js",
+                css_entry="css/planner.css",
             )
         ]
 

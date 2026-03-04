@@ -45,6 +45,7 @@ class TopologyPlugin:
                 label="AZ Topology",
                 icon="bi bi-diagram-3",
                 js_entry="js/az-mapping.js",
+                css_entry="css/topology.css",
             )
         ]
 

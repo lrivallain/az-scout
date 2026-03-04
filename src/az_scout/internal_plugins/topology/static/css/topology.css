@@ -1,0 +1,145 @@
+/* ===================================================================
+   Azure Scout – AZ Topology Plugin Styles
+   =================================================================== */
+
+/* ---- Topology sidebar ---- */
+.topo-sidebar {
+    position: sticky;
+    top: 1rem;
+}
+
+/* ---- Subscription checklist ---- */
+.subscription-checklist {
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 0.35rem 0.5rem;
+}
+
+.subscription-checklist label {
+    display: block;
+    padding: 0.15rem 0;
+    cursor: pointer;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Graph sizing (constrain on large screens) ---- */
+.graph-container {
+    max-width: 720px;
+}
+
+.graph-container svg {
+    width: 100%;
+    height: auto;
+}
+
+/* ---- D3 graph styles ---- */
+.group-box-left {
+    fill: var(--bs-tertiary-bg);
+    stroke-width: 2;
+    stroke-opacity: 0.8;
+}
+
+.group-box-right {
+    fill: var(--bs-tertiary-bg);
+    stroke: var(--az-blue);
+    stroke-width: 2;
+    stroke-opacity: 0.5;
+}
+
+.group-label-left,
+.group-label-right {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.group-label-right {
+    fill: var(--az-blue);
+}
+
+.node-rect-left {
+    fill: var(--bs-body-bg);
+    stroke-width: 2;
+}
+
+.node-rect-right {
+    stroke-width: 2;
+}
+
+.node-label {
+    font-size: 13px;
+    font-weight: 500;
+    fill: var(--bs-body-color);
+}
+
+.link {
+    transition: opacity 0.15s;
+}
+
+.link.dimmed {
+    opacity: 0.08 !important;
+}
+
+.link.highlighted {
+    opacity: 1 !important;
+    stroke-width: 3.5;
+}
+
+/* ---- Legend ---- */
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.legend-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+}
+
+/* ---- Zone mapping table ---- */
+.mapping-table {
+    font-size: 0.85rem;
+}
+
+.mapping-table .sub-name-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Physical zone colour badges */
+.zone-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #fff;
+}
+
+.pz-1 { background: #0078d4; }
+.pz-2 { background: #107c10; }
+.pz-3 { background: #d83b01; }
+.pz-4 { background: #8764b8; }
+.pz-5 { background: #008272; }
+.pz-6 { background: #b4009e; }
+
+.consistency-row .same {
+    color: var(--bs-success);
+    font-weight: 600;
+}
+
+.consistency-row .different {
+    color: var(--bs-warning);
+    font-weight: 600;
+}
