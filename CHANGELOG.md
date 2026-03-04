@@ -28,6 +28,18 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 - **Built-in badge in Plugin Manager** – loaded plugins list now shows a "built-in" badge
   for internal plugins (topology, planner). The `GET /api/plugins` response includes an
   `internal` field.
+- **Content-Security-Policy headers** – all HTML responses now include a CSP header restricting
+  scripts, styles, and fonts to `'self'` + CDN origins (`cdn.jsdelivr.net`, `d3js.org`),
+  with `frame-ancestors 'none'`.
+- **Biome JS linting** – added [Biome](https://biomejs.dev/) as a JavaScript linter (standalone
+  binary, no npm). Config in `biome.json`, integrated into CI via `biomejs/setup-biome@v2`.
+- **Strict mypy compliance** – `mypy --strict` now passes with 0 errors (was 67). Added explicit
+  type parameters across `azure_api/`, scoring, and planner modules.
+- **`enrich_skus_with_confidence()` helper** – DRY convenience wrapper in
+  `scoring/deployment_confidence.py` replacing 3 duplicate signal-compute-assign loops.
+- **Plugin developer documentation** – `docs/plugins.md` updated with internal plugin
+  architecture, `PLUGIN_API_VERSION` contract, `azure_api.__all__` reference table, and shared
+  module catalogue for plugin authors.
 
 ### Changed
 
@@ -38,9 +50,16 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
   `/api/deployment-confidence`, `/api/spot-scores`, `/api/sku-pricing`, `/api/deployment-plan`),
   4 MCP tools, the planner tab HTML + modals (spot, pricing), and `planner.js` moved to
   `internal_plugins/planner/`. All API URLs are preserved.
-- **`app.py` and `mcp_server.py` slimmed down** – removed ~620 lines of route handlers and
-  MCP tool definitions that now live in internal plugins. Core only retains discovery endpoints
-  (tenants, subscriptions, regions, locations) and the chat endpoint.
+- **`app.py` slimmed to bootstrap-only** – discovery routes extracted to `routes/discovery.py`,
+  logging setup to `logging_config.py`. Core `app.py` now 220 lines (was 710).
+- **`plugin_manager.py` split into package** – 1 434-line monolith replaced by 7-module
+  `plugin_manager/` package (`_models`, `_github`, `_pypi`, `_installer`, `_storage`,
+  `_operations`, `__init__`).
+- **`ai_chat.py` split into package** – 741-line monolith replaced by 6-module
+  `services/ai_chat/` package (`_config`, `_prompts`, `_tools`, `_dispatch`, `_stream`,
+  `__init__`).
+- **`mcp_server.py` slimmed down** – removed ~310 lines of tool definitions that now live
+  in internal plugins. Core only retains discovery tools (tenants, subscriptions, regions).
 - **Deployment Confidence Scoring** – reworked scoring signals for better accuracy (#36):
   - Replaced `quota` with **Quota Pressure** (`quotaPressure`) – non-linear bands that penalise
     heavily above 80% family usage and when remaining vCPUs cannot fit the requested instance count.
