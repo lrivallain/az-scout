@@ -7,6 +7,14 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## [Unreleased]
 
+
+#### Added
+
+- **Plugin catalog (recommendations)** – the Plugin Manager now shows a curated list of
+  recommended plugins loaded from `recommended_plugins.json`, with quick-install buttons and
+  installed status badges. New `GET /api/plugins/recommended` endpoint and
+  `load_recommended_plugins()` helper in `plugin_manager`.
+
 ### Changed
 
 - **Deployment Confidence Scoring** – reworked scoring signals for better accuracy (#36):

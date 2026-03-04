@@ -48,33 +48,42 @@ uvx az-scout
 Your browser opens automatically at `http://127.0.0.1:5001`.
 
 
-## Known plugins
+## Plugins
 
 az-scout can be extended with pip-installable plugins discovered automatically at startup. See [docs/PLUGINS.md](docs/PLUGINS.md) for the plugin development guide and the [scaffold](docs/plugin-scaffold/) for a ready-to-use template.
 
+### Known plugins
+
 | Plugin | Description |
 |---|---|
-| [az-scout-plugin-strategy-advisor](https://github.com/lrivallain/az-scout-plugin-strategy-advisor) | Multi-region capacity strategy recommendation engine — evaluates regions, quotas, spot scores, pricing, and latency to recommend deployment strategies |
 | [az-scout-plugin-batch-sku](https://github.com/lrivallain/az-scout-plugin-batch-sku) | Azure Batch SKU availability — discover and compare Batch-supported VM SKUs per region |
 | [az-scout-plugin-latency-stats](https://github.com/lrivallain/az-scout-plugin-latency-stats) | Inter-region latency statistics — D3.js graph visualisation of pairwise RTT between Azure regions |
+| [az-scout-plugin-strategy-advisor](https://github.com/lrivallain/az-scout-plugin-strategy-advisor) | (WIP) Multi-region capacity strategy recommendation engine — evaluates regions, quotas, spot scores, pricing, and latency to recommend deployment strategies |
 
-Install a plugin:
+### Install a plugin
+
+#### Recommended: install plugin with package manager
+
+Use the built-in plugin manager to install plugins from PyPI (with package names like `az-scout-plugin-xyz`) or from GitHub URLs.
+
+A curated list of recommended plugins is available in the Plugin Manager UI, with **one-click install**.
+
+#### Alternative: install plugin with `pip` or `uv`
 
 ```bash
 uv pip install <plugin-package-name>
 ```
 
-
 ## Installation options
 
-### Recommended: install with `uv`
+### Recommended: install az-scout with `uv`
 
 ```bash
 uv install az-scout
 uvx az-scout
 ```
 
-### Alternative: install with `pip`
+### Alternative: install az-scout with `pip`
 
 ```bash
 pip install az-scout

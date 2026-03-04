@@ -1733,3 +1733,148 @@ class TestSourceBackwardCompat:
         assert len(loaded) == 1
         assert loaded[0].source == "pypi"
         assert loaded[0].ref == "0.2.0"
+
+
+# ---------------------------------------------------------------------------
+# Recommended plugins
+# ---------------------------------------------------------------------------
+
+
+class TestLoadRecommendedPlugins:
+    def test_load_with_no_installed(self, tmp_path: Path) -> None:
+        """Recommended plugins should all show installed=False when nothing is installed."""
+        rec_file = tmp_path / "recommended_plugins.json"
+        rec_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "name": "az-scout-plugin-foo",
+                        "description": "Foo plugin",
+                        "source": "pypi",
+                    },
+                    {
+                        "name": "az-scout-plugin-bar",
+                        "description": "Bar plugin",
+                        "source": "github",
+                        "url": "https://github.com/owner/bar",
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+        installed_file = tmp_path / "installed.json"
+        installed_file.write_text("[]", encoding="utf-8")
+
+        with (
+            patch.object(plugin_manager, "_RECOMMENDED_FILE", rec_file),
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+        ):
+            result = plugin_manager.load_recommended_plugins()
+
+        assert len(result) == 2
+        assert result[0]["name"] == "az-scout-plugin-foo"
+        assert result[0]["installed"] is False
+        assert result[1]["name"] == "az-scout-plugin-bar"
+        assert result[1]["source"] == "github"
+        assert result[1]["installed"] is False
+
+    def test_installed_plugin_marked(self, tmp_path: Path) -> None:
+        """Plugins that are already installed should be marked installed=True."""
+        rec_file = tmp_path / "recommended_plugins.json"
+        rec_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "name": "az-scout-plugin-foo",
+                        "description": "Foo",
+                        "source": "pypi",
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+        installed_file = tmp_path / "installed.json"
+        installed_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "distribution_name": "az-scout-plugin-foo",
+                        "repo_url": "",
+                        "ref": "1.0.0",
+                        "resolved_sha": "",
+                        "entry_points": {},
+                        "installed_at": "2026-01-01T00:00:00+00:00",
+                        "actor": "tester",
+                        "source": "pypi",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with (
+            patch.object(plugin_manager, "_RECOMMENDED_FILE", rec_file),
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+        ):
+            result = plugin_manager.load_recommended_plugins()
+
+        assert len(result) == 1
+        assert result[0]["installed"] is True
+
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        """When the recommended file does not exist, return an empty list."""
+        missing = tmp_path / "does_not_exist.json"
+        with patch.object(plugin_manager, "_RECOMMENDED_FILE", missing):
+            result = plugin_manager.load_recommended_plugins()
+        assert result == []
+
+    def test_optional_version_field(self, tmp_path: Path) -> None:
+        """Entries with a version field should be propagated."""
+        rec_file = tmp_path / "recommended_plugins.json"
+        rec_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "name": "az-scout-plugin-pinned",
+                        "description": "Pinned plugin",
+                        "source": "pypi",
+                        "version": "2.0.0",
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+        installed_file = tmp_path / "installed.json"
+        installed_file.write_text("[]", encoding="utf-8")
+
+        with (
+            patch.object(plugin_manager, "_RECOMMENDED_FILE", rec_file),
+            patch.object(plugin_manager, "_INSTALLED_FILE", installed_file),
+        ):
+            result = plugin_manager.load_recommended_plugins()
+
+        assert result[0]["version"] == "2.0.0"
+
+
+class TestRecommendedRoute:
+    def test_list_recommended(self, client) -> None:  # type: ignore[no-untyped-def]
+        """GET /api/plugins/recommended should return the recommended list."""
+        mock_data = [
+            {
+                "name": "az-scout-plugin-foo",
+                "description": "Foo",
+                "source": "pypi",
+                "url": "",
+                "version": "",
+                "installed": False,
+            }
+        ]
+        with patch.object(plugin_manager, "load_recommended_plugins", return_value=mock_data):
+            resp = client.get("/api/plugins/recommended")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "plugins" in data
+        assert len(data["plugins"]) == 1
+        assert data["plugins"][0]["name"] == "az-scout-plugin-foo"
+        assert data["plugins"][0]["installed"] is False

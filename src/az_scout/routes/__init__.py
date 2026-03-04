@@ -164,6 +164,13 @@ async def update_plugin(body: UpdateRequest, request: Request) -> JSONResponse:
     )
 
 
+@router.get("/recommended", summary="List recommended plugins")
+async def list_recommended() -> JSONResponse:
+    """Return the curated list of recommended plugins with install status."""
+    plugins = plugin_manager.load_recommended_plugins()
+    return JSONResponse({"plugins": plugins})
+
+
 @router.post("/update-all", summary="Update all plugins")
 async def update_all_plugins(request: Request) -> JSONResponse:
     """Update all installed plugins that have available updates."""

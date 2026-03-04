@@ -50,6 +50,7 @@
             .then(html => {
                 container.innerHTML = html;
                 loadPlugins();
+                loadRecommended();
             });
     }
 
@@ -330,6 +331,81 @@
             }
         } catch (e) {
             alert("Update all error: " + e.message);
+        } finally {
+            hideSpinner();
+        }
+    };
+
+    // ---- Recommended plugins ----
+
+    function loadRecommended() {
+        apiFetch("/api/plugins/recommended").then(data => {
+            renderRecommended(data.plugins || []);
+        }).catch(() => {});
+    }
+
+    function renderRecommended(list) {
+        const empty = document.getElementById("pm-recommended-empty");
+        const wrap = document.getElementById("pm-recommended-table-wrap");
+        const tbody = document.getElementById("pm-recommended-tbody");
+        if (!empty || !wrap || !tbody) return;
+
+        if (list.length === 0) {
+            empty.classList.remove("d-none");
+            wrap.classList.add("d-none");
+            return;
+        }
+        empty.classList.add("d-none");
+        wrap.classList.remove("d-none");
+        tbody.innerHTML = "";
+
+        for (const p of list) {
+            const tr = document.createElement("tr");
+            const pypi = p.source === "pypi";
+            let sourceLink;
+            if (pypi) {
+                const pypiUrl = `https://pypi.org/project/${encodeURIComponent(p.name)}/`;
+                sourceLink = `<a href="${escHtml(pypiUrl)}" target="_blank" rel="noopener"><i class="bi bi-box-seam me-1"></i>PyPI</a>`;
+            } else {
+                sourceLink = p.url
+                    ? `<a href="${escHtml(p.url)}" target="_blank" rel="noopener"><i class="bi bi-github me-1"></i>GitHub</a>`
+                    : escHtml(p.source);
+            }
+
+            let actionCell;
+            if (p.installed) {
+                actionCell = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Installed</span>';
+            } else {
+                const installSource = pypi ? escAttr(p.name) : escAttr(p.url);
+                const installVersion = escAttr(p.version || "");
+                actionCell = `<button class="btn btn-outline-success btn-sm py-0 px-2"
+                                      title="Quick install"
+                                      onclick="pmQuickInstall('${installSource}', '${installVersion}')">
+                                  <i class="bi bi-download me-1"></i>Install
+                              </button>`;
+            }
+
+            tr.innerHTML = `
+                <td><code>${escHtml(p.name)}</code></td>
+                <td>${escHtml(p.description)}</td>
+                <td>${sourceLink}</td>
+                <td class="text-nowrap">${actionCell}</td>`;
+            tbody.appendChild(tr);
+        }
+    }
+
+    window.pmQuickInstall = async function (source, version) {
+        showSpinner("Installing…");
+        try {
+            const data = await apiPost("/api/plugins/install", { repo_url: source, ref: version });
+            if (data.ok) {
+                window.location.reload();
+                return;
+            } else {
+                showResultError((data.errors || []).join("; "));
+            }
+        } catch (e) {
+            showResultError(e.message);
         } finally {
             hideSpinner();
         }

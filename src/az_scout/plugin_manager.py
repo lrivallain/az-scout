@@ -1353,6 +1353,58 @@ def reconcile_installed_plugins() -> list[dict[str, str | bool]]:
     return results
 
 
+# ---------------------------------------------------------------------------
+# Recommended plugins
+# ---------------------------------------------------------------------------
+
+_RECOMMENDED_FILE = Path(__file__).parent / "recommended_plugins.json"
+
+
+@dataclass
+class RecommendedPlugin:
+    """A plugin recommended for installation."""
+
+    name: str
+    description: str
+    source: str  # "pypi" or "github"
+    url: str = ""  # GitHub URL (required when source is "github")
+    version: str = ""  # Optional pinned version
+
+
+def load_recommended_plugins() -> list[dict[str, Any]]:
+    """Load the recommended plugins list and annotate with install status.
+
+    Each entry is a dict with the fields from :class:`RecommendedPlugin` plus
+    an ``installed`` boolean indicating whether the plugin is already present.
+    """
+    if not _RECOMMENDED_FILE.exists():
+        return []
+    try:
+        raw: list[dict[str, Any]] = json.loads(_RECOMMENDED_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to read %s", _RECOMMENDED_FILE)
+        return []
+
+    installed_names = {r.distribution_name for r in load_installed()}
+
+    results: list[dict[str, Any]] = []
+    for entry in raw:
+        rec = RecommendedPlugin(
+            name=entry.get("name", ""),
+            description=entry.get("description", ""),
+            source=entry.get("source", "pypi"),
+            url=entry.get("url", ""),
+            version=entry.get("version", ""),
+        )
+        results.append(
+            {
+                **asdict(rec),
+                "installed": rec.name in installed_names,
+            }
+        )
+    return results
+
+
 def _audit_event(
     action: str,
     actor: str,
