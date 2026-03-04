@@ -1,0 +1,35 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.4.5/schema.json",
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "files": {
+        "includes": [
+            "src/az_scout/static/js/**/*.js",
+            "src/az_scout/internal_plugins/**/static/js/**/*.js"
+        ]
+    },
+    "formatter": {
+        "enabled": false
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "style": {
+                "useTemplate": "off"
+            },
+            "correctness": {
+                "noUnusedVariables": "off"
+            },
+            "complexity": {
+                "noForEach": "off"
+            }
+        }
+    },
+    "assist": {
+        "enabled": false
+    }
+}

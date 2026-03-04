@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -134,7 +135,7 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
         )
 
     evaluated_at = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     warnings: list[str] = []
     errors: list[str] = []
 
@@ -198,7 +199,7 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
             )
             result = compute_deployment_confidence(sig)
 
-            entry: dict = {
+            entry: dict[str, Any] = {
                 "sku": sku_name,
                 "deploymentConfidence": result.model_dump(
                     exclude={"provenance"} if not body.includeProvenance else set()

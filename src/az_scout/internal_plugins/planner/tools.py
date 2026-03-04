@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import Field
 
@@ -202,7 +202,7 @@ def get_sku_deployment_confidence(
             logger.warning("Spot placement score fetch failed; continuing without spot")
             warnings.append("Spot placement scores unavailable")
 
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     errors: list[str] = []
     for sku_name in skus:
         sku_data = sku_map.get(sku_name)
@@ -231,7 +231,7 @@ def get_sku_deployment_confidence(
         if not include_provenance:
             exclude.add("provenance")
 
-        entry: dict = {
+        entry: dict[str, Any] = {
             "sku": sku_name,
             "deploymentConfidence": result.model_dump(exclude=exclude),
         }

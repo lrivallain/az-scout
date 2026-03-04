@@ -30,17 +30,17 @@ class _CategoryFilter(logging.Filter):
             # e.g. "az_scout_batch_sku.routes" → plugin name "batch_sku"
             suffix = name[len("az_scout_") :]
             plugin_name = suffix.split(".")[0]
-            record.category = f"plugin:{plugin_name}"  # type: ignore[attr-defined]
+            record.category = f"plugin:{plugin_name}"
         elif name.startswith("az_scout"):
-            record.category = "core"  # type: ignore[attr-defined]
+            record.category = "core"
         elif name.startswith("uvicorn"):
-            record.category = "server"  # type: ignore[attr-defined]
+            record.category = "server"
         elif name.startswith("httpx"):
-            record.category = "http"  # type: ignore[attr-defined]
+            record.category = "http"
         elif name.startswith("mcp"):
-            record.category = "mcp"  # type: ignore[attr-defined]
+            record.category = "mcp"
         else:
-            record.category = "ext"  # type: ignore[attr-defined]
+            record.category = "ext"
         return True
 
 

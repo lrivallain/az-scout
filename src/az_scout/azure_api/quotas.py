@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import requests
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 COMPUTE_API_VERSION = "2024-11-01"
 _USAGE_CACHE_TTL = 600  # 10 minutes
-_usage_cache: dict[str, tuple[float, list[dict]]] = {}
+_usage_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 def _normalize_family(family: str) -> str:
@@ -25,7 +26,7 @@ def get_compute_usages(
     region: str,
     subscription_id: str,
     tenant_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return Compute resource usages (vCPU quotas) for *region*.
 
     Results are cached for ``_USAGE_CACHE_TTL`` seconds to avoid
@@ -74,7 +75,7 @@ def get_compute_usages(
             )
             return []
         resp.raise_for_status()
-        result: list[dict] = resp.json().get("value", [])
+        result: list[dict[str, Any]] = resp.json().get("value", [])
         _usage_cache[cache_key] = (time.monotonic(), result)
         return result
 
@@ -85,18 +86,18 @@ def get_compute_usages(
 
 
 def enrich_skus_with_quotas(
-    skus: list[dict],
+    skus: list[dict[str, Any]],
     region: str,
     subscription_id: str,
     tenant_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Add per-family quota information to each SKU dict **in-place**.
 
     Each SKU gets a ``"quota"`` key with ``limit``, ``used`` and
     ``remaining`` (all ``int | None``).  ``None`` means unknown
     (no matching usage entry or fetch failure).
     """
-    usage_map: dict[str, dict] = {}
+    usage_map: dict[str, dict[str, Any]] = {}
     try:
         usages = get_compute_usages(region, subscription_id, tenant_id)
         for u in usages:

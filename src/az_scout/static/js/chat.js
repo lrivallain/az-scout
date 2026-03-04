@@ -444,7 +444,7 @@ function _onChatChoiceClick(btn) {
     // Dim all choice chips in the same bubble to show selection was made
     const bubble = btn.closest(".chat-bubble");
     if (bubble) {
-        bubble.querySelectorAll(".chat-choice-chip").forEach(c => c.classList.add("used"));
+        bubble.querySelectorAll(".chat-choice-chip").forEach(c => { c.classList.add("used"); });
     }
     // Populate input and send
     const input = document.getElementById("chat-input");

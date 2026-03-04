@@ -16,7 +16,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from starlette.responses import StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response, StreamingResponse
 
 from az_scout import __version__, azure_api
 from az_scout.plugin_manager import reconcile_installed_plugins
@@ -78,6 +79,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Content-Security-Policy
+# ---------------------------------------------------------------------------
+
+_CSP_POLICY = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net d3js.org",
+        "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net",
+        "font-src 'self' cdn.jsdelivr.net",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+    ]
+)
+
+
+class _CSPMiddleware(BaseHTTPMiddleware):
+    """Add Content-Security-Policy header to all HTML responses."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+        ct = response.headers.get("content-type", "")
+        if "text/html" in ct:
+            response.headers["Content-Security-Policy"] = _CSP_POLICY
+        return response
+
+
+app.add_middleware(_CSPMiddleware)
+
 app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
 
@@ -110,7 +142,7 @@ def _ensure_fresh_session_manager() -> None:
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
     mgr = _mcp_server.session_manager
-    if mgr._has_started:  # type: ignore[attr-defined]
+    if mgr._has_started:
         new_mgr = StreamableHTTPSessionManager(
             app=_mcp_server._mcp_server,
             event_store=_mcp_server._event_store,

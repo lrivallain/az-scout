@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import requests
 
@@ -138,7 +139,7 @@ def get_spot_placement_scores(
     vm_sizes: list[str],
     instance_count: int = 1,
     tenant_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Return spot placement scores for a list of VM sizes.
 
         The Compute RP accepts at most ~100 VM sizes per call; this
