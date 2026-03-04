@@ -1,7 +1,6 @@
 """Discovery API routes – tenants, subscriptions, regions, locations."""
 
 import asyncio
-import logging
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -9,7 +8,6 @@ from fastapi.responses import JSONResponse
 from az_scout import azure_api
 
 router = APIRouter(tags=["Discovery"])
-logger = logging.getLogger(__name__)
 
 
 @router.get("/tenants", summary="List Azure AD tenants")
@@ -19,11 +17,7 @@ async def list_tenants() -> JSONResponse:
     Returns all tenants with their authentication status and the default
     tenant ID for the current auth context.
     """
-    try:
-        return JSONResponse(await asyncio.to_thread(azure_api.list_tenants))
-    except Exception as exc:
-        logger.exception("Failed to list tenants")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(await asyncio.to_thread(azure_api.list_tenants))
 
 
 @router.get("/subscriptions", summary="List enabled Azure subscriptions")
@@ -33,11 +27,7 @@ async def list_subscriptions(
     ),
 ) -> JSONResponse:
     """Return all enabled Azure subscriptions, sorted alphabetically."""
-    try:
-        return JSONResponse(await asyncio.to_thread(azure_api.list_subscriptions, tenantId))
-    except Exception as exc:
-        logger.exception("Failed to list subscriptions")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(await asyncio.to_thread(azure_api.list_subscriptions, tenantId))
 
 
 @router.get("/regions", summary="List AZ-enabled regions")
@@ -54,9 +44,6 @@ async def list_regions(
         )
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
-    except Exception as exc:
-        logger.exception("Failed to list regions")
-        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @router.get("/locations", summary="List all ARM locations")
@@ -73,6 +60,3 @@ async def list_locations(
         )
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
-    except Exception as exc:
-        logger.exception("Failed to list locations")
-        return JSONResponse({"error": str(exc)}, status_code=502)

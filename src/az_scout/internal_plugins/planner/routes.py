@@ -74,32 +74,28 @@ async def get_skus(
             status_code=400,
         )
 
-    try:
-        skus = await asyncio.to_thread(
-            azure_api.get_skus,
-            region,
-            subscriptionId,
-            tenantId,
-            resourceType,
-            name=name,
-            family=family,
-            min_vcpus=minVcpus,
-            max_vcpus=maxVcpus,
-            min_memory_gb=minMemoryGB,
-            max_memory_gb=maxMemoryGB,
-        )
-        await asyncio.to_thread(
-            azure_api.enrich_skus_with_quotas, skus, region, subscriptionId, tenantId
-        )
-        if includePrices:
-            await asyncio.to_thread(azure_api.enrich_skus_with_prices, skus, region, currencyCode)
+    skus = await asyncio.to_thread(
+        azure_api.get_skus,
+        region,
+        subscriptionId,
+        tenantId,
+        resourceType,
+        name=name,
+        family=family,
+        min_vcpus=minVcpus,
+        max_vcpus=maxVcpus,
+        min_memory_gb=minMemoryGB,
+        max_memory_gb=maxMemoryGB,
+    )
+    await asyncio.to_thread(
+        azure_api.enrich_skus_with_quotas, skus, region, subscriptionId, tenantId
+    )
+    if includePrices:
+        await asyncio.to_thread(azure_api.enrich_skus_with_prices, skus, region, currencyCode)
 
-        enrich_skus_with_confidence(skus)
+    enrich_skus_with_confidence(skus)
 
-        return JSONResponse(skus)
-    except Exception as exc:
-        logger.exception("Failed to fetch SKUs")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(skus)
 
 
 # ---------------------------------------------------------------------------
@@ -139,80 +135,75 @@ async def deployment_confidence(body: DeploymentConfidenceRequest) -> JSONRespon
     warnings: list[str] = []
     errors: list[str] = []
 
-    try:
-        all_skus = await asyncio.to_thread(
-            azure_api.get_skus,
-            body.region,
-            body.subscriptionId,
-            body.tenantId,
-            "virtualMachines",
-        )
-        await asyncio.to_thread(
-            azure_api.enrich_skus_with_quotas,
-            all_skus,
-            body.region,
-            body.subscriptionId,
-            body.tenantId,
-        )
-        await asyncio.to_thread(
-            azure_api.enrich_skus_with_prices, all_skus, body.region, body.currencyCode
-        )
+    all_skus = await asyncio.to_thread(
+        azure_api.get_skus,
+        body.region,
+        body.subscriptionId,
+        body.tenantId,
+        "virtualMachines",
+    )
+    await asyncio.to_thread(
+        azure_api.enrich_skus_with_quotas,
+        all_skus,
+        body.region,
+        body.subscriptionId,
+        body.tenantId,
+    )
+    await asyncio.to_thread(
+        azure_api.enrich_skus_with_prices, all_skus, body.region, body.currencyCode
+    )
 
-        sku_map = {s["name"]: s for s in all_skus}
+    sku_map = {s["name"]: s for s in all_skus}
 
-        spot_scores: dict[str, dict[str, str]] = {}
-        if body.preferSpot:
-            try:
-                spot_result = await asyncio.to_thread(
-                    azure_api.get_spot_placement_scores,
-                    body.region,
-                    body.subscriptionId,
-                    body.skus,
-                    body.instanceCount,
-                    body.tenantId,
-                )
-                spot_scores = spot_result.get("scores", {})
-            except Exception:
-                logger.warning("Spot placement score fetch failed; continuing without spot")
-                warnings.append("Spot placement scores unavailable")
-
-        for sku_name in body.skus:
-            sku_data = sku_map.get(sku_name)
-            if sku_data is None:
-                errors.append(f"SKU '{sku_name}' not found in region '{body.region}'")
-                continue
-
-            sku_spot_zones = spot_scores.get(sku_name, {})
-            spot_label = best_spot_label(sku_spot_zones)
-            if body.preferSpot and sku_spot_zones and spot_label is None:
-                zone_values = list(sku_spot_zones.values())
-                warnings.append(
-                    f"Spot data for '{sku_name}' returned non-scorable values "
-                    f"({', '.join(zone_values)}); excluded from confidence."
-                )
-            elif body.preferSpot and not sku_spot_zones and not warnings:
-                warnings.append(f"No Spot Placement Score data available for '{sku_name}'.")
-            sig = signals_from_sku(
-                sku_data,
-                spot_score_label=spot_label,
-                instance_count=body.instanceCount,
+    spot_scores: dict[str, dict[str, str]] = {}
+    if body.preferSpot:
+        try:
+            spot_result = await asyncio.to_thread(
+                azure_api.get_spot_placement_scores,
+                body.region,
+                body.subscriptionId,
+                body.skus,
+                body.instanceCount,
+                body.tenantId,
             )
-            result = compute_deployment_confidence(sig)
+            spot_scores = spot_result.get("scores", {})
+        except Exception:
+            logger.warning("Spot placement score fetch failed; continuing without spot")
+            warnings.append("Spot placement scores unavailable")
 
-            entry: dict[str, Any] = {
-                "sku": sku_name,
-                "deploymentConfidence": result.model_dump(
-                    exclude={"provenance"} if not body.includeProvenance else set()
-                ),
-            }
-            if body.includeSignals:
-                entry["rawSignals"] = sig.model_dump()
+    for sku_name in body.skus:
+        sku_data = sku_map.get(sku_name)
+        if sku_data is None:
+            errors.append(f"SKU '{sku_name}' not found in region '{body.region}'")
+            continue
 
-            results.append(entry)
+        sku_spot_zones = spot_scores.get(sku_name, {})
+        spot_label = best_spot_label(sku_spot_zones)
+        if body.preferSpot and sku_spot_zones and spot_label is None:
+            zone_values = list(sku_spot_zones.values())
+            warnings.append(
+                f"Spot data for '{sku_name}' returned non-scorable values "
+                f"({', '.join(zone_values)}); excluded from confidence."
+            )
+        elif body.preferSpot and not sku_spot_zones and not warnings:
+            warnings.append(f"No Spot Placement Score data available for '{sku_name}'.")
+        sig = signals_from_sku(
+            sku_data,
+            spot_score_label=spot_label,
+            instance_count=body.instanceCount,
+        )
+        result = compute_deployment_confidence(sig)
 
-    except Exception as exc:
-        logger.exception("Failed to compute deployment confidence")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        entry: dict[str, Any] = {
+            "sku": sku_name,
+            "deploymentConfidence": result.model_dump(
+                exclude={"provenance"} if not body.includeProvenance else set()
+            ),
+        }
+        if body.includeSignals:
+            entry["rawSignals"] = sig.model_dump()
+
+        results.append(entry)
 
     return JSONResponse(
         {
@@ -249,19 +240,15 @@ async def get_spot_scores(body: SpotScoresRequest) -> JSONResponse:
             {"error": "'region', 'subscriptionId' and 'skus' are required"},
             status_code=400,
         )
-    try:
-        result = await asyncio.to_thread(
-            azure_api.get_spot_placement_scores,
-            body.region,
-            body.subscriptionId,
-            body.skus,
-            body.instanceCount,
-            body.tenantId,
-        )
-        return JSONResponse(result)
-    except Exception as exc:
-        logger.exception("Failed to fetch spot placement scores")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+    result = await asyncio.to_thread(
+        azure_api.get_spot_placement_scores,
+        body.region,
+        body.subscriptionId,
+        body.skus,
+        body.instanceCount,
+        body.tenantId,
+    )
+    return JSONResponse(result)
 
 
 # ---------------------------------------------------------------------------
@@ -282,20 +269,16 @@ async def get_sku_pricing(
     tenantId: str | None = Query(None, description="Optional tenant ID."),  # noqa: N803
 ) -> JSONResponse:
     """Return detailed Linux pricing for a single VM SKU."""
-    try:
-        result = await asyncio.to_thread(
-            azure_api.get_sku_pricing_detail, region, skuName, currencyCode
+    result = await asyncio.to_thread(
+        azure_api.get_sku_pricing_detail, region, skuName, currencyCode
+    )
+    if subscriptionId:
+        profile = await asyncio.to_thread(
+            azure_api.get_sku_profile, region, subscriptionId, skuName, tenantId
         )
-        if subscriptionId:
-            profile = await asyncio.to_thread(
-                azure_api.get_sku_profile, region, subscriptionId, skuName, tenantId
-            )
-            if profile is not None:
-                result["profile"] = profile
-        return JSONResponse(result)
-    except Exception as exc:
-        logger.exception("Failed to fetch SKU pricing detail")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        if profile is not None:
+            result["profile"] = profile
+    return JSONResponse(result)
 
 
 # ---------------------------------------------------------------------------
@@ -310,9 +293,5 @@ async def get_sku_pricing(
 )
 async def deployment_plan(body: DeploymentIntentRequest) -> JSONResponse:
     """Generate a deterministic deployment plan from a deployment intent."""
-    try:
-        result = await asyncio.to_thread(plan_deployment, body)
-        return JSONResponse(result.model_dump())
-    except Exception as exc:
-        logger.exception("Failed to generate deployment plan")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+    result = await asyncio.to_thread(plan_deployment, body)
+    return JSONResponse(result.model_dump())

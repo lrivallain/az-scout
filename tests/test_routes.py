@@ -8,6 +8,34 @@ import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+
+# ---------------------------------------------------------------------------
+# Global exception handler
+# ---------------------------------------------------------------------------
+
+
+class TestGlobalExceptionHandler:
+    """Tests for the @app.exception_handler(Exception) middleware."""
+
+    def test_unhandled_exception_returns_500_json(self, client):
+        """Any unhandled exception should produce a 500 JSON response."""
+        with patch(
+            "az_scout.azure_api.requests.get",
+            side_effect=RuntimeError("unexpected failure"),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 500
+        data = resp.json()
+        assert data["error"] == "unexpected failure"
+
+    def test_http_exception_not_intercepted(self, client):
+        """FastAPI's own HTTPException (e.g. 404 for unknown routes) must not
+        be swallowed by the generic handler."""
+        resp = client.get("/api/nonexistent-route")
+        assert resp.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # GET /
 # ---------------------------------------------------------------------------
@@ -354,14 +382,14 @@ class TestListLocations:
         assert resp.status_code == 400
         assert "error" in resp.json()
 
-    def test_returns_502_on_arm_error(self, client):
+    def test_returns_500_on_arm_error(self, client):
         with patch(
             "az_scout.azure_api.requests.get",
             side_effect=Exception("ARM unreachable"),
         ):
             resp = client.get("/api/locations?subscriptionId=sub-123")
 
-        assert resp.status_code == 502
+        assert resp.status_code == 500
         assert "error" in resp.json()
 
 

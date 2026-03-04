@@ -81,6 +81,20 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
+# Global exception handler – returns a consistent JSON error for unhandled
+# exceptions.  HTTPException is already handled natively by FastAPI, and
+# RequestValidationError has its own built-in handler as well.
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(Exception)
+async def _generic_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+    """Return ``{"error": …}`` with status 500 for any unhandled exception."""
+    logging.getLogger(__name__).exception("Unhandled error")
+    return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
 # Content-Security-Policy
 # ---------------------------------------------------------------------------
 

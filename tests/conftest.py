@@ -26,8 +26,16 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture()
 def client():
-    """Create a FastAPI test client with mocked Azure credentials."""
-    with patch("az_scout.azure_api.preload_discovery"), TestClient(app) as c:
+    """Create a FastAPI test client with mocked Azure credentials.
+
+    ``raise_server_exceptions=False`` ensures unhandled exceptions are
+    processed by the global ``@app.exception_handler(Exception)`` middleware
+    just like in production, instead of being re-raised by the test client.
+    """
+    with (
+        patch("az_scout.azure_api.preload_discovery"),
+        TestClient(app, raise_server_exceptions=False) as c,
+    ):
         yield c
 
 
