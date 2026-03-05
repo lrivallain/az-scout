@@ -29,7 +29,6 @@ description: "Scout Azure regions for VM availability, zone mappings, pricing, s
 - *Do my subscriptions share the same physical datacenter for logical zone 1?*
 - *Which VM SKUs are available in all three zones with headroom in my quota?*
 - *What is the Spot placement likelihood for this SKU family right now?*
-- *Which deployment plan gives me the best confidence score across zones?*
 
 All from a single web UI — or through an MCP-powered AI agent connected to your favourite tools (Claude, VS Code Copilot, etc.).
 

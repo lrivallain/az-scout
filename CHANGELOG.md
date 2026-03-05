@@ -7,11 +7,14 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
-*To complete*
+### Removed
+
+- **Deployment plan generation** – the `/api/deployment-plan` endpoint and related logic for generating deployment plans based on SKU availability and confidence scores has been removed.
+
 
 ## [2026.3.2] - 2026-03-05
 
-#### Added
+### Added
 
 - **Documentation** - Add `mkdocs` docs based websites, hosted in GitHub Pages, with a custom theme and structure. Initial content includes:
   - Home page with project overview and quick start guide.
@@ -55,7 +58,7 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
   MCP tool, tab HTML, and `az-mapping.js` moved from core to
   `internal_plugins/topology/`. The tab markup is loaded as an HTML fragment at runtime.
 - **Deployment Planner extracted to internal plugin** – 5 API routes (`/api/skus`,
-  `/api/deployment-confidence`, `/api/spot-scores`, `/api/sku-pricing`, `/api/deployment-plan`),
+  `/api/deployment-confidence`, `/api/spot-scores`, `/api/sku-pricing`),
   4 MCP tools, the planner tab HTML + modals (spot, pricing), and `planner.js` moved to
   `internal_plugins/planner/`. All API URLs are preserved.
 - **`app.py` slimmed to bootstrap-only** – discovery routes extracted to `routes/discovery.py`,
@@ -193,9 +196,6 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 - **Deployment Confidence Score** – composite 0–100 score per SKU estimating deployment success,
   synthesised from quota headroom, Spot Placement Score, zone breadth, restrictions, and price
   pressure. Missing signals are excluded with automatic weight renormalisation.
-- **Deployment Plan API** – deterministic `POST /api/deployment-plan` endpoint that evaluates
-  (region, SKU) combinations against zones, quotas, spot scores, pricing, and restrictions.
-  Returns ranked plans with business and technical views (no LLM).
 - **Spot Placement Scores** – per-SKU Spot VM allocation likelihood (High / Medium / Low),
   fetched from the Azure Compute RP with batching, retry/back-off, and 10-minute cache.
 - **SKU pricing** – retail prices (PayGo, Spot, RI 1Y/3Y, SP 1Y/3Y) with currency selector,

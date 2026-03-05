@@ -11,7 +11,6 @@ from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
 from az_scout import azure_api
-from az_scout.models.deployment_plan import DeploymentIntentRequest, DeploymentPlanResponse
 from az_scout.models.responses import (
     DeploymentConfidenceResponse,
     ErrorResponse,
@@ -24,7 +23,6 @@ from az_scout.scoring.deployment_confidence import (
     enrich_skus_with_confidence,
     signals_from_sku,
 )
-from az_scout.services.deployment_planner import plan_deployment
 
 logger = logging.getLogger(__name__)
 
@@ -299,21 +297,3 @@ async def get_sku_pricing(
         if profile is not None:
             result["profile"] = profile
     return JSONResponse(result)
-
-
-# ---------------------------------------------------------------------------
-# POST /api/deployment-plan
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/deployment-plan",
-    tags=["Plugin: planner"],
-    summary="Generate a deployment plan",
-    response_model=DeploymentPlanResponse,
-    responses={500: {"model": ErrorResponse}},
-)
-async def deployment_plan(body: DeploymentIntentRequest) -> JSONResponse:
-    """Generate a deterministic deployment plan from a deployment intent."""
-    result = await asyncio.to_thread(plan_deployment, body)
-    return JSONResponse(result.model_dump())

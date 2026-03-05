@@ -88,21 +88,6 @@ See the [Scoring Reference](scoring.md) for the full algorithm and all threshold
 
 ---
 
-## Deployment Planner
-
-Generate deterministic, ranked deployment plans across VM SKUs and zones.
-
-**What you can do:**
-
-- Select a target region and subscription.
-- Specify desired vCPU count, memory, instance count, and whether Spot is acceptable.
-- Receive a ranked list of deployment options with business and technical views.
-- Review per-option confidence scores, zone distribution, and cost estimates.
-
-The planner calls `POST /api/deployment-plan` — no LLM required. Plans are fully deterministic and reproducible.
-
----
-
 ## AI Chat Assistant
 
 An optional chat panel powered by **Azure OpenAI** with streaming responses, tool calling, and markdown rendering.
