@@ -14,7 +14,7 @@ Only the latest released version receives security updates.
 If you discover a security vulnerability in **az-scout**, please report it responsibly:
 
 1. **Do not** open a public GitHub issue.
-2. Email the maintainer at **security@yourproject.example** or use [GitHub's private vulnerability reporting](https://github.com/lrivallain/az-scout/security/advisories/new).
+2. Use [GitHub's private vulnerability reporting](https://github.com/lrivallain/az-scout/security/advisories/new).
 3. Include a clear description of the vulnerability, steps to reproduce, and any potential impact.
 
 You can expect an initial response within **72 hours**. Once the issue is confirmed, a fix will be developed and released as soon as possible.
