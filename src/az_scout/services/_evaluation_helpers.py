@@ -1,7 +1,7 @@
-"""Shared helpers used by capacity_strategy_engine and deployment_planner.
+"""Shared helpers used by capacity strategy services.
 
-Contains constants and pure functions that are duplicated across the two
-decision engines.  Centralised here to keep a single source of truth.
+Contains constants and pure functions shared across strategy/capacity
+decision engines. Centralised here to keep a single source of truth.
 """
 
 from __future__ import annotations
@@ -78,9 +78,9 @@ def resolve_candidate_regions(
 ) -> list[str]:
     """Resolve candidate regions from constraint parameters.
 
-    The common logic used by both capacity_strategy_engine and
-    deployment_planner: allow list → data residency fallback → all regions,
-    then deny list filtering, then optional truncation.
+    The common logic used by capacity strategy evaluators: allow list → data
+    residency fallback → all regions, then deny list filtering, then optional
+    truncation.
     """
     if allow_regions:
         candidates = list(allow_regions)

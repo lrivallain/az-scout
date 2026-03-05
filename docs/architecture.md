@@ -165,7 +165,6 @@ src/az_scout/
 ├── scoring/                  # Deployment Confidence Score
 ├── services/
 │   ├── ai_chat/              # AI chat (6 modules)
-│   └── deployment_planner.py # Deployment plan generation
 ├── models/                   # Pydantic models
 ├── routes/
 │   ├── __init__.py            # Plugin manager API

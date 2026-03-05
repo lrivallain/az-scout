@@ -246,27 +246,6 @@ Get retail pricing for a SKU in a region.
 
 ---
 
-### `POST /api/deployment-plan`
-
-Generate a ranked deployment plan for a set of requirements.
-
-**Request body:**
-
-```json
-{
-  "region": "westeurope",
-  "subscription_id": "00000000-0000-0000-0000-000000000000",
-  "vcpus": 4,
-  "memory_gb": 16,
-  "instance_count": 3,
-  "prefer_spot": false
-}
-```
-
-**Response:** Ranked list of deployment options with confidence scores, zone distribution, and pricing.
-
----
-
 ## Plugin Manager Endpoints
 
 ### `GET /api/plugins`
