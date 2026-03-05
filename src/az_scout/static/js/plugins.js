@@ -538,6 +538,13 @@
     }
 
     function escAttr(s) {
-        return String(s || "").replace(/'/g, "\\'").replace(/"/g, "&quot;");
+        return String(s || "")
+            .replace(/\\/g, "\\\\")
+            .replace(/'/g, "\\'")
+            .replace(/\r/g, "\\r")
+            .replace(/\n/g, "\\n")
+            .replace(/\u2028/g, "\\u2028")
+            .replace(/\u2029/g, "\\u2029")
+            .replace(/"/g, "&quot;");
     }
 })();

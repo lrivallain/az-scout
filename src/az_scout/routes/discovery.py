@@ -1,6 +1,7 @@
 """Discovery API routes – tenants, subscriptions, regions, locations."""
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -14,6 +15,7 @@ from az_scout.models.responses import (
 )
 
 router = APIRouter(tags=["Discovery"])
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -64,7 +66,16 @@ async def list_regions(
             await asyncio.to_thread(azure_api.list_regions, subscriptionId, tenantId)
         )
     except LookupError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+        logger.warning(
+            "Failed to list AZ-enabled regions for subscriptionId=%s tenantId=%s",
+            subscriptionId,
+            tenantId,
+            exc_info=exc,
+        )
+        return JSONResponse(
+            {"error": "No enabled subscription available for region discovery."},
+            status_code=404,
+        )
 
 
 @router.get(
@@ -85,4 +96,13 @@ async def list_locations(
             await asyncio.to_thread(azure_api.list_locations, subscriptionId, tenantId)
         )
     except LookupError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
+        logger.warning(
+            "Failed to list ARM locations for subscriptionId=%s tenantId=%s",
+            subscriptionId,
+            tenantId,
+            exc_info=exc,
+        )
+        return JSONResponse(
+            {"error": "No enabled subscription available for location discovery."},
+            status_code=400,
+        )

@@ -694,7 +694,7 @@ function _renderMarkdown(md) {
         if (!items) return `<ul>${inner}</ul>`;
         const allChips = items.every(li => {
             const content = li.replace(/<\/?li>/g, "").trim();
-            return /^(<button class="chat-choice-chip"[^>]*>.*?<\/button>\s*)+$/.test(content);
+            return _containsOnlyChoiceChips(content);
         });
         if (allChips) {
             const chips = items.map(li => li.replace(/<\/?li>/g, "").trim()).join("");
@@ -713,6 +713,34 @@ function _renderMarkdown(md) {
     html = html.replace(/(<\/h[56]>|<\/pre>|<\/ul>|<hr>|<\/table>)\s*<br>/g, "$1");
 
     return html;
+}
+
+function _containsOnlyChoiceChips(content) {
+    let remaining = content.trim();
+    if (!remaining) return false;
+
+    const chipPrefix = '<button class="chat-choice-chip"';
+    const closeTag = "</button>";
+
+    while (remaining.length > 0) {
+        if (!remaining.startsWith(chipPrefix)) {
+            return false;
+        }
+
+        const openTagEnd = remaining.indexOf(">", chipPrefix.length);
+        if (openTagEnd === -1) {
+            return false;
+        }
+
+        const closeTagStart = remaining.indexOf(closeTag, openTagEnd + 1);
+        if (closeTagStart === -1) {
+            return false;
+        }
+
+        remaining = remaining.slice(closeTagStart + closeTag.length).trimStart();
+    }
+
+    return true;
 }
 
 function _renderMarkdownTables(html) {
