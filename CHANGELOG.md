@@ -7,6 +7,10 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+To complete.
+
+## [2026.3.3] - 2026-03-06
+
 ### Added
 
 - **Plugin creation** - `az-scout create-plugin` scaffolds a new plugin project with a Rich-powered interactive CLI experience (prompts + generation summary) and supports non-interactive usage for automation.
@@ -26,7 +30,6 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 ### Removed
 
 - **Deployment plan generation** – the `/api/deployment-plan` endpoint and related logic for generating deployment plans based on SKU availability and confidence scores has been removed.
-
 
 ## [2026.3.2] - 2026-03-05
 
