@@ -40,6 +40,21 @@ def client():
 
 
 @pytest.fixture(autouse=True)
+def _sync_arm_requests_mock():
+    """Ensure ``_arm.requests`` uses the same mock as ``azure_api.requests``.
+
+    Tests patch ``az_scout.azure_api.requests.get`` (the re-exported module in
+    ``__init__.py``).  The ``_arm`` module has its own ``import requests``, so
+    we alias it to the same object so mocks flow through.
+    """
+    import az_scout.azure_api as api_pkg
+    import az_scout.azure_api._arm as arm_mod
+
+    arm_mod.requests = api_pkg.requests  # type: ignore[attr-defined]
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _mock_credential():
     """Prevent real Azure credential calls in every test."""
     mock_token = MagicMock()

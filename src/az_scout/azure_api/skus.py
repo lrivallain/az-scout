@@ -6,14 +6,11 @@ import logging
 import time
 from typing import Any
 
-import requests
-
+from az_scout.azure_api._arm import arm_get, arm_paginate
 from az_scout.azure_api._auth import (
     AZURE_API_VERSION,
     AZURE_MGMT_URL,
-    _get_headers,
 )
-from az_scout.azure_api._pagination import _paginate
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +57,6 @@ def _fetch_sku_list(
     tenant_id: str | None,
 ) -> list[dict[str, Any]]:
     """Fetch the raw SKU list from ARM with retry on timeout."""
-    headers = _get_headers(tenant_id)
     # ARM SKU API only reliably supports `location` in $filter.
     # The `resourceType` condition is filtered client-side in get_skus().
     url = (
@@ -69,28 +65,14 @@ def _fetch_sku_list(
         f"&$filter=location eq '{region}'"
     )
 
-    for attempt in range(3):
-        try:
-            result = _paginate(url, headers, timeout=60)
-            logger.info(
-                "Fetched %d SKUs from ARM: region=%s, type=%s",
-                len(result),
-                region,
-                resource_type,
-            )
-            return result
-        except requests.ReadTimeout:
-            if attempt < 2:
-                wait_time = 2**attempt
-                logger.warning(
-                    "SKU API timeout, retrying in %ss (attempt %s/3)",
-                    wait_time,
-                    attempt + 1,
-                )
-                time.sleep(wait_time)
-            else:
-                raise
-    return []  # unreachable but satisfies type checker
+    result = arm_paginate(url, tenant_id=tenant_id, timeout=60)
+    logger.info(
+        "Fetched %d SKUs from ARM: region=%s, type=%s",
+        len(result),
+        region,
+        resource_type,
+    )
+    return result
 
 
 def get_skus(
@@ -209,15 +191,13 @@ def get_mappings(
     tenant_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return logical→physical zone mappings per subscription."""
-    headers = _get_headers(tenant_id)
     results: list[dict[str, Any]] = []
 
     for sub_id in subscription_ids:
         url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
         try:
-            resp = requests.get(url, headers=headers, timeout=30)
-            resp.raise_for_status()
-            locations = resp.json().get("value", [])
+            data = arm_get(url, tenant_id=tenant_id)
+            locations = data.get("value", [])
 
             mappings: list[dict[str, str]] = []
             for loc in locations:

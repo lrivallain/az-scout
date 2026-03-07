@@ -7,7 +7,16 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
-To complete.
+### Added
+
+- **Public ARM helpers** – new `arm_get()`, `arm_post()`, and `arm_paginate()` functions in `azure_api` provide authenticated ARM calls with built-in 429/5xx retry, exponential backoff, `Retry-After` header support, and structured error handling (`ArmAuthorizationError`, `ArmNotFoundError`, `ArmRequestError`). These are the recommended way for plugins and core modules to interact with Azure Resource Manager (#97).
+- **`get_headers()` public alias** – promoted from internal `_get_headers()` for plugins that need raw Bearer-token headers for non-ARM endpoints (#95).
+- **`PLUGIN_API_VERSION` bumped to `1.1`** – additive change, backward compatible.
+- **Copilot prompts** – added `triage-issue`, `review-plugin`, `add-plugin-to-catalog`, and `tag-release` reusable prompt files for coding agents.
+
+### Changed
+
+- **Internal modules migrated to ARM helpers** – `discovery.py`, `skus.py`, `quotas.py`, and `spot.py` now use `arm_get`/`arm_post`/`arm_paginate` instead of raw `requests.get`/`requests.post` + manual retry loops. This eliminates duplicated retry/backoff/error handling code across 4 modules.
 
 ## [2026.3.3] - 2026-03-06
 

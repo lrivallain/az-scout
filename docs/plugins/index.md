@@ -203,6 +203,53 @@ The docstring is the tool description shown to LLMs — keep it concise.
 
 ---
 
+## Azure ARM helpers for plugins
+
+Plugins that need to make authenticated ARM API calls should use the public
+helpers from `az_scout.azure_api` (available since `PLUGIN_API_VERSION = "1.1"`):
+
+```python
+from az_scout.azure_api import (
+    AZURE_MGMT_URL,
+    arm_get,          # GET with auth + retry + error handling
+    arm_post,         # POST with auth + retry + error handling
+    arm_paginate,     # GET + follow nextLink pages
+    get_headers,      # raw Bearer-token headers (escape hatch)
+    ArmAuthorizationError,  # raised on HTTP 403
+    ArmNotFoundError,       # raised on HTTP 404
+    ArmRequestError,        # raised after all retries exhausted
+)
+```
+
+### `arm_get(url, *, params=None, tenant_id=None, timeout=30, max_retries=3)`
+
+GET an ARM endpoint. Returns the parsed JSON response as a `dict`.
+
+### `arm_post(url, *, json, tenant_id=None, timeout=30, max_retries=3)`
+
+POST to an ARM endpoint. Returns the parsed JSON response as a `dict`.
+
+### `arm_paginate(url, *, params=None, tenant_id=None, timeout=30, max_retries=3)`
+
+GET all pages from an ARM list endpoint. Follows `nextLink` automatically.
+Returns the merged `value` items as a `list[dict]`.
+
+### `get_headers(tenant_id=None)`
+
+Returns raw `{"Authorization": "Bearer …"}` headers. Use this only for
+non-ARM endpoints or custom HTTP libraries — prefer `arm_get`/`arm_post`
+for standard ARM calls.
+
+All three helpers handle:
+
+- **Authentication** — Bearer token via `DefaultAzureCredential`
+- **429 rate limiting** — retries with `Retry-After` header support
+- **5xx server errors** — retries with exponential backoff
+- **Timeouts** — retries on `ReadTimeout`
+- **403/404** — raises typed exceptions (`ArmAuthorizationError`, `ArmNotFoundError`)
+
+---
+
 ## Plugin `pyproject.toml` template
 
 ```toml

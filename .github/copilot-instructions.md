@@ -24,6 +24,9 @@ src/az_scout/
 ├── plugins.py          # Plugin discovery, registration, hot-reload
 ├── azure_api/          # Shared Azure ARM logic (auth, pagination, data functions)
 │   ├── __init__.py     # Public API surface (PLUGIN_API_VERSION, __all__)
+│   ├── _arm.py         # arm_get/arm_post/arm_paginate + get_headers (public)
+│   ├── _auth.py        # DefaultAzureCredential, _get_headers (internal)
+│   ├── _pagination.py  # Legacy _paginate (internal, use arm_paginate instead)
 │   ├── discovery.py    # Tenants, subscriptions, regions
 │   ├── skus.py         # SKU catalogue + zone mappings
 │   ├── pricing.py      # Retail prices API
@@ -64,9 +67,11 @@ tests/
 ## Azure API patterns
 
 - Auth uses `DefaultAzureCredential` with optional `tenant_id` parameter.
-- All ARM calls go through `requests.get()` with `Authorization: Bearer <token>` header.
+- All ARM calls should use the public helpers: `arm_get()`, `arm_post()`, `arm_paginate()`.
+- These helpers provide automatic Bearer-token auth, 429/5xx retry with backoff, and structured error handling (`ArmAuthorizationError`, `ArmNotFoundError`, `ArmRequestError`).
+- For raw token access (non-ARM endpoints), use `get_headers(tenant_id)`.
 - API base URL: `https://management.azure.com`.
-- Handle pagination (`nextLink`) for list endpoints.
+- Handle pagination (`nextLink`) via `arm_paginate()` for list endpoints.
 - Per-subscription errors should be included in the response (not fail the whole request).
 
 ## MCP tools reference

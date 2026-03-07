@@ -6,18 +6,15 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-import requests
-
+from az_scout.azure_api._arm import arm_get, arm_paginate
 from az_scout.azure_api._auth import (
     AZURE_API_VERSION,
     AZURE_MGMT_URL,
     _check_tenant_auth,
     _get_default_tenant_id,
-    _get_headers,
     _suppress_stderr,
 )
 from az_scout.azure_api._cache import _cache_set, _cached
-from az_scout.azure_api._pagination import _paginate
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +32,8 @@ def list_tenants(tenant_id: str | None = None) -> dict[str, Any]:
     if cached is not None:
         return cached  # type: ignore[return-value]
 
-    headers = _get_headers(tenant_id)
     url = f"{AZURE_MGMT_URL}/tenants?api-version={AZURE_API_VERSION}"
-    all_tenants = _paginate(url, headers)
+    all_tenants = arm_paginate(url, tenant_id=tenant_id)
 
     tenant_ids = [t["tenantId"] for t in all_tenants]
 
@@ -63,9 +59,8 @@ def list_tenants(tenant_id: str | None = None) -> dict[str, Any]:
 
 def list_subscriptions(tenant_id: str | None = None) -> list[dict[str, Any]]:
     """Return enabled subscriptions as ``[{"id": ..., "name": ...}, ...]``."""
-    headers = _get_headers(tenant_id)
     url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
-    all_subs = _paginate(url, headers)
+    all_subs = arm_paginate(url, tenant_id=tenant_id)
     logger.debug("list_subscriptions: %d total, tenant=%s", len(all_subs), tenant_id or "default")
 
     subs = [
@@ -85,27 +80,21 @@ def list_regions(
 
     When *subscription_id* is ``None`` the first enabled subscription is used.
     """
-    headers = _get_headers(tenant_id)
-
     sub_id = subscription_id
     if not sub_id:
         subs_url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
-        subs_resp = requests.get(subs_url, headers=headers, timeout=30)
-        subs_resp.raise_for_status()
+        subs_data = arm_get(subs_url, tenant_id=tenant_id)
         enabled = [
-            s["subscriptionId"]
-            for s in subs_resp.json().get("value", [])
-            if s.get("state") == "Enabled"
+            s["subscriptionId"] for s in subs_data.get("value", []) if s.get("state") == "Enabled"
         ]
         if not enabled:
             raise LookupError("No enabled subscriptions found")
         sub_id = enabled[0]
 
     url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
-    resp = requests.get(url, headers=headers, timeout=30)
-    resp.raise_for_status()
+    loc_data = arm_get(url, tenant_id=tenant_id)
 
-    locations = resp.json().get("value", [])
+    locations = loc_data.get("value", [])
     regions = [
         {"name": loc["name"], "displayName": loc["displayName"]}
         for loc in locations
@@ -132,27 +121,21 @@ def list_locations(
     Zones.  When *subscription_id* is ``None`` the first enabled subscription
     (sorted by ID) is used.
     """
-    headers = _get_headers(tenant_id)
-
     sub_id = subscription_id
     if not sub_id:
         subs_url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
-        subs_resp = requests.get(subs_url, headers=headers, timeout=30)
-        subs_resp.raise_for_status()
+        subs_data = arm_get(subs_url, tenant_id=tenant_id)
         enabled = sorted(
-            s["subscriptionId"]
-            for s in subs_resp.json().get("value", [])
-            if s.get("state") == "Enabled"
+            s["subscriptionId"] for s in subs_data.get("value", []) if s.get("state") == "Enabled"
         )
         if not enabled:
             raise LookupError("No enabled subscriptions found")
         sub_id = enabled[0]
 
     url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
-    resp = requests.get(url, headers=headers, timeout=30)
-    resp.raise_for_status()
+    loc_data = arm_get(url, tenant_id=tenant_id)
 
-    locations = resp.json().get("value", [])
+    locations = loc_data.get("value", [])
     result = sorted(
         [
             {"name": loc["name"], "displayName": loc["displayName"]}

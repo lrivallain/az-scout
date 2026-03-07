@@ -6,9 +6,8 @@ import logging
 import time
 from typing import Any
 
-import requests
-
-from az_scout.azure_api._auth import AZURE_MGMT_URL, _get_headers
+from az_scout.azure_api._arm import ArmAuthorizationError, arm_get
+from az_scout.azure_api._auth import AZURE_MGMT_URL
 
 logger = logging.getLogger(__name__)
 
@@ -46,43 +45,24 @@ def get_compute_usages(
         if now - ts < _USAGE_CACHE_TTL:
             return data
 
-    headers = _get_headers(tenant_id)
     url = (
         f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}/providers/"
         f"Microsoft.Compute/locations/{region}/usages?api-version={COMPUTE_API_VERSION}"
     )
 
-    resp = None
-    for attempt in range(3):
-        resp = requests.get(url, headers=headers, timeout=30)
-        if resp.status_code == 429:
-            try:
-                retry_after = int(resp.headers.get("Retry-After", str(2**attempt)))
-            except (TypeError, ValueError):
-                retry_after = 2**attempt
-            logger.warning(
-                "Compute usages 429, retrying in %ss (attempt %s/3)",
-                retry_after,
-                attempt + 1,
-            )
-            time.sleep(retry_after)
-            continue
-        if resp.status_code == 403:
-            logger.warning(
-                "Access denied (403) for compute usages: %s / %s",
-                subscription_id,
-                region,
-            )
-            return []
-        resp.raise_for_status()
-        result: list[dict[str, Any]] = resp.json().get("value", [])
-        _usage_cache[cache_key] = (time.monotonic(), result)
-        return result
+    try:
+        resp_data = arm_get(url, tenant_id=tenant_id)
+    except ArmAuthorizationError:
+        logger.warning(
+            "Access denied (403) for compute usages: %s / %s",
+            subscription_id,
+            region,
+        )
+        return []
 
-    # Exhausted retries on 429
-    if resp is not None:
-        resp.raise_for_status()
-    return []
+    result: list[dict[str, Any]] = resp_data.get("value", [])
+    _usage_cache[cache_key] = (time.monotonic(), result)
+    return result
 
 
 def enrich_skus_with_quotas(

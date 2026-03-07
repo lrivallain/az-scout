@@ -26,6 +26,17 @@ import time as time  # noqa: F401  # re-export for mock patching
 
 import requests as requests  # noqa: F401  # re-export for mock patching
 
+# -- ARM helpers (public API for plugins) ------------------------------------
+from az_scout.azure_api._arm import (  # noqa: F401
+    ArmAuthorizationError,
+    ArmNotFoundError,
+    ArmRequestError,
+    arm_get,
+    arm_paginate,
+    arm_post,
+    get_headers,
+)
+
 # -- Auth & constants -------------------------------------------------------
 from az_scout.azure_api._auth import (  # noqa: F401
     AZURE_API_VERSION,
@@ -97,7 +108,7 @@ from az_scout.azure_api.spot import (  # noqa: F401
 # ---------------------------------------------------------------------------
 # API version – bump major for breaking changes, minor for additions.
 # ---------------------------------------------------------------------------
-PLUGIN_API_VERSION = "1.0"
+PLUGIN_API_VERSION = "1.1"
 """Semantic version of the plugin-facing API surface (``__all__``)."""
 
 # ---------------------------------------------------------------------------
@@ -113,6 +124,14 @@ __all__ = [
     "RETAIL_PRICES_API_VERSION",
     "RETAIL_PRICES_URL",
     "SPOT_API_VERSION",
+    # ARM helpers (authentication, retry, pagination)
+    "get_headers",
+    "arm_get",
+    "arm_post",
+    "arm_paginate",
+    "ArmRequestError",
+    "ArmAuthorizationError",
+    "ArmNotFoundError",
     # Discovery
     "list_tenants",
     "list_subscriptions",

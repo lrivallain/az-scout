@@ -6,9 +6,13 @@ import logging
 import time
 from typing import Any
 
-import requests
-
-from az_scout.azure_api._auth import AZURE_MGMT_URL, _get_headers
+from az_scout.azure_api._arm import (
+    ArmAuthorizationError,
+    ArmNotFoundError,
+    ArmRequestError,
+    arm_post,
+)
+from az_scout.azure_api._auth import AZURE_MGMT_URL
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +45,6 @@ def _fetch_spot_batch(
     Returns a dict mapping VM size → {zone → score}.
     Handles 429 with retry/back-off and 403/404 gracefully.
     """
-    headers = _get_headers(tenant_id)
     url = (
         f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}/providers/"
         f"Microsoft.Compute/locations/{region}/placementScores/spot/generate"
@@ -54,71 +57,34 @@ def _fetch_spot_batch(
         "availabilityZones": True,
     }
 
-    max_retries = 3
-    resp = None
-    for attempt in range(max_retries):
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        if resp.status_code == 429:
-            retry_header = resp.headers.get("Retry-After")
-            if retry_header:
-                try:
-                    retry_after = min(int(retry_header), 8)
-                except (TypeError, ValueError):
-                    retry_after = 2**attempt  # 1, 2, 4
-            else:
-                retry_after = 2**attempt  # 1, 2, 4
-            logger.warning(
-                "Spot scores 429, retrying in %ss (attempt %s/%s)",
-                retry_after,
-                attempt + 1,
-                max_retries,
-            )
-            time.sleep(retry_after)
-            continue
-        if resp.status_code == 400:
-            body = resp.text[:500]
+    try:
+        data = arm_post(url, json=payload, tenant_id=tenant_id)
+    except ArmAuthorizationError:
+        msg = (
+            f"Access denied (403) for spot placement scores on subscription "
+            f"{subscription_id}. Ensure the identity has the "
+            f"'Compute Recommendations Role' RBAC role."
+        )
+        logger.warning(msg)
+        raise PermissionError(msg) from None
+    except ArmNotFoundError:
+        msg = (
+            f"Spot placement scores endpoint not found (404) for "
+            f"subscription {subscription_id} / region {region}. "
+            f"Ensure Microsoft.Compute resource provider is registered."
+        )
+        logger.warning(msg)
+        raise FileNotFoundError(msg) from None
+    except ArmRequestError as exc:
+        if exc.status_code == 400:
             msg = (
                 f"Bad request (400) for spot placement scores on "
-                f"subscription {subscription_id} / region {region}: {body}"
+                f"subscription {subscription_id} / region {region}: {exc}"
             )
             logger.warning(msg)
-            raise ValueError(msg)
-        if resp.status_code == 403:
-            msg = (
-                f"Access denied (403) for spot placement scores on subscription "
-                f"{subscription_id}. Ensure the identity has the "
-                f"'Compute Recommendations Role' RBAC role."
-            )
-            logger.warning(msg)
-            raise PermissionError(msg)
-        if resp.status_code == 404:
-            msg = (
-                f"Spot placement scores endpoint not found (404) for "
-                f"subscription {subscription_id} / region {region}. "
-                f"Ensure Microsoft.Compute resource provider is registered."
-            )
-            logger.warning(msg)
-            raise FileNotFoundError(msg)
-        if resp.status_code >= 500:
-            wait_time = 2**attempt  # 1, 2, 4
-            logger.warning(
-                "Spot scores %s, retrying in %ss (attempt %s/%s)",
-                resp.status_code,
-                wait_time,
-                attempt + 1,
-                max_retries,
-            )
-            time.sleep(wait_time)
-            continue
-        resp.raise_for_status()
-        break
+            raise ValueError(msg) from None
+        raise
 
-    if resp is None or resp.status_code >= 400:
-        if resp is not None:
-            resp.raise_for_status()
-        return {}
-
-    data = resp.json()
     scores: dict[str, dict[str, str]] = {}
     for item in data.get("placementScores", []):
         sku_name = item.get("sku", "")
