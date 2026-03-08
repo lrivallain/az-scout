@@ -20,6 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response, StreamingResponse
 
 from az_scout import __version__, azure_api
+from az_scout.plugin_api import PluginError
 from az_scout.plugin_manager import reconcile_installed_plugins
 from az_scout.plugins import get_plugin_metadata, register_plugins
 from az_scout.routes import router as plugin_manager_router
@@ -92,6 +93,24 @@ async def _generic_error_handler(_request: Request, exc: Exception) -> JSONRespo
     """Return ``{"error": …}`` with status 500 for any unhandled exception."""
     logging.getLogger(__name__).exception("Unhandled error")
     return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Plugin error boundary – catches PluginError and subclasses, returns
+# {"error": …, "detail": …} with the status code from the exception.
+# Registered *before* the generic handler so it takes priority.
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(PluginError)
+async def _plugin_error_handler(_request: Request, exc: PluginError) -> JSONResponse:
+    """Return ``{"error": …, "detail": …}`` for PluginError exceptions."""
+    message = str(exc)
+    logging.getLogger(__name__).warning("Plugin error (%d): %s", exc.status_code, message)
+    return JSONResponse(
+        {"error": message, "detail": message},
+        status_code=exc.status_code,
+    )
 
 
 # ---------------------------------------------------------------------------

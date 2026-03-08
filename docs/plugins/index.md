@@ -250,6 +250,42 @@ All three helpers handle:
 
 ---
 
+## Error handling for plugin routes
+
+Plugins can raise typed exceptions from route handlers to produce consistent
+JSON error responses without manual try/except boilerplate:
+
+```python
+from az_scout.plugin_api import PluginError, PluginValidationError, PluginUpstreamError
+
+@router.get("/skus")
+async def skus(region: str = "") -> dict[str, object]:
+    if not region:
+        raise PluginValidationError("Region is required")  # → 422
+    try:
+        return get_data(region=region)
+    except Exception as exc:
+        raise PluginUpstreamError(f"Failed to load data: {exc}") from exc  # → 502
+```
+
+The core app catches `PluginError` and returns `{"error": "…", "detail": "…"}`
+with the appropriate HTTP status code. The frontend `apiFetch` helper displays
+the message automatically.
+
+| Exception | Default status | Use case |
+|-----------|:---:|---|
+| `PluginError` | 500 | Generic plugin error |
+| `PluginValidationError` | 422 | Invalid input from the client |
+| `PluginUpstreamError` | 502 | Upstream API call failure |
+
+All three accept an optional `status_code` keyword to override the default:
+
+```python
+raise PluginError("Rate limited", status_code=429)
+```
+
+---
+
 ## Plugin `pyproject.toml` template
 
 ```toml

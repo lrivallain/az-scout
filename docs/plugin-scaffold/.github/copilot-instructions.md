@@ -66,6 +66,28 @@ example = "az_scout_example:plugin"
 - Tools are automatically available in the AI chat assistant after plugin registration.
 - Keep tool functions stateless — use parameters, not global state.
 
+## Azure ARM helpers
+
+For authenticated ARM API calls, use the public helpers from `az_scout.azure_api`:
+
+- `arm_get(url, tenant_id=...)` — GET with auth + retry on 429/5xx
+- `arm_post(url, json=..., tenant_id=...)` — POST with auth + retry
+- `arm_paginate(url, tenant_id=...)` — GET + follow `nextLink` pages
+- `get_headers(tenant_id=...)` — raw Bearer-token headers for non-ARM endpoints
+
+These handle authentication, 429/5xx retry with backoff, and raise typed exceptions
+(`ArmAuthorizationError`, `ArmNotFoundError`, `ArmRequestError`).
+
+## Error handling in routes
+
+Use the typed plugin exceptions from `az_scout.plugin_api` instead of manual
+try/except + JSONResponse. The core app catches them automatically:
+
+- `PluginError("message")` — generic error (HTTP 500)
+- `PluginValidationError("message")` — invalid input (HTTP 422)
+- `PluginUpstreamError("message")` — upstream API failure (HTTP 502)
+- All accept `status_code=...` keyword to override the default
+
 ## Testing patterns
 
 - Test API routes using FastAPI's `TestClient`.

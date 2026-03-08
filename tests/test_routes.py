@@ -38,6 +38,70 @@ class TestGlobalExceptionHandler:
 
 
 # ---------------------------------------------------------------------------
+# Plugin error boundary
+# ---------------------------------------------------------------------------
+
+
+class TestPluginErrorBoundary:
+    """Tests for the PluginError exception handler."""
+
+    def test_plugin_error_returns_500_with_both_keys(self, client):
+        from az_scout.plugin_api import PluginError
+
+        with patch(
+            "az_scout.azure_api.requests.get",
+            side_effect=PluginError("plugin broke"),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 500
+        data = resp.json()
+        assert data["error"] == "plugin broke"
+        assert data["detail"] == "plugin broke"
+
+    def test_plugin_validation_error_returns_422(self, client):
+        from az_scout.plugin_api import PluginValidationError
+
+        with patch(
+            "az_scout.azure_api.requests.get",
+            side_effect=PluginValidationError("bad input"),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 422
+        data = resp.json()
+        assert data["error"] == "bad input"
+        assert data["detail"] == "bad input"
+
+    def test_plugin_upstream_error_returns_502(self, client):
+        from az_scout.plugin_api import PluginUpstreamError
+
+        with patch(
+            "az_scout.azure_api.requests.get",
+            side_effect=PluginUpstreamError("Azure timeout"),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 502
+        data = resp.json()
+        assert data["error"] == "Azure timeout"
+        assert data["detail"] == "Azure timeout"
+
+    def test_plugin_error_custom_status_code(self, client):
+        from az_scout.plugin_api import PluginError
+
+        with patch(
+            "az_scout.azure_api.requests.get",
+            side_effect=PluginError("rate limited", status_code=429),
+        ):
+            resp = client.get("/api/tenants")
+
+        assert resp.status_code == 429
+        data = resp.json()
+        assert data["error"] == "rate limited"
+
+
+# ---------------------------------------------------------------------------
 # GET /
 # ---------------------------------------------------------------------------
 

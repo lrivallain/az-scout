@@ -82,3 +82,45 @@ class AzScoutPromptContributor(Protocol):
     """
 
     def get_system_prompt_addendum(self) -> str | None: ...
+
+
+# ---------------------------------------------------------------------------
+# Plugin error boundary — typed exceptions for automatic error responses
+# ---------------------------------------------------------------------------
+
+
+class PluginError(Exception):
+    """Base exception for plugin route errors.
+
+    Raise from a plugin route handler to produce a consistent JSON error
+    response without manual try/except boilerplate.  The global exception
+    handler in ``app.py`` catches ``PluginError`` and returns::
+
+        {"error": "<message>", "detail": "<message>"}
+
+    with the HTTP status code specified by ``status_code`` (default 500).
+
+    Subclasses:
+
+    * :class:`PluginValidationError` — 422 (client sent bad input)
+    * :class:`PluginUpstreamError` — 502 (upstream API failure)
+    """
+
+    status_code: int = 500
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        if status_code is not None:
+            self.status_code = status_code
+
+
+class PluginValidationError(PluginError):
+    """Raised when a plugin receives invalid input (HTTP 422)."""
+
+    status_code: int = 422
+
+
+class PluginUpstreamError(PluginError):
+    """Raised when an upstream API call fails (HTTP 502)."""
+
+    status_code: int = 502
