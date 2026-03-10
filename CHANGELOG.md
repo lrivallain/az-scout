@@ -7,6 +7,8 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+## [2026.3.5] - 2026-03-10
+
 ### Changed
 
 - **GitHub organization migration** – updated all repository URLs, GHCR container image paths, Deploy to Azure button URIs, and OCI labels from `lrivallain/az-scout` to `az-scout/az-scout` across source, docs, deploy templates, CI workflows, and configuration files.
