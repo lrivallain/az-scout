@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This is an **az-scout plugin** — a Python package that extends [az-scout](https://github.com/lrivallain/az-scout) with custom API routes, MCP tools, UI tabs, and chat modes. Plugins are auto-discovered via the `az_scout.plugins` entry-point group.
+This is an **az-scout plugin** — a Python package that extends [az-scout](https://github.com/az-scout/az-scout) with custom API routes, MCP tools, UI tabs, and chat modes. Plugins are auto-discovered via the `az_scout.plugins` entry-point group.
 
 ## Tech stack
 

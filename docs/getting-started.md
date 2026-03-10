@@ -47,7 +47,7 @@ This guide covers everything you need to install and run az-scout.
       -e AZURE_TENANT_ID=<your-tenant> \
       -e AZURE_CLIENT_ID=<your-sp-client-id> \
       -e AZURE_CLIENT_SECRET=<your-sp-secret> \
-      ghcr.io/lrivallain/az-scout:latest
+      ghcr.io/az-scout/az-scout:latest
     ```
 
 === "Dev Container"
@@ -71,7 +71,7 @@ This guide covers everything you need to install and run az-scout.
 
     **One-click via Azure Portal:**
 
-    [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Flrivallain%2Faz-scout%2Fmain%2Fdeploy%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Flrivallain%2Faz-scout%2Fmain%2Fdeploy%2FcreateUiDefinition.json)
+    [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Faz-scout%2Faz-scout%2Fmain%2Fdeploy%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Faz-scout%2Faz-scout%2Fmain%2Fdeploy%2FcreateUiDefinition.json)
 
     **Or via Bicep CLI:**
 
@@ -83,13 +83,13 @@ This guide covers everything you need to install and run az-scout.
       -p readerSubscriptionIds='["SUB_ID_1","SUB_ID_2"]'
     ```
 
-    See [`deploy/main.example.bicepparam`](https://github.com/lrivallain/az-scout/blob/main/deploy/main.example.bicepparam) for all parameters.
+    See [`deploy/main.example.bicepparam`](https://github.com/az-scout/az-scout/blob/main/deploy/main.example.bicepparam) for all parameters.
 
     **Resources created:**
 
     | Resource | Purpose |
     |----------|----------|
-    | Container App | Runs `ghcr.io/lrivallain/az-scout` |
+    | Container App | Runs `ghcr.io/az-scout/az-scout` |
     | Managed Identity | `Reader` on target subscriptions |
     | VM Contributor | For Spot Placement Scores |
     | Log Analytics | Container logs |

@@ -34,9 +34,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/lrivallain/az-scout"
-Repository = "https://github.com/lrivallain/az-scout"
-Issues = "https://github.com/lrivallain/az-scout/issues"
+Homepage = "https://github.com/az-scout/az-scout"
+Repository = "https://github.com/az-scout/az-scout"
+Issues = "https://github.com/az-scout/az-scout/issues"
 
 [project.scripts]
 az-scout = "az_scout.cli:cli"

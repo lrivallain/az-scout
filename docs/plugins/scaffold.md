@@ -1,6 +1,6 @@
 # Plugin Scaffold Reference
 
-A ready-to-use starter template is available at [`docs/plugin-scaffold/`](https://github.com/lrivallain/az-scout/tree/main/docs/plugin-scaffold) in the repository. Copy it and customise.
+A ready-to-use starter template is available at [`docs/plugin-scaffold/`](https://github.com/az-scout/az-scout/tree/main/docs/plugin-scaffold) in the repository. Copy it and customise.
 
 ---
 

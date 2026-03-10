@@ -5,7 +5,7 @@ description: "How the Deployment Confidence Score works: signals, weights, knock
 # Deployment Confidence Scoring
 
 > Canonical implementation in
-> [`src/az_scout/scoring/deployment_confidence.py`](https://github.com/lrivallain/az-scout/blob/main/src/az_scout/scoring/deployment_confidence.py).
+> [`src/az_scout/scoring/deployment_confidence.py`](https://github.com/az-scout/az-scout/blob/main/src/az_scout/scoring/deployment_confidence.py).
 
 The Deployment Confidence Score is a composite heuristic (0–100) that
 estimates the likelihood of successfully deploying a VM SKU in a given

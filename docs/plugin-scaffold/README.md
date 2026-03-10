@@ -47,7 +47,7 @@ python3 tools/plugin-scaffold/create_plugin.py
 
 ```bash
 # Clone in /tmp to export scaffold without git history
-git clone https://github.com/lrivallain/az-scout.git /tmp/az-scout
+git clone https://github.com/az-scout/az-scout.git /tmp/az-scout
 cp -r /tmp/az-scout/docs/plugin-scaffold ./az-scout-myplugin
 cd ./az-scout-myplugin
 

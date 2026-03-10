@@ -31,8 +31,8 @@ param location string = resourceGroup().location
 @description('Base name used as prefix for all resources.')
 param baseName string = 'az-scout'
 
-@description('Full container image reference (e.g. "ghcr.io/lrivallain/az-scout:latest", "ghcr.io/lrivallain/az-scout:2026.2.5"). Override to use a private registry.')
-param containerImage string = 'ghcr.io/lrivallain/az-scout:latest'
+@description('Full container image reference (e.g. "ghcr.io/az-scout/az-scout:latest", "ghcr.io/az-scout/az-scout:2026.2.5"). Override to use a private registry.')
+param containerImage string = 'ghcr.io/az-scout/az-scout:latest'
 
 @description('CPU cores allocated to the container (e.g. "0.5", "1.0").')
 param containerCpu string = '0.5'

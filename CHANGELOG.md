@@ -7,6 +7,10 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+### Changed
+
+- **GitHub organization migration** – updated all repository URLs, GHCR container image paths, Deploy to Azure button URIs, and OCI labels from `lrivallain/az-scout` to `az-scout/az-scout` across source, docs, deploy templates, CI workflows, and configuration files.
+
 ## [2026.3.4] - 2026-03-08
 
 ### Added
@@ -167,10 +171,10 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 - **Latency Stats extracted to plugin** – the inter-region latency dataset and MCP tool are no longer
   bundled in the core application. They are now available as a standalone plugin:
-  [`az-scout-plugin-latency-stats`](https://github.com/lrivallain/az-scout-plugin-latency-stats).
+  [`az-scout-plugin-latency-stats`](https://github.com/az-scout/az-scout-plugin-latency-stats).
 - **Strategy Advisor extracted to plugin** – the Capacity Strategy Advisor is no longer bundled in
   the core application. It is now available as a standalone plugin:
-  [`az-scout-plugin-strategy-advisor`](https://github.com/lrivallain/az-scout-plugin-strategy-advisor).
+  [`az-scout-plugin-strategy-advisor`](https://github.com/az-scout/az-scout-plugin-strategy-advisor).
 - Use calver in the plugin scaffold structure.
 - Plugin Manager UI: validate/install/uninstall from GitHub repos (#50).
 

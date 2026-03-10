@@ -13,7 +13,7 @@
 using 'main.bicep'
 
 // Optional: override the container image (e.g. for a specific version or private registry)
-// param containerImage = 'ghcr.io/lrivallain/az-scout:2026.2.5'
+// param containerImage = 'ghcr.io/az-scout/az-scout:2026.2.5'
 
 // Required: list of subscription IDs the managed identity should have Reader on
 param readerSubscriptionIds = [

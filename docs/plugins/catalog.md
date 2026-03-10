@@ -6,4 +6,4 @@ The following plugins are available for az-scout. Click on a plugin name to view
 docs/_includes/known-plugins.md
 --8<--
 
-> **Note:** This catalog is a work in progress. If you have a plugin you'd like to share, please [submit a PR](https://github.com/lrivallain/az-scout/pulls)!
+> **Note:** This catalog is a work in progress. If you have a plugin you'd like to share, please [submit a PR](https://github.com/az-scout/az-scout/pulls)!

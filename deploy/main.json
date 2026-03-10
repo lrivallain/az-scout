@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "5378561907880171158"
+      "templateHash": "7509553444983693791"
     }
   },
   "parameters": {
@@ -25,9 +25,9 @@
     },
     "containerImage": {
       "type": "string",
-      "defaultValue": "ghcr.io/lrivallain/az-scout:latest",
+      "defaultValue": "ghcr.io/az-scout/az-scout:latest",
       "metadata": {
-        "description": "Full container image reference (e.g. \"ghcr.io/lrivallain/az-scout:latest\", \"ghcr.io/lrivallain/az-scout:2026.2.5\"). Override to use a private registry."
+        "description": "Full container image reference (e.g. \"ghcr.io/az-scout/az-scout:latest\", \"ghcr.io/az-scout/az-scout:2026.2.5\"). Override to use a private registry."
       }
     },
     "containerCpu": {

@@ -1015,7 +1015,7 @@ function renderConfidenceBreakdown(conf) {
     html += '<button class="btn btn-sm btn-outline-primary" onclick="includeSpotInConfidence()"><i class="bi bi-lightning-charge me-1"></i>Recalculate with Spot</button>';
     html += '</div></div>';
     if (conf.disclaimers?.length) {
-        html += '<p class="confidence-disclaimer text-body-secondary small fst-italic mt-1 mb-0">' + escapeHtml(conf.disclaimers[0]) + ' <a href="https://github.com/lrivallain/az-scout/blob/main/docs/SCORING.md" target="_blank" rel="noopener" class="text-body-secondary">Learn more</a> about scoring methodology.</p>';
+        html += '<p class="confidence-disclaimer text-body-secondary small fst-italic mt-1 mb-0">' + escapeHtml(conf.disclaimers[0]) + ' <a href="https://github.com/az-scout/az-scout/blob/main/docs/SCORING.md" target="_blank" rel="noopener" class="text-body-secondary">Learn more</a> about scoring methodology.</p>';
     }
     html += '</div>';
     return html;

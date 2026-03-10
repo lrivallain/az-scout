@@ -14,7 +14,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}   # e.g. lrivallain/az-scout
+  IMAGE_NAME: ${{ github.repository }}   # e.g. az-scout/az-scout
 
 jobs:
   ci:

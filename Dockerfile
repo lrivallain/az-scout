@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir build hatchling hatch-vcs && \
 # ---------- runtime stage ----------
 FROM --platform=${TARGETPLATFORM} python:3.13-slim
 
-LABEL org.opencontainers.image.source="https://github.com/lrivallain/az-scout"
+LABEL org.opencontainers.image.source="https://github.com/az-scout/az-scout"
 LABEL org.opencontainers.image.description="Azure Scout — explore availability zones, capacity, pricing, and plan VM deployments"
 LABEL org.opencontainers.image.licenses="MIT"
 

@@ -1,11 +1,11 @@
 # Azure Scout: `az-scout`
 
-[![CI](https://github.com/lrivallain/az-scout/actions/workflows/ci.yml/badge.svg)](https://github.com/lrivallain/az-scout/actions/workflows/ci.yml)
-[![Publish to PyPI](https://github.com/lrivallain/az-scout/actions/workflows/publish.yml/badge.svg)](https://github.com/lrivallain/az-scout/actions/workflows/publish.yml)
-[![Publish Container Image](https://github.com/lrivallain/az-scout/actions/workflows/container.yml/badge.svg)](https://github.com/lrivallain/az-scout/actions/workflows/container.yml)
+[![CI](https://github.com/az-scout/az-scout/actions/workflows/ci.yml/badge.svg)](https://github.com/az-scout/az-scout/actions/workflows/ci.yml)
+[![Publish to PyPI](https://github.com/az-scout/az-scout/actions/workflows/publish.yml/badge.svg)](https://github.com/az-scout/az-scout/actions/workflows/publish.yml)
+[![Publish Container Image](https://github.com/az-scout/az-scout/actions/workflows/container.yml/badge.svg)](https://github.com/az-scout/az-scout/actions/workflows/container.yml)
 [![PyPI version](https://img.shields.io/pypi/v/az-scout)](https://pypi.org/project/az-scout/)
 [![Downloads](https://img.shields.io/pypi/dm/az-scout)](https://pypi.org/project/az-scout/)
-[![License](https://img.shields.io/github/license/lrivallain/az-scout)](LICENSE.txt)
+[![License](https://img.shields.io/github/license/az-scout/az-scout)](LICENSE.txt)
 
 Scout Azure regions for VM availability, zone mappings, pricing, spot scores, and quota — then plan deployments with confidence.
 
@@ -75,7 +75,7 @@ docker run --rm -p 8000:8000 \
   -e AZURE_TENANT_ID=<your-tenant> \
   -e AZURE_CLIENT_ID=<your-sp-client-id> \
   -e AZURE_CLIENT_SECRET=<your-sp-secret> \
-  ghcr.io/lrivallain/az-scout:latest
+  ghcr.io/az-scout/az-scout:latest
 ```
 
 ### Dev Container
@@ -92,7 +92,7 @@ It is also possible to deploy az-scout as a web app in Azure using the provided 
 
 #### UI guided deployment
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Flrivallain%2Faz-scout%2Fmain%2Fdeploy%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Flrivallain%2Faz-scout%2Fmain%2Fdeploy%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Faz-scout%2Faz-scout%2Fmain%2Fdeploy%2Fmain.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Faz-scout%2Faz-scout%2Fmain%2Fdeploy%2FcreateUiDefinition.json)
 
 A Bicep template is provided to deploy az-scout as an Azure Container App with a managed identity.
 You can use the **Deploy to Azure** button above for a portal-guided experience, or use the CLI commands below.
@@ -103,7 +103,7 @@ The deployment creates:
 
 | Resource | Purpose |
 |---|---|
-| **Container App** | Runs `ghcr.io/lrivallain/az-scout` |
+| **Container App** | Runs `ghcr.io/az-scout/az-scout` |
 | **Managed Identity** | `Reader` role on target subscriptions |
 | **VM Contributor** | `Virtual Machine Contributor` role for Spot Placement Scores (enabled by default) |
 | **Log Analytics** | Container logs and diagnostics |
@@ -165,7 +165,7 @@ An [MCP](https://modelcontextprotocol.io/) server is included, allowing AI agent
 | `get_sku_deployment_confidence` | Compute Deployment Confidence Scores (0–100) for one or more VM SKUs with full signal breakdown |
 | `get_sku_pricing_detail` | Get detailed Linux pricing (PayGo, Spot, RI 1Y/3Y, SP 1Y/3Y) and VM profile for a single SKU |
 
-> **Plugin tools:** Plugins can register additional MCP tools. For example, the [Strategy Advisor plugin](https://github.com/lrivallain/az-scout-plugin-strategy-advisor) adds a `capacity_strategy` tool.
+> **Plugin tools:** Plugins can register additional MCP tools. For example, the [Strategy Advisor plugin](https://github.com/az-scout/az-scout-plugin-strategy-advisor) adds a `capacity_strategy` tool.
 
 ### API
 

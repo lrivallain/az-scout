@@ -1,8 +1,8 @@
 site_name: Azure Scout
 site_description: Scout Azure regions for VM availability, zone mappings, pricing, spot scores, and quota — then plan deployments with confidence.
 site_url: https://azscout.vupti.me
-repo_url: https://github.com/lrivallain/az-scout
-repo_name: lrivallain/az-scout
+repo_url: https://github.com/az-scout/az-scout
+repo_name: az-scout/az-scout
 edit_uri: edit/main/docs/
 
 theme:
@@ -100,7 +100,7 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/lrivallain/az-scout
+      link: https://github.com/az-scout/az-scout
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/az-scout/
 

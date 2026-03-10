@@ -34,7 +34,7 @@ az-scout includes a full [Model Context Protocol (MCP)](https://modelcontextprot
 | `get_sku_pricing_detail` | `region`, `sku_name`, `tenant_id?` | Detailed Linux pricing (PayGo, Spot, RI 1Y/3Y, SP 1Y/3Y) and VM profile |
 
 !!! tip "Plugin tools"
-    Plugins can register additional MCP tools. For example, the [Strategy Advisor plugin](https://github.com/lrivallain/az-scout-plugin-strategy-advisor) adds a `capacity_strategy` tool.
+    Plugins can register additional MCP tools. For example, the [Strategy Advisor plugin](https://github.com/az-scout/az-scout-plugin-strategy-advisor) adds a `capacity_strategy` tool.
 
 ### `get_sku_availability` filters
 

@@ -335,11 +335,11 @@ def create_plugin_scaffold(
         ('id="example"', f'id="{plugin_slug_resolved}"'),
         ('name = "example"', f'name = "{plugin_slug_resolved}"'),
         (
-            "https://github.com/lrivallain/az-scout-example/issues",
+            "https://github.com/az-scout/az-scout-example/issues",
             f"https://github.com/{github_owner_resolved}/{github_repo_resolved}/issues",
         ),
         (
-            "https://github.com/lrivallain/az-scout-example",
+            "https://github.com/az-scout/az-scout-example",
             f"https://github.com/{github_owner_resolved}/{github_repo_resolved}",
         ),
         ("https://pypi.org/p/az-scout-example", f"https://pypi.org/p/{package_name_resolved}"),

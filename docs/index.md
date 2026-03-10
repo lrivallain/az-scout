@@ -9,16 +9,16 @@ description: "Scout Azure regions for VM availability, zone mappings, pricing, s
 ![az-scout logo](assets/favicon.svg){ .logo width="128" }
 # Azure Scout
 
-[![CI](https://github.com/lrivallain/az-scout/actions/workflows/ci.yml/badge.svg)](https://github.com/lrivallain/az-scout/actions/workflows/ci.yml)
-[![Publish to PyPI](https://github.com/lrivallain/az-scout/actions/workflows/publish.yml/badge.svg)](https://github.com/lrivallain/az-scout/actions/workflows/publish.yml)
+[![CI](https://github.com/az-scout/az-scout/actions/workflows/ci.yml/badge.svg)](https://github.com/az-scout/az-scout/actions/workflows/ci.yml)
+[![Publish to PyPI](https://github.com/az-scout/az-scout/actions/workflows/publish.yml/badge.svg)](https://github.com/az-scout/az-scout/actions/workflows/publish.yml)
 [![PyPI version](https://img.shields.io/pypi/v/az-scout)](https://pypi.org/project/az-scout/)
 [![Downloads](https://img.shields.io/pypi/dm/az-scout)](https://pypi.org/project/az-scout/)
-[![License](https://img.shields.io/github/license/lrivallain/az-scout)](https://github.com/lrivallain/az-scout/blob/main/LICENSE.txt)
+[![License](https://img.shields.io/github/license/az-scout/az-scout)](https://github.com/az-scout/az-scout/blob/main/LICENSE.txt)
 
 **Scout Azure regions for VM availability, zone mappings, pricing, spot scores, and quota — then plan deployments with confidence.**
 
 [Get Started](getting-started.md){ .md-button .md-button--primary }
-[View on GitHub](https://github.com/lrivallain/az-scout){ .md-button }
+[View on GitHub](https://github.com/az-scout/az-scout){ .md-button }
 </div>
 
 ---
@@ -122,7 +122,7 @@ All from a single web UI — or through an MCP-powered AI agent connected to you
       -e AZURE_TENANT_ID=<your-tenant> \
       -e AZURE_CLIENT_ID=<your-sp-client-id> \
       -e AZURE_CLIENT_SECRET=<your-sp-secret> \
-      ghcr.io/lrivallain/az-scout:latest
+      ghcr.io/az-scout/az-scout:latest
     ```
 
 Your browser opens automatically at `http://127.0.0.1:5001`.

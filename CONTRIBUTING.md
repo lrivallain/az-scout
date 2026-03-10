@@ -7,7 +7,7 @@ Thanks for your interest in contributing! Here's how to get started.
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/lrivallain/az-scout.git
+   git clone https://github.com/az-scout/az-scout.git
    cd az-scout
    ```
 
@@ -115,4 +115,4 @@ Pushing the tag triggers the **Publish** workflow which will:
 
 ## Reporting issues
 
-Please use the [issue templates](https://github.com/lrivallain/az-scout/issues/new/choose) for bug reports and feature requests.
+Please use the [issue templates](https://github.com/az-scout/az-scout/issues/new/choose) for bug reports and feature requests.

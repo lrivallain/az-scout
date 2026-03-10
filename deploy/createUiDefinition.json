@@ -36,8 +36,8 @@
             "name": "containerImage",
             "type": "Microsoft.Common.TextBox",
             "label": "Container image",
-            "defaultValue": "ghcr.io/lrivallain/az-scout:latest",
-            "toolTip": "Full image reference including tag (e.g. ghcr.io/lrivallain/az-scout:2026.2.5).",
+            "defaultValue": "ghcr.io/az-scout/az-scout:latest",
+            "toolTip": "Full image reference including tag (e.g. ghcr.io/az-scout/az-scout:2026.2.5).",
             "constraints": {
               "required": true,
               "regex": "^.+:.+$",
