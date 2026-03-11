@@ -161,7 +161,7 @@ my_plugin = "az_scout_myplugin:plugin"
 ### Plugin conventions
 
 - **Package layout:** Use src-layout (`src/az_scout_myplugin/`) with hatchling build backend.
-- **Naming:** Package name `az-scout-{name}`, module `az_scout_{name}`.
+- **Naming:** Package name `az-scout-plugin-{name}`, module `az_scout_{name}`.
 - **Dependencies:** Declare `az-scout` and `fastapi` as dependencies in `pyproject.toml`.
 - **Type annotations:** Follow the same mypy strict rules as the main project (`disallow_untyped_defs = true`).
 - **Linting:** Use `ruff` with the same rules: `E, F, I, W, UP, B, SIM`, line length 100.

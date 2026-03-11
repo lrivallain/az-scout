@@ -132,7 +132,7 @@ strict = true
 
 | Item | Convention | Example |
 |------|-----------|---------|
-| Package name | `az-scout-{name}` | `az-scout-cost-view` |
+| Package name | `az-scout-plugin-{name}` | `az-scout-plugin-cost-view` |
 | Module name | `az_scout_{name}` | `az_scout_cost_view` |
 | Entry point key | `{name}` | `cost_view` |
 | Plugin `name` attribute | `{name}` | `"cost-view"` |

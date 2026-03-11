@@ -218,7 +218,7 @@ def create_plugin_scaffold(
     package_name_resolved = _resolve_value(
         package_name,
         prompt_label="Python package name",
-        default_value=f"az-scout-{plugin_slug_resolved}",
+        default_value=f"az-scout-plugin-{plugin_slug_resolved}",
         non_interactive=non_interactive,
         ui=ui,
     )
@@ -228,7 +228,7 @@ def create_plugin_scaffold(
         return 1
 
     if not package_name_resolved.startswith("az-scout-"):
-        ui.error("Package name should usually start with 'az-scout-' for discoverability.")
+        ui.error("Package name should start with 'az-scout-plugin-' for discoverability.")
         if not assume_yes:
             if non_interactive:
                 return 1
