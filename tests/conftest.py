@@ -57,8 +57,12 @@ def _sync_arm_requests_mock():
 @pytest.fixture(autouse=True)
 def _mock_credential():
     """Prevent real Azure credential calls in every test."""
+    from az_scout.azure_api._auth import _token_cache
+
+    _token_cache.clear()
     mock_token = MagicMock()
     mock_token.token = "fake-token"
+    mock_token.expires_on = 9999999999  # far future
     with patch("az_scout.azure_api._auth.credential") as cred:
         cred.get_token.return_value = mock_token
         yield cred

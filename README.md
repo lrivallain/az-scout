@@ -9,7 +9,7 @@
 
 Scout Azure regions for VM availability, zone mappings, pricing, spot scores, and quota — then plan deployments with confidence.
 
-📖 **Full documentation:** [az-scout.com](https://az-scout.com)
+📖 **Full documentation:** [docs.az-scout.com](https://docs.az-scout.com)
 
 **az-scout** helps Azure operators and architects answer the questions that matter when planning resilient, cost-efficient VM deployments:
 

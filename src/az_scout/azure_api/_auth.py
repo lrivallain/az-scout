@@ -6,6 +6,8 @@ import base64
 import json
 import logging
 import os
+import threading
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 
@@ -17,6 +19,11 @@ AZURE_API_VERSION = "2022-12-01"
 AZURE_MGMT_URL = "https://management.azure.com"
 
 credential = DefaultAzureCredential()
+
+# Token cache: (tenant_key → (token_str, expires_on_epoch))
+_token_cache: dict[str, tuple[str, float]] = {}
+_token_lock = threading.Lock()
+_TOKEN_REFRESH_MARGIN = 120  # refresh 2 min before expiry
 
 
 @contextmanager
@@ -41,17 +48,34 @@ def _get_headers(tenant_id: str | None = None) -> dict[str, str]:
     """Return authorization headers using *DefaultAzureCredential*.
 
     When *tenant_id* is provided the token is scoped to that tenant.
+    Tokens are cached in-memory and reused until 2 minutes before expiry.
     """
-    kwargs: dict[str, str] = {}
-    if tenant_id:
-        kwargs["tenant_id"] = tenant_id
-    logger.debug("Acquiring ARM token (tenant=%s)", tenant_id or "default")
-    token = credential.get_token(f"{AZURE_MGMT_URL}/.default", **kwargs)
-    logger.debug("ARM token acquired (tenant=%s)", tenant_id or "default")
-    return {
-        "Authorization": f"Bearer {token.token}",
-        "Content-Type": "application/json",
-    }
+    cache_key = tenant_id or "_default_"
+    with _token_lock:
+        cached = _token_cache.get(cache_key)
+        if cached:
+            token_str, expires_on = cached
+            if time.time() < expires_on - _TOKEN_REFRESH_MARGIN:
+                return {
+                    "Authorization": f"Bearer {token_str}",
+                    "Content-Type": "application/json",
+                }
+
+        kwargs: dict[str, str] = {}
+        if tenant_id:
+            kwargs["tenant_id"] = tenant_id
+        logger.debug("Acquiring ARM token (tenant=%s)", tenant_id or "default")
+        token = credential.get_token(f"{AZURE_MGMT_URL}/.default", **kwargs)
+        _token_cache[cache_key] = (token.token, token.expires_on)
+        logger.debug(
+            "ARM token acquired (tenant=%s, expires_on=%d)",
+            tenant_id or "default",
+            token.expires_on,
+        )
+        return {
+            "Authorization": f"Bearer {token.token}",
+            "Content-Type": "application/json",
+        }
 
 
 def _get_default_tenant_id() -> str | None:
