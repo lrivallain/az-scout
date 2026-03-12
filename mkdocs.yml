@@ -1,6 +1,6 @@
 site_name: Azure Scout
 site_description: Scout Azure regions for VM availability, zone mappings, pricing, spot scores, and quota — then plan deployments with confidence.
-site_url: https://az-scout.com
+site_url: https://docs.az-scout.com
 repo_url: https://github.com/az-scout/az-scout
 repo_name: az-scout/az-scout
 edit_uri: edit/main/docs/

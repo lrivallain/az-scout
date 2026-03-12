@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://az-scout.com"
+Homepage = "https://docs.az-scout.com"
 Repository = "https://github.com/az-scout/az-scout"
 Issues = "https://github.com/az-scout/az-scout/issues"
 

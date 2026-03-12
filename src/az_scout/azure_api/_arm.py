@@ -86,6 +86,7 @@ def _arm_request(
 
     for attempt in range(max_retries):
         try:
+            t0 = time.monotonic()
             if method == "POST":
                 resp = requests.post(
                     url,
@@ -100,6 +101,14 @@ def _arm_request(
                     params=params,
                     timeout=timeout,
                 )
+            elapsed = time.monotonic() - t0
+            logger.debug(
+                "ARM %s %s → %d (%.2fs)",
+                method,
+                url[:120],
+                resp.status_code,
+                elapsed,
+            )
 
             if resp.status_code == 403:
                 raise ArmAuthorizationError(
