@@ -7,6 +7,14 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+### Changed
+
+- **Remote plugin catalog** – the Plugin Manager now fetches the plugin catalog from `plugin-catalog.az-scout.com` instead of the embedded `recommended_plugins.json`. Catalog is cached for 1 hour. Returns empty list if unreachable (#107).
+
+### Removed
+
+- **Embedded `recommended_plugins.json`** – replaced by the remote catalog hosted at [az-scout/plugin-catalog](https://github.com/az-scout/plugin-catalog).
+
 ## [2026.3.6] - 2026-03-12
 
 ### Added

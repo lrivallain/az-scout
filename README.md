@@ -50,7 +50,7 @@ Your browser opens automatically at `http://127.0.0.1:5001`.
 
 az-scout can be extended with pip-installable plugins discovered automatically at startup. See [docs/PLUGINS.md](docs/PLUGINS.md) for the plugin development guide and the [scaffold](docs/plugin-scaffold/) for a ready-to-use template.
 
-A **Plugin Manager** is included in the UI to view installed plugins and their details.
+A **Plugin Manager** is included in the UI to browse the [online plugin catalog](https://plugin-catalog.az-scout.com/catalog.json), install, update, and remove plugins.
 
 ## Installation options
 

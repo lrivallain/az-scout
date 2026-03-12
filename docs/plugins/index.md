@@ -15,7 +15,7 @@ az-scout supports plugins — pip-installable Python packages that extend the ap
 
 ### Plugin manager
 
-The plugin manager UI shows all discovered plugins, both built-in and external. You can install new plugins without leaving the app
+The plugin manager UI shows all discovered plugins, both built-in and external. It fetches the [online plugin catalog](https://plugin-catalog.az-scout.com/catalog.json) to show recommended plugins that can be installed with one click.
 
 ![Plugin manager UI showing a list of installed plugins with install/uninstall buttons](../assets/screenshots/plugin-manager.png){ .screenshot }
 

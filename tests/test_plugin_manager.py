@@ -1755,30 +1755,20 @@ class TestSourceBackwardCompat:
 class TestLoadRecommendedPlugins:
     def test_load_with_no_installed(self, tmp_path: Path) -> None:
         """Recommended plugins should all show installed=False when nothing is installed."""
-        rec_file = tmp_path / "recommended_plugins.json"
-        rec_file.write_text(
-            json.dumps(
-                [
-                    {
-                        "name": "az-scout-plugin-foo",
-                        "description": "Foo plugin",
-                        "source": "pypi",
-                    },
-                    {
-                        "name": "az-scout-plugin-bar",
-                        "description": "Bar plugin",
-                        "source": "github",
-                        "url": "https://github.com/owner/bar",
-                    },
-                ]
-            ),
-            encoding="utf-8",
-        )
+        catalog = [
+            {"name": "az-scout-plugin-foo", "description": "Foo plugin", "source": "pypi"},
+            {
+                "name": "az-scout-plugin-bar",
+                "description": "Bar plugin",
+                "source": "github",
+                "url": "https://github.com/owner/bar",
+            },
+        ]
         installed_file = tmp_path / "installed.json"
         installed_file.write_text("[]", encoding="utf-8")
 
         with (
-            patch.object(_pm_storage, "_RECOMMENDED_FILE", rec_file),
+            patch.object(_pm_storage, "_fetch_remote_catalog", return_value=catalog),
             patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
         ):
             result = plugin_manager.load_recommended_plugins()
@@ -1792,19 +1782,9 @@ class TestLoadRecommendedPlugins:
 
     def test_installed_plugin_marked(self, tmp_path: Path) -> None:
         """Plugins that are already installed should be marked installed=True."""
-        rec_file = tmp_path / "recommended_plugins.json"
-        rec_file.write_text(
-            json.dumps(
-                [
-                    {
-                        "name": "az-scout-plugin-foo",
-                        "description": "Foo",
-                        "source": "pypi",
-                    },
-                ]
-            ),
-            encoding="utf-8",
-        )
+        catalog = [
+            {"name": "az-scout-plugin-foo", "description": "Foo", "source": "pypi"},
+        ]
         installed_file = tmp_path / "installed.json"
         installed_file.write_text(
             json.dumps(
@@ -1825,7 +1805,7 @@ class TestLoadRecommendedPlugins:
         )
 
         with (
-            patch.object(_pm_storage, "_RECOMMENDED_FILE", rec_file),
+            patch.object(_pm_storage, "_fetch_remote_catalog", return_value=catalog),
             patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
         ):
             result = plugin_manager.load_recommended_plugins()
@@ -1833,34 +1813,27 @@ class TestLoadRecommendedPlugins:
         assert len(result) == 1
         assert result[0]["installed"] is True
 
-    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
-        """When the recommended file does not exist, return an empty list."""
-        missing = tmp_path / "does_not_exist.json"
-        with patch.object(_pm_storage, "_RECOMMENDED_FILE", missing):
+    def test_missing_file_returns_empty(self) -> None:
+        """When the remote catalog is unreachable, return an empty list."""
+        with patch.object(_pm_storage, "_fetch_remote_catalog", return_value=[]):
             result = plugin_manager.load_recommended_plugins()
         assert result == []
 
     def test_optional_version_field(self, tmp_path: Path) -> None:
         """Entries with a version field should be propagated."""
-        rec_file = tmp_path / "recommended_plugins.json"
-        rec_file.write_text(
-            json.dumps(
-                [
-                    {
-                        "name": "az-scout-plugin-pinned",
-                        "description": "Pinned plugin",
-                        "source": "pypi",
-                        "version": "2.0.0",
-                    },
-                ]
-            ),
-            encoding="utf-8",
-        )
+        catalog = [
+            {
+                "name": "az-scout-plugin-pinned",
+                "description": "Pinned plugin",
+                "source": "pypi",
+                "version": "2.0.0",
+            },
+        ]
         installed_file = tmp_path / "installed.json"
         installed_file.write_text("[]", encoding="utf-8")
 
         with (
-            patch.object(_pm_storage, "_RECOMMENDED_FILE", rec_file),
+            patch.object(_pm_storage, "_fetch_remote_catalog", return_value=catalog),
             patch.object(_pm_storage, "_INSTALLED_FILE", installed_file),
         ):
             result = plugin_manager.load_recommended_plugins()
