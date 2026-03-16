@@ -45,6 +45,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # not support chmod/hardlinks.  On restart the reconcile loop reinstalls
 # every plugin from its pinned commit SHA recorded in installed.json.
 ENV AZ_SCOUT_DATA_DIR=/app/data
+ENV AZ_SCOUT_PACKAGES_DIR=/tmp/az-scout-packages
 RUN mkdir -p /app/data && chown scout:scout /app/data
 VOLUME /app/data
 

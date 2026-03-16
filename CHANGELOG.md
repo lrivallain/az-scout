@@ -7,6 +7,16 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+### Changed
+
+- **Remote plugin catalog** – Plugin Manager now fetches from `plugin-catalog.az-scout.com` instead of the embedded JSON file (#107).
+- **Persistent plugin packages** – plugin packages now install to `~/.local/share/az-scout/packages/` (persistent) instead of `/tmp/` (lost on reboot). Containers use `AZ_SCOUT_PACKAGES_DIR=/tmp/az-scout-packages` to preserve SMB compatibility.
+- **Dynamic docs catalog** – plugin catalog page now renders dynamically from the remote catalog with live PyPI version badges, author avatars, and tags.
+
+### Removed
+
+- **Embedded `recommended_plugins.json`** – replaced by the remote catalog at [az-scout/plugin-catalog](https://github.com/az-scout/plugin-catalog).
+
 ## [2026.3.6] - 2026-03-12
 
 ### Added

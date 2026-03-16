@@ -27,7 +27,11 @@ def _default_data_dir() -> Path:
 _DATA_DIR = _default_data_dir() / "plugins"
 _INSTALLED_FILE = _DATA_DIR / "installed.json"
 _AUDIT_FILE = _DATA_DIR / "audit.jsonl"
-_PACKAGES_DIR = Path(tempfile.gettempdir()) / "az-scout-packages"
+# Plugin packages directory.  Use a persistent user-local path by default
+# so packages survive reboots.  In containers, AZ_SCOUT_PACKAGES_DIR can
+# override this to /tmp (needed when the data volume is on Azure Files/SMB
+# which does not support chmod/hardlinks).
+_PACKAGES_DIR = Path(os.environ.get("AZ_SCOUT_PACKAGES_DIR", str(_default_data_dir() / "packages")))
 _UV_CACHE_DIR = Path(tempfile.gettempdir()) / "az-scout-uv-cache"
 
 _RECOMMENDED_FILE = Path(__file__).resolve().parent.parent / "recommended_plugins.json"
