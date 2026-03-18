@@ -165,7 +165,7 @@ async function _authHeaders() {
         if (selectedTenant && window.azScoutAuth.getDirectArmToken) {
             const armToken = window.azScoutAuth.getDirectArmToken(selectedTenant);
             if (armToken) {
-                headers["Authorization"] = `Bearer ${armToken}`;
+                headers.Authorization = `Bearer ${armToken}`;
                 headers["X-Direct-ARM"] = "true";
                 return headers;
             }
@@ -179,7 +179,7 @@ async function _authHeaders() {
         if (!token) {
             token = await window.azScoutAuth.getToken();
         }
-        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (token) headers.Authorization = `Bearer ${token}`;
     }
     return headers;
 }
@@ -562,9 +562,9 @@ async function fetchSubscriptions() {
  * Show an MFA authentication prompt with a clickable button.
  * The button click is a user gesture, so the MSAL popup won't be blocked.
  */
-let _mfaAttempted = {};  // track per-tenant to break loops
+const _mfaAttempted = {};  // track per-tenant to break loops
 
-function _showMfaPrompt(errorId, claims, tenantId, onSuccess) {
+function _showMfaPrompt(_errorId, claims, tenantId, onSuccess) {
     if (_mfaAttempted[tenantId]) {
         // Already tried MFA for this tenant — show hard error in overlay
         delete _mfaAttempted[tenantId];
@@ -579,7 +579,7 @@ function _showMfaPrompt(errorId, claims, tenantId, onSuccess) {
     _showMfaOverlay(tenantId, "claims", claims, onSuccess);
 }
 
-function _showMfaDirectPrompt(errorId, tenantId, onSuccess) {
+function _showMfaDirectPrompt(_errorId, tenantId, onSuccess) {
     _showMfaOverlay(tenantId, "direct", null, onSuccess);
 }
 

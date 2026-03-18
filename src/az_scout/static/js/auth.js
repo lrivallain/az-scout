@@ -1,8 +1,8 @@
 // MSAL.js authentication for az-scout OBO flow.
 // Loaded conditionally when /api/auth/config returns {enabled: true}.
 // Depends on msal-browser loaded from CDN.
+// biome-ignore lint/complexity/useArrowFunction: IIFE pattern for module encapsulation
 (function () {
-    "use strict";
 
     let msalInstance = null;
     let activeAccount = null;
@@ -248,8 +248,8 @@
         if (!msalInstance) return;
         activeAccount = null;
         // Clear all cached tokens
-        Object.keys(_tenantTokens).forEach(k => delete _tenantTokens[k]);
-        Object.keys(_directArmTokens).forEach(k => delete _directArmTokens[k]);
+        for (const k of Object.keys(_tenantTokens)) delete _tenantTokens[k];
+        for (const k of Object.keys(_directArmTokens)) delete _directArmTokens[k];
         msalInstance.clearCache();
         localStorage.removeItem("azscout_tenant");
         window.location.reload();
