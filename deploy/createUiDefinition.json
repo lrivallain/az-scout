@@ -103,6 +103,134 @@
         ]
       },
       {
+        "name": "authentication",
+        "label": "Authentication",
+        "elements": [
+          {
+            "name": "easyAuthSection",
+            "type": "Microsoft.Common.Section",
+            "label": "EasyAuth (gateway-level authentication)",
+            "elements": [
+              {
+                "name": "easyAuthInfo",
+                "type": "Microsoft.Common.InfoBox",
+                "options": {
+                  "text": "EasyAuth adds Entra ID login at the gateway level. All users share the app's managed identity for ARM access.",
+                  "style": "Info"
+                }
+              }
+            ]
+          },
+          {
+            "name": "enableAuth",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable Entra ID authentication (EasyAuth)"
+          },
+          {
+            "name": "authClientId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "App Registration Client ID",
+            "defaultValue": "",
+            "toolTip": "Client ID from your Entra ID App Registration.",
+            "visible": "[steps('authentication').enableAuth]",
+            "constraints": {
+              "required": "[steps('authentication').enableAuth]",
+              "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "validationMessage": "Must be a valid GUID."
+            }
+          },
+          {
+            "name": "authClientSecret",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "App Registration Client Secret"
+            },
+            "toolTip": "Client secret from your Entra ID App Registration.",
+            "visible": "[steps('authentication').enableAuth]",
+            "constraints": {
+              "required": "[steps('authentication').enableAuth]"
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          },
+          {
+            "name": "authTenantId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Tenant ID (optional)",
+            "defaultValue": "",
+            "toolTip": "Entra ID tenant ID. Leave empty to use the deployment tenant.",
+            "visible": "[steps('authentication').enableAuth]",
+            "constraints": {
+              "required": false,
+              "regex": "^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$",
+              "validationMessage": "Must be a valid GUID or empty."
+            }
+          },
+          {
+            "name": "oboSeparator",
+            "type": "Microsoft.Common.Section",
+            "label": "On-Behalf-Of (OBO) Authentication",
+            "elements": [
+              {
+                "name": "oboInfo",
+                "type": "Microsoft.Common.InfoBox",
+                "options": {
+                  "text": "OBO lets each user sign in with their own Microsoft account. ARM calls use their RBAC permissions instead of the managed identity. Requires a pre-created multi-tenant App Registration. When enabled, the Permissions step becomes optional.",
+                  "style": "Info"
+                }
+              }
+            ]
+          },
+          {
+            "name": "enableObo",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable OBO authentication (multi-user)"
+          },
+          {
+            "name": "oboClientId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "OBO App Registration Client ID",
+            "defaultValue": "",
+            "toolTip": "Client ID from the multi-tenant App Registration created for OBO.",
+            "visible": "[steps('authentication').enableObo]",
+            "constraints": {
+              "required": "[steps('authentication').enableObo]",
+              "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "validationMessage": "Must be a valid GUID."
+            }
+          },
+          {
+            "name": "oboClientSecret",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "OBO App Registration Client Secret"
+            },
+            "toolTip": "Client secret from the OBO App Registration.",
+            "visible": "[steps('authentication').enableObo]",
+            "constraints": {
+              "required": "[steps('authentication').enableObo]"
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          },
+          {
+            "name": "oboTenantId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "OBO Tenant ID (optional)",
+            "defaultValue": "",
+            "toolTip": "Home tenant ID of the OBO App Registration. Leave empty to use the deployment tenant.",
+            "visible": "[steps('authentication').enableObo]",
+            "constraints": {
+              "required": false,
+              "regex": "^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$",
+              "validationMessage": "Must be a valid GUID or empty."
+            }
+          }
+        ]
+      },
+      {
         "name": "permissions",
         "label": "Permissions",
         "elements": [
@@ -119,7 +247,7 @@
             "type": "Microsoft.Common.InfoBox",
             "visible": "[steps('authentication').enableObo]",
             "options": {
-              "text": "With OBO enabled, each user authenticates with their own RBAC permissions. Target subscription selection below is optional — only needed if you also want the managed identity to have Reader access (e.g. for CLI mode fallback).",
+              "text": "With OBO enabled, each user authenticates with their own RBAC permissions. Target subscription selection is optional — only needed if you also want the managed identity to have Reader access (e.g. for CLI mode fallback).",
               "style": "Info"
             }
           },
@@ -200,120 +328,6 @@
             "label": "Enable persistent storage (Azure Files)",
             "toolTip": "Mount an Azure Files share so application data (plugins, caches) survives container restarts and scale-to-zero.",
             "defaultValue": true
-          }
-        ]
-      },
-      {
-        "name": "authentication",
-        "label": "Authentication (EasyAuth)",
-        "elements": [
-          {
-            "name": "enableAuth",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Enable Entra ID authentication",
-            "toolTip": "Protect the app with Microsoft Entra ID login (EasyAuth)."
-          },
-          {
-            "name": "authClientId",
-            "type": "Microsoft.Common.TextBox",
-            "label": "App Registration Client ID",
-            "defaultValue": "",
-            "toolTip": "Client ID from your Entra ID App Registration.",
-            "visible": "[steps('authentication').enableAuth]",
-            "constraints": {
-              "required": "[steps('authentication').enableAuth]",
-              "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-              "validationMessage": "Must be a valid GUID."
-            }
-          },
-          {
-            "name": "authClientSecret",
-            "type": "Microsoft.Common.PasswordBox",
-            "label": {
-              "password": "App Registration Client Secret"
-            },
-            "toolTip": "Client secret from your Entra ID App Registration.",
-            "visible": "[steps('authentication').enableAuth]",
-            "constraints": {
-              "required": "[steps('authentication').enableAuth]"
-            },
-            "options": {
-              "hideConfirmation": true
-            }
-          },
-          {
-            "name": "authTenantId",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Tenant ID (optional)",
-            "defaultValue": "",
-            "toolTip": "Entra ID tenant ID. Leave empty to use the deployment tenant.",
-            "visible": "[steps('authentication').enableAuth]",
-            "constraints": {
-              "required": false,
-              "regex": "^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$",
-              "validationMessage": "Must be a valid GUID or empty."
-            }
-          },
-          {
-            "name": "oboSeparator",
-            "type": "Microsoft.Common.Section",
-            "label": "On-Behalf-Of (OBO) Authentication",
-            "elements": [
-              {
-                "name": "oboInfo",
-                "type": "Microsoft.Common.InfoBox",
-                "options": {
-                  "text": "OBO lets each user sign in with their own Microsoft account. ARM calls use their RBAC permissions instead of the managed identity. Requires a pre-created multi-tenant App Registration.",
-                  "style": "Info"
-                }
-              }
-            ]
-          },
-          {
-            "name": "enableObo",
-            "type": "Microsoft.Common.CheckBox",
-            "label": "Enable OBO authentication (multi-user)"
-          },
-          {
-            "name": "oboClientId",
-            "type": "Microsoft.Common.TextBox",
-            "label": "OBO App Registration Client ID",
-            "defaultValue": "",
-            "toolTip": "Client ID from the multi-tenant App Registration created for OBO.",
-            "visible": "[steps('authentication').enableObo]",
-            "constraints": {
-              "required": "[steps('authentication').enableObo]",
-              "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-              "validationMessage": "Must be a valid GUID."
-            }
-          },
-          {
-            "name": "oboClientSecret",
-            "type": "Microsoft.Common.PasswordBox",
-            "label": {
-              "password": "OBO App Registration Client Secret"
-            },
-            "toolTip": "Client secret from the OBO App Registration.",
-            "visible": "[steps('authentication').enableObo]",
-            "constraints": {
-              "required": "[steps('authentication').enableObo]"
-            },
-            "options": {
-              "hideConfirmation": true
-            }
-          },
-          {
-            "name": "oboTenantId",
-            "type": "Microsoft.Common.TextBox",
-            "label": "OBO Tenant ID (optional)",
-            "defaultValue": "",
-            "toolTip": "Home tenant ID of the OBO App Registration. Leave empty to use the deployment tenant.",
-            "visible": "[steps('authentication').enableObo]",
-            "constraints": {
-              "required": false,
-              "regex": "^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$",
-              "validationMessage": "Must be a valid GUID or empty."
-            }
           }
         ]
       }
