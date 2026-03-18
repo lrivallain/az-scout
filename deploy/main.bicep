@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Azure Scout – Container App deployment with optional EasyAuth
+// Azure Scout – Container App deployment with optional EasyAuth and OBO
 // ---------------------------------------------------------------------------
 //
 // Deploys:
@@ -9,6 +9,7 @@
 //   4. User-assigned Managed Identity with Reader on target subscriptions
 //   5. (Optional) VNet integration with network-isolated storage
 //   6. (Optional) Entra ID EasyAuth via authConfigs
+//   7. (Optional) OBO authentication for multi-user delegated access
 //
 // Usage:
 //   az deployment group create \
@@ -23,6 +24,15 @@
 //     -p readerSubscriptionIds='["<sub-id-1>"]' \
 //     -p enableAuth=true \
 //     -p authClientId=<app-registration-client-id>
+//
+// With OBO:
+//   az deployment group create \
+//     -g <resource-group> \
+//     -f deploy/main.bicep \
+//     -p readerSubscriptionIds='["<sub-id-1>"]' \
+//     -p enableObo=true \
+//     -p oboClientId=<obo-client-id> \
+//     -p oboClientSecret=<obo-client-secret>
 // ---------------------------------------------------------------------------
 
 @description('Azure region for all resources.')
@@ -92,6 +102,21 @@ param authClientSecret string = ''
 
 @description('Entra ID tenant ID for authentication. Defaults to the deployment tenant.')
 param authTenantId string = tenant().tenantId
+
+// -- OBO (On-Behalf-Of) parameters --
+
+@description('Enable On-Behalf-Of authentication. Each user signs in with their own Microsoft account and ARM calls use their RBAC permissions. Requires a pre-created multi-tenant App Registration (see docs/deployment/obo-auth.md).')
+param enableObo bool = false
+
+@description('OBO App Registration Client ID (required when enableObo is true).')
+param oboClientId string = ''
+
+@secure()
+@description('OBO App Registration Client Secret (required when enableObo is true).')
+param oboClientSecret string = ''
+
+@description('OBO App Registration home tenant ID. Defaults to the deployment tenant.')
+param oboTenantId string = tenant().tenantId
 
 // ---------------------------------------------------------------------------
 // Managed Identity
@@ -352,12 +377,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         allowInsecure: false
       }
       registries: []   // GHCR public images don't need credentials
-      secrets: enableAuth ? [
-        {
-          name: 'microsoft-provider-authentication-secret'
-          value: authClientSecret
-        }
-      ] : []
+      secrets: concat(
+        enableAuth ? [
+          {
+            name: 'microsoft-provider-authentication-secret'
+            value: authClientSecret
+          }
+        ] : [],
+        enableObo ? [
+          {
+            name: 'obo-client-secret'
+            value: oboClientSecret
+          }
+        ] : []
+      )
     }
     template: {
       volumes: enablePersistentStorage ? [
@@ -375,19 +408,35 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json(containerCpu)
             memory: containerMemory
           }
-          env: [
-            {
-              // Tell azure-identity to use the user-assigned MI
-              name: 'AZURE_CLIENT_ID'
-              value: managedIdentity.properties.clientId
-            }
-            {
-              // Application data directory – points to mounted Azure Files
-              // volume when persistent storage is enabled, else uses default
-              name: 'AZ_SCOUT_DATA_DIR'
-              value: enablePersistentStorage ? '/app/data' : ''
-            }
-          ]
+          env: concat(
+            [
+              {
+                // Tell azure-identity to use the user-assigned MI
+                name: 'AZURE_CLIENT_ID'
+                value: managedIdentity.properties.clientId
+              }
+              {
+                // Application data directory – points to mounted Azure Files
+                // volume when persistent storage is enabled, else uses default
+                name: 'AZ_SCOUT_DATA_DIR'
+                value: enablePersistentStorage ? '/app/data' : ''
+              }
+            ],
+            enableObo ? [
+              {
+                name: 'AZ_SCOUT_CLIENT_ID'
+                value: oboClientId
+              }
+              {
+                name: 'AZ_SCOUT_CLIENT_SECRET'
+                secretRef: 'obo-client-secret'
+              }
+              {
+                name: 'AZ_SCOUT_TENANT_ID'
+                value: oboTenantId
+              }
+            ] : []
+          )
           volumeMounts: enablePersistentStorage ? [
             {
               volumeName: 'app-data'

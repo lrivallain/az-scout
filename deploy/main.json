@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "7509553444983693791"
+      "templateHash": "14176777882774767154"
     }
   },
   "parameters": {
@@ -144,6 +144,34 @@
       "defaultValue": "[tenant().tenantId]",
       "metadata": {
         "description": "Entra ID tenant ID for authentication. Defaults to the deployment tenant."
+      }
+    },
+    "enableObo": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable On-Behalf-Of authentication. Each user signs in with their own Microsoft account and ARM calls use their RBAC permissions. Requires a pre-created multi-tenant App Registration (see docs/deployment/obo-auth.md)."
+      }
+    },
+    "oboClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "OBO App Registration Client ID (required when enableObo is true)."
+      }
+    },
+    "oboClientSecret": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "OBO App Registration Client Secret (required when enableObo is true)."
+      }
+    },
+    "oboTenantId": {
+      "type": "string",
+      "defaultValue": "[tenant().tenantId]",
+      "metadata": {
+        "description": "OBO App Registration home tenant ID. Defaults to the deployment tenant."
       }
     }
   },
@@ -401,7 +429,7 @@
             "allowInsecure": false
           },
           "registries": [],
-          "secrets": "[if(parameters('enableAuth'), createArray(createObject('name', 'microsoft-provider-authentication-secret', 'value', parameters('authClientSecret'))), createArray())]"
+          "secrets": "[concat(if(parameters('enableAuth'), createArray(createObject('name', 'microsoft-provider-authentication-secret', 'value', parameters('authClientSecret'))), createArray()), if(parameters('enableObo'), createArray(createObject('name', 'obo-client-secret', 'value', parameters('oboClientSecret'))), createArray()))]"
         },
         "template": {
           "volumes": "[if(parameters('enablePersistentStorage'), createArray(createObject('name', 'app-data', 'storageName', 'appdata', 'storageType', 'AzureFile')), createArray())]",
@@ -413,16 +441,7 @@
                 "cpu": "[json(parameters('containerCpu'))]",
                 "memory": "[parameters('containerMemory')]"
               },
-              "env": [
-                {
-                  "name": "AZURE_CLIENT_ID",
-                  "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('baseName'))), '2023-01-31').clientId]"
-                },
-                {
-                  "name": "AZ_SCOUT_DATA_DIR",
-                  "value": "[if(parameters('enablePersistentStorage'), '/app/data', '')]"
-                }
-              ],
+              "env": "[concat(createArray(createObject('name', 'AZURE_CLIENT_ID', 'value', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('baseName'))), '2023-01-31').clientId), createObject('name', 'AZ_SCOUT_DATA_DIR', 'value', if(parameters('enablePersistentStorage'), '/app/data', ''))), if(parameters('enableObo'), createArray(createObject('name', 'AZ_SCOUT_CLIENT_ID', 'value', parameters('oboClientId')), createObject('name', 'AZ_SCOUT_CLIENT_SECRET', 'secretRef', 'obo-client-secret'), createObject('name', 'AZ_SCOUT_TENANT_ID', 'value', parameters('oboTenantId'))), createArray()))]",
               "volumeMounts": "[if(parameters('enablePersistentStorage'), createArray(createObject('volumeName', 'app-data', 'mountPath', '/app/data')), createArray())]"
             }
           ],

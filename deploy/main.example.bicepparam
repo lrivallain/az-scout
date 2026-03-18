@@ -47,3 +47,10 @@ param readerSubscriptionIds = [
 // param authClientId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 // param authClientSecret = '<secret-from-az-ad-app-credential-reset>'
 // param authTenantId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+
+// Optional: enable OBO authentication (multi-user delegated access)
+// Requires a pre-created multi-tenant App Registration — see docs/deployment/obo-auth.md
+// param enableObo = true
+// param oboClientId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+// param oboClientSecret = '<obo-client-secret>'
+// param oboTenantId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
