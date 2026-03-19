@@ -336,13 +336,29 @@ async function fetchTenants() {
             defaultTenantId: defaultTid,
             tenantId: select.value || "",
         });
-    } catch {
-        document.getElementById("tenant-section").classList.add("d-none");
-        emitContextEvent("azscout:tenants-loaded", {
-            tenants: [],
-            defaultTenantId: "",
-            tenantId: "",
-        });
+    } catch (err) {
+        // OBO exchange may have failed (MFA, consent) for the tenant list.
+        // Fall back to the user's home tenant from the MSAL account so they
+        // can at least attempt to use the app and see a proper auth error.
+        const homeTid = window.azScoutAuth?.getHomeTenantId?.();
+        if (homeTid) {
+            const userName = window.azScoutAuth.getUserName() || homeTid;
+            tenants = [{ id: homeTid, name: userName, authenticated: true }];
+            select.innerHTML = `<option value="${homeTid}">${escapeHtml(userName)} (${homeTid.slice(0, 8)}\u2026)</option>`;
+            select.value = homeTid;
+            emitContextEvent("azscout:tenants-loaded", {
+                tenants,
+                defaultTenantId: homeTid,
+                tenantId: homeTid,
+            });
+        } else {
+            document.getElementById("tenant-section").classList.add("d-none");
+            emitContextEvent("azscout:tenants-loaded", {
+                tenants: [],
+                defaultTenantId: "",
+                tenantId: "",
+            });
+        }
     }
 }
 
@@ -628,6 +644,10 @@ function _showMfaOverlay(tenantId, mode, claims, onSuccess) {
                 <i class="bi bi-shield-lock me-1"></i> Authenticate with MFA
             </button>
             <p class="text-body-secondary small mt-3" id="mfa-overlay-status"></p>
+            <hr class="my-3 w-100">
+            <button class="btn btn-sm btn-outline-secondary" onclick="window.azScoutAuth?.login()">
+                <i class="bi bi-person-lines-fill me-1"></i> Sign in with a different account
+            </button>
         </div>`;
     overlay.style.display = "flex";
 
@@ -733,6 +753,10 @@ function _showAuthError(tenantId, message) {
                 Tenant: <strong>${escapeHtml(tenantName)}</strong>
             </p>
             ${bodyHtml}
+            <hr class="my-3 w-100">
+            <button class="btn btn-sm btn-outline-secondary mb-4" onclick="window.azScoutAuth?.login()">
+                <i class="bi bi-person-lines-fill me-1"></i> Sign in with a different account
+            </button>
         </div>`;
     overlay.style.display = "flex";
 }

@@ -102,6 +102,11 @@
             return activeAccount?.name || activeAccount?.username || "";
         },
 
+        /** Get the signed-in user's home tenant ID. */
+        getHomeTenantId() {
+            return activeAccount?.tenantId || "";
+        },
+
         /** Get a token scoped to a specific tenant (re-authenticates if needed). */
         async getTokenForTenant(tenantId) {
             if (!msalInstance || !activeAccount || !tenantId) return null;
