@@ -40,6 +40,12 @@
                 <i class="bi bi-box-arrow-right"></i>
             </a>
             {% endif %}
+            {% for p in plugins if p.name == 'bdd-sku' %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bdd-sku-nav-btn" title="SKU DB Cache"
+                    data-bs-toggle="offcanvas" data-bs-target="#bddSkuOffcanvas">
+                <i class="bi bi-database"></i>
+            </button>
+            {% endfor %}
             <button type="button" class="btn btn-sm btn-outline-secondary" id="plugin-manager-btn"
                     title="Plugin Manager" data-bs-toggle="offcanvas" data-bs-target="#pluginOffcanvas">
                 <i class="bi bi-puzzle"></i>
@@ -100,7 +106,7 @@
         {% endif %}
         {% endfor %}
         {% for p in plugins %}
-        {% if not p.internal %}
+        {% if not p.internal and p.name != 'bdd-sku' %}
         {% for tab in p.tabs %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="{{ tab.id }}-tab" data-bs-toggle="tab" data-bs-target="#tab-{{ tab.id }}"
@@ -132,7 +138,7 @@
         {% endfor %}
 
         {% for p in plugins %}
-        {% if not p.internal %}
+        {% if not p.internal and p.name != 'bdd-sku' %}
         {% for tab in p.tabs %}
         <div class="tab-pane fade" id="tab-{{ tab.id }}" role="tabpanel" aria-labelledby="{{ tab.id }}-tab">
             <div class="card border-top-0 rounded-top-0">
@@ -165,6 +171,45 @@
         <!-- Populated by plugins.js -->
     </div>
 </div>
+
+{% for p in plugins if p.name == 'bdd-sku' %}
+<!-- ===== BDD SKU Offcanvas ===== -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="bddSkuOffcanvas" aria-labelledby="bddSkuOffcanvasLabel" style="width:480px;">
+    <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="bddSkuOffcanvasLabel"><i class="bi bi-database me-2"></i>SKU DB Cache</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body" id="bdd-sku-offcanvas-body">
+        <p class="text-body-secondary small mb-3">
+            Configure the connection to the cached Azure VM pricing &amp; Spot data API.
+        </p>
+        <!-- API Connection -->
+        <div class="bdd-sku-settings" id="bdd-sku-oc-settings">
+            <div class="bdd-sku-settings-header">
+                <h6><i class="bi bi-gear"></i> API Connection</h6>
+                <span class="bdd-sku-settings-status" id="bdd-sku-oc-conn-status"></span>
+            </div>
+            <div class="bdd-sku-settings-body">
+                <div class="bdd-sku-settings-row">
+                    <label for="bdd-sku-oc-api-url">API Base URL</label>
+                    <div class="bdd-sku-settings-input-group">
+                        <input type="url" id="bdd-sku-oc-api-url"
+                               placeholder="https://your-api.azurecontainerapps.io"
+                               autocomplete="url" spellcheck="false" />
+                        <button class="btn btn-sm btn-primary" id="bdd-sku-oc-save-url">
+                            <i class="bi bi-save"></i> Save
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" id="bdd-sku-oc-test-url">
+                            <i class="bi bi-plug"></i> Test
+                        </button>
+                    </div>
+                    <small class="bdd-sku-settings-hint" id="bdd-sku-oc-settings-msg"></small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
 
 <!-- ===== About Modal ===== -->
 <div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
@@ -297,6 +342,78 @@
     if (typeof registerPluginChatModes === "function") {
         registerPluginChatModes(pluginModes);
     }
+})();
+// BDD SKU offcanvas — API connection logic
+(function() {
+    const PLUGIN = 'bdd-sku';
+    const offcanvasEl = document.getElementById('bddSkuOffcanvas');
+    if (!offcanvasEl) return;
+
+    const urlInput    = document.getElementById('bdd-sku-oc-api-url');
+    const saveBtn     = document.getElementById('bdd-sku-oc-save-url');
+    const testBtn     = document.getElementById('bdd-sku-oc-test-url');
+    const msgEl       = document.getElementById('bdd-sku-oc-settings-msg');
+    const connStatus  = document.getElementById('bdd-sku-oc-conn-status');
+
+    function setStatus(state) {
+        const map = {
+            'connected':      { cls: 'bdd-sku-conn--ok',    text: 'Connected' },
+            'not-configured': { cls: 'bdd-sku-conn--warn',  text: 'Not configured' },
+            'error':          { cls: 'bdd-sku-conn--error', text: 'Error' },
+        };
+        const s = map[state] || map['not-configured'];
+        connStatus.className = 'bdd-sku-settings-status ' + s.cls;
+        connStatus.textContent = s.text;
+    }
+
+    function showMsg(text, type) {
+        msgEl.textContent = text;
+        msgEl.className = 'bdd-sku-settings-hint bdd-sku-msg--' + type;
+    }
+    function clearMsg() {
+        msgEl.textContent = '';
+        msgEl.className = 'bdd-sku-settings-hint';
+    }
+
+    let loaded = false;
+    offcanvasEl.addEventListener('show.bs.offcanvas', () => {
+        if (loaded) return;
+        loaded = true;
+        apiFetch('/plugins/' + PLUGIN + '/settings')
+            .then(s => {
+                urlInput.value = s.api_base_url || '';
+                setStatus(s.is_configured ? 'connected' : 'not-configured');
+            })
+            .catch(() => setStatus('error'));
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        clearMsg();
+        const url = urlInput.value.trim();
+        if (!url) { showMsg('URL is required.', 'error'); return; }
+        saveBtn.disabled = true;
+        try {
+            await apiPost('/plugins/' + PLUGIN + '/settings/update', { api_base_url: url });
+            showMsg('Saved.', 'ok');
+            setStatus('connected');
+        } catch (e) {
+            showMsg(e.message || 'Save failed.', 'error');
+        } finally { saveBtn.disabled = false; }
+    });
+
+    testBtn.addEventListener('click', async () => {
+        clearMsg();
+        const url = urlInput.value.trim();
+        if (!url) { showMsg('Enter a URL first.', 'error'); return; }
+        testBtn.disabled = true;
+        try {
+            const r = await apiPost('/plugins/' + PLUGIN + '/settings/test', { api_base_url: url });
+            if (r.ok) showMsg('Connection OK (HTTP ' + r.status + ').', 'ok');
+            else showMsg(r.error || 'Connection failed.', 'error');
+        } catch (e) {
+            showMsg(e.message || 'Test failed.', 'error');
+        } finally { testBtn.disabled = false; }
+    });
 })();
 </script>
 </body>
