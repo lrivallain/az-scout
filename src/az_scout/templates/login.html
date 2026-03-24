@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In — Azure Scout</title>
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        body { min-height: 100vh; display: flex; flex-direction: column; }
+        .login-container { flex: 1; display: flex; align-items: center; justify-content: center; }
+        .login-card { max-width: 420px; width: 100%; text-align: center; }
+        footer { font-size: 0.8rem; }
+    </style>
+    <script>
+        // Match theme to user preference
+        const theme = localStorage.getItem("theme")
+            || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.setAttribute("data-bs-theme", theme);
+    </script>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-dark bg-body-tertiary border-bottom px-3">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+            <img src="/static/img/favicon.svg" width="24" height="24" alt="">
+            <span>Azure Scout</span>
+        </a>
+    </nav>
+
+    <!-- Login card -->
+    <div class="login-container">
+        <div class="login-card px-3">
+            <img src="/static/img/favicon.svg" width="72" height="72" alt="" class="mb-3 opacity-75">
+            <h2 class="mb-2">Welcome to Azure Scout</h2>
+            <p class="text-body-secondary mb-4">
+                Sign in with your Microsoft account to explore Azure resources
+                using your own permissions.
+            </p>
+
+            {% if error %}
+            <div class="alert alert-danger mb-4" role="alert">
+            {% if error == "token_exchange_failed" %}
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Sign-in failed: could not complete the authentication. Please try again.
+            {% elif error == "invalid_state" %}
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Sign-in session expired. Please try again.
+            {% elif error == "auth_failed" %}
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Authentication was denied or cancelled. Please try again.
+            {% else %}
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                An error occurred during sign-in. Please try again.
+            {% endif %}
+            </div>
+            {% endif %}
+
+            <a href="/auth/login/start{% if tenant %}?tenant={{ tenant }}{% endif %}" class="btn btn-primary btn-lg w-100 mb-3">
+                <i class="bi bi-microsoft me-2"></i> Sign in with Microsoft
+            </a>
+
+            {% if home_tenant %}
+            <a href="/auth/login/start?tenant={{ home_tenant }}" class="btn btn-outline-secondary btn-sm w-100 mb-3">
+                <i class="bi bi-shield-lock me-2"></i> Sign in as Admin (home tenant)
+            </a>
+            {% endif %}
+
+            <p class="text-body-secondary small">
+                Your Azure RBAC permissions determine what you can access.
+            </p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center text-body-secondary py-3 border-top">
+        Azure Scout · MIT License · Independent Azure analysis tool — not affiliated with Microsoft.
+    </footer>
+</body>
+</html>

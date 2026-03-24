@@ -323,7 +323,7 @@ async function sendChatMessage() {
         const regionId = document.getElementById("region-select")?.value || "";
         const resp = await fetch("/api/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...(await _authHeaders()) },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 messages: _chatMessages,
                 mode: _chatMode,

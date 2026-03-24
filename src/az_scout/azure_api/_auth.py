@@ -66,11 +66,15 @@ def _get_headers(
     """
     # Fall back to request-scoped auth when explicit params not provided
     if user_token is None:
-        from az_scout.auth import get_request_auth
+        from az_scout.auth import _NO_TOKEN, get_request_auth
 
         user_token, ctx_direct = get_request_auth()
         if not direct_arm:
             direct_arm = ctx_direct
+
+        # Sentinel means "middleware ran but no user token" → block in OBO mode
+        if user_token == _NO_TOKEN:
+            user_token = None
 
     # OBO path: exchange user token for ARM token
     if user_token:
@@ -87,13 +91,19 @@ def _get_headers(
             return obo_exchange(user_token, tenant_id=tenant_id)
 
     # When OBO is configured, require a user token for web requests.
-    # CLI mode (no middleware context) falls through to DefaultAzureCredential.
+    # If we reach here, user_token is None. Two cases:
+    # 1. Middleware ran but no token (sentinel was _NO_TOKEN → cleared above) → block
+    # 2. CLI mode (middleware never ran, get_request_auth returned (None, False)) → allow
+    # We distinguish by checking if the raw context value was the sentinel.
     from az_scout.azure_api._obo import is_obo_enabled
 
     if is_obo_enabled() and not user_token:
-        from az_scout.auth import _in_web_request
+        from az_scout.auth import _NO_TOKEN, get_request_auth
 
-        if _in_web_request:
+        raw_token, _ = get_request_auth()
+        # If raw value is _NO_TOKEN, it means middleware ran → web request → block
+        # If raw value is None, middleware never ran → CLI mode → allow fallthrough
+        if raw_token == _NO_TOKEN:
             from az_scout.azure_api._obo import OboTokenError
 
             raise OboTokenError("Authentication required", error_code="login_required")

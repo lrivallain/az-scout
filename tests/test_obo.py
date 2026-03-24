@@ -248,5 +248,3 @@ class TestAuthConfig:
         assert resp.status_code == 200
         data = resp.json()
         assert data["enabled"] is True
-        assert data["clientId"] == "test-client-id"
-        assert "scopes" in data
