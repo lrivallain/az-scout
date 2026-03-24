@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -96,6 +96,9 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def _generic_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     """Return ``{"error": …}`` with status 500 for any unhandled exception."""
+    if isinstance(exc, OboTokenError):
+        # OBO errors are expected (expired tokens, etc.) — no stacktrace
+        return JSONResponse({"error": str(exc)}, status_code=401)
     logging.getLogger(__name__).exception("Unhandled error")
     return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -129,6 +132,11 @@ async def _obo_error_handler(_request: Request, exc: OboTokenError) -> JSONRespo
 @app.exception_handler(PluginError)
 async def _plugin_error_handler(_request: Request, exc: PluginError) -> JSONResponse:
     """Return ``{"error": …, "detail": …}`` for PluginError exceptions."""
+    # If the root cause is an OBO auth error, return 401 (not the plugin's status code)
+    cause = exc.__cause__
+    if isinstance(cause, OboTokenError):
+        return JSONResponse({"error": str(cause)}, status_code=401)
+
     message = str(exc)
     logging.getLogger(__name__).warning("Plugin error (%d): %s", exc.status_code, message)
     return JSONResponse(
@@ -148,9 +156,7 @@ _CSP_POLICY = "; ".join(
         "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net",
         "font-src 'self' cdn.jsdelivr.net",
         "img-src 'self' data: https://github.com https://*.githubusercontent.com",
-        "connect-src 'self' cdn.jsdelivr.net https://login.microsoftonline.com"
-        " https://plugin-catalog.az-scout.com",
-        "frame-src 'self' https://login.microsoftonline.com",
+        "connect-src 'self' cdn.jsdelivr.net https://plugin-catalog.az-scout.com",
         "frame-ancestors 'none'",
     ]
 )
@@ -189,7 +195,7 @@ app.add_middleware(_CSPMiddleware)
 
 # ---------------------------------------------------------------------------
 # Auth context middleware – populates contextvars for the current request
-# so _get_headers() can read user_token/direct_arm without explicit params.
+# so _get_headers() can read user_token without explicit params.
 #
 # Uses a raw ASGI middleware instead of BaseHTTPMiddleware because Starlette's
 # BaseHTTPMiddleware runs call_next in a separate anyio task, which breaks
@@ -200,7 +206,12 @@ from az_scout.auth import clear_request_auth, set_request_auth  # noqa: E402
 
 
 class _AuthContextMiddleware:
-    """Raw ASGI middleware that sets auth context for the current request."""
+    """Raw ASGI middleware that sets auth context for the current request.
+
+    Reads auth from two sources (in priority order):
+    1. Authorization Bearer header (MCP clients, direct API calls)
+    2. Session cookie (web browser users via server-side login)
+    """
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -211,26 +222,53 @@ class _AuthContextMiddleware:
             return
 
         token_value: str | None = None
-        direct = False
+
+        # 1. Check Authorization header (MCP / direct API clients)
         for name, value in scope.get("headers", []):
             if name == b"authorization":
                 val = value.decode("latin-1")
                 if val.startswith("Bearer "):
                     token_value = val[7:]
-            elif name == b"x-direct-arm":
-                direct = value == b"true"
 
-        tokens = set_request_auth(token_value, direct)
+        # 2. Fall back to session cookie (web browser)
+        if not token_value:
+            from az_scout.azure_api._obo import CLIENT_SECRET
+            from az_scout.routes.auth import _COOKIE_NAME, _sessions, _verify_session_id
+
+            if CLIENT_SECRET:
+                for name, value in scope.get("headers", []):
+                    if name == b"cookie":
+                        cookies = {}
+                        for part in value.decode("latin-1").split(";"):
+                            part = part.strip()
+                            if "=" in part:
+                                k, v = part.split("=", 1)
+                                cookies[k.strip()] = v.strip()
+                        cookie_val = cookies.get(_COOKIE_NAME)
+                        if cookie_val:
+                            session_id = _verify_session_id(cookie_val, CLIENT_SECRET)
+                            if session_id:
+                                session = _sessions.get(session_id)
+                                if session and session.get("access_token"):
+                                    token_value = session["access_token"]
+                        break
+
+        tok = set_request_auth(token_value)
         try:
             await self.app(scope, receive, send)
         finally:
-            clear_request_auth(tokens)
+            clear_request_auth(tok)
 
 
 app.add_middleware(_AuthContextMiddleware)
 
 app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
+
+# Auth routes (login, callback, logout, /api/auth/me, /api/auth/config)
+from az_scout.routes.auth import router as auth_router  # noqa: E402
+
+app.include_router(auth_router)
 
 # Plugin manager API routes
 app.include_router(plugin_manager_router)
@@ -295,9 +333,15 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-async def index(request: Request) -> HTMLResponse:
-    """Serve the main page."""
+@app.get("/", response_class=HTMLResponse, response_model=None, include_in_schema=False)
+async def index(request: Request) -> HTMLResponse | RedirectResponse:
+    """Serve the main page. Redirects to login when OBO is enabled and user is not signed in."""
+    from az_scout.azure_api._obo import is_obo_enabled
+    from az_scout.routes.auth import get_session
+
+    if is_obo_enabled() and not get_session(request):
+        return RedirectResponse("/auth/login")
+
     # EasyAuth injects the authenticated user's display name via this header.
     auth_user = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME", "")
     return templates.TemplateResponse(
@@ -309,28 +353,6 @@ async def index(request: Request) -> HTMLResponse:
             "chat_enabled": is_chat_enabled(),
             "plugins": get_plugin_metadata(),
         },
-    )
-
-
-@app.get("/api/auth/config", tags=["Auth"], summary="Get auth configuration")
-async def auth_config() -> JSONResponse:
-    """Return MSAL configuration for frontend login.
-
-    Returns the client ID, authority, and scopes needed for MSAL.js.
-    When OBO is not configured, returns ``{"enabled": false}``.
-    """
-    from az_scout.azure_api._obo import CLIENT_ID, is_obo_enabled
-
-    if not is_obo_enabled():
-        return JSONResponse({"enabled": False})
-
-    return JSONResponse(
-        {
-            "enabled": True,
-            "clientId": CLIENT_ID,
-            "authority": "https://login.microsoftonline.com/organizations",
-            "scopes": [f"api://{CLIENT_ID}/access_as_user"],
-        }
     )
 
 

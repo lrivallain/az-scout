@@ -23,7 +23,6 @@ def list_tenants(
     tenant_id: str | None = None,
     *,
     user_token: str | None = None,
-    direct_arm: bool = False,
 ) -> dict[str, Any]:
     """Return tenants with auth status and the default tenant ID.
 
@@ -44,7 +43,6 @@ def list_tenants(
         url,
         tenant_id=tenant_id,
         user_token=user_token,
-        direct_arm=direct_arm,
     )
 
     tenant_ids = [t["tenantId"] for t in all_tenants]
@@ -82,11 +80,10 @@ def list_subscriptions(
     tenant_id: str | None = None,
     *,
     user_token: str | None = None,
-    direct_arm: bool = False,
 ) -> list[dict[str, Any]]:
     """Return enabled subscriptions as ``[{"id": ..., "name": ...}, ...]``."""
     url = f"{AZURE_MGMT_URL}/subscriptions?api-version={AZURE_API_VERSION}"
-    all_subs = arm_paginate(url, tenant_id=tenant_id, user_token=user_token, direct_arm=direct_arm)
+    all_subs = arm_paginate(url, tenant_id=tenant_id, user_token=user_token)
     logger.debug("list_subscriptions: %d total, tenant=%s", len(all_subs), tenant_id or "default")
 
     subs = [
@@ -103,7 +100,6 @@ def list_regions(
     tenant_id: str | None = None,
     *,
     user_token: str | None = None,
-    direct_arm: bool = False,
 ) -> list[dict[str, Any]]:
     """Return AZ-enabled regions as ``[{"name": ..., "displayName": ...}, ...]``.
 
@@ -130,7 +126,6 @@ def list_regions(
             subs_url,
             tenant_id=tenant_id,
             user_token=user_token,
-            direct_arm=direct_arm,
         )
         enabled = [
             s["subscriptionId"] for s in subs_data.get("value", []) if s.get("state") == "Enabled"
@@ -140,7 +135,7 @@ def list_regions(
         sub_id = enabled[0]
 
     url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
-    loc_data = arm_get(url, tenant_id=tenant_id, user_token=user_token, direct_arm=direct_arm)
+    loc_data = arm_get(url, tenant_id=tenant_id, user_token=user_token)
 
     locations = loc_data.get("value", [])
     regions = [
@@ -165,7 +160,6 @@ def list_locations(
     tenant_id: str | None = None,
     *,
     user_token: str | None = None,
-    direct_arm: bool = False,
 ) -> list[dict[str, str]]:
     """Return all physical ARM locations as ``[{"name": ..., "displayName": ...}, ...]``.
 
@@ -191,7 +185,6 @@ def list_locations(
             subs_url,
             tenant_id=tenant_id,
             user_token=user_token,
-            direct_arm=direct_arm,
         )
         enabled = sorted(
             s["subscriptionId"] for s in subs_data.get("value", []) if s.get("state") == "Enabled"
@@ -201,7 +194,7 @@ def list_locations(
         sub_id = enabled[0]
 
     url = f"{AZURE_MGMT_URL}/subscriptions/{sub_id}/locations?api-version={AZURE_API_VERSION}"
-    loc_data = arm_get(url, tenant_id=tenant_id, user_token=user_token, direct_arm=direct_arm)
+    loc_data = arm_get(url, tenant_id=tenant_id, user_token=user_token)
 
     locations = loc_data.get("value", [])
     result = sorted(

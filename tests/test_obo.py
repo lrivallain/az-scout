@@ -206,31 +206,6 @@ class TestOboExceptionHandler:
 
 
 # ---------------------------------------------------------------------------
-# Direct ARM token passthrough
-# ---------------------------------------------------------------------------
-
-
-class TestDirectArmPassthrough:
-    """When X-Direct-ARM is set, _get_headers should use the token as-is."""
-
-    @pytest.mark.usefixtures("_obo_enabled")
-    def test_direct_arm_skips_obo_exchange(self) -> None:
-        headers = _get_headers(user_token="direct-arm-token", direct_arm=True)
-        assert headers["Authorization"] == "Bearer direct-arm-token"
-
-    def test_direct_arm_via_http_header(self, obo_client: TestClient) -> None:
-        with patch("az_scout.azure_api.discovery.arm_paginate", return_value=[]):
-            resp = obo_client.get(
-                "/api/tenants",
-                headers={
-                    "Authorization": "Bearer direct-arm-token",
-                    "X-Direct-ARM": "true",
-                },
-            )
-        assert resp.status_code == 200
-
-
-# ---------------------------------------------------------------------------
 # Auth config endpoint
 # ---------------------------------------------------------------------------
 
@@ -248,5 +223,3 @@ class TestAuthConfig:
         assert resp.status_code == 200
         data = resp.json()
         assert data["enabled"] is True
-        assert data["clientId"] == "test-client-id"
-        assert "scopes" in data

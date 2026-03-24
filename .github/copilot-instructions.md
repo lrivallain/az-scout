@@ -82,8 +82,7 @@ When `AZ_SCOUT_CLIENT_ID` and `AZ_SCOUT_CLIENT_SECRET` are set, OBO mode is acti
 - **Web requests** require a Bearer token (from MSAL.js) in the `Authorization` header. Without it, `_get_headers()` raises `OboTokenError("Authentication required")`.
 - **CLI mode** (`az-scout chat`, `az-scout mcp --stdio`) has no HTTP middleware, so `_get_headers()` falls back to `DefaultAzureCredential`.
 - **Auth context propagation**: The `_AuthContextMiddleware` (raw ASGI) extracts the user token and sets both a module-level global and context vars. The global handles raw `ThreadPoolExecutor` workers (e.g. ODCR plugin), context vars handle `asyncio.to_thread`.
-- **MFA handling**: OBO returns `claims_challenge` or `mfa_direct_auth` as 401 error codes. The frontend shows an MFA prompt or falls back to direct ARM token acquisition.
-- **Direct ARM tokens**: When `X-Direct-ARM: true` header is present, `_get_headers()` skips OBO and uses the token as-is (it's already ARM-scoped).
+- **MFA handling**: MFA is handled during the server-side OAuth login redirect — Microsoft completes MFA before returning the authorization code.
 - **OBO token cache**: Keyed by full token hash + tenant (not just first 20 chars) to prevent cross-user cache pollution.
 - **`OboTokenError`**: Exception with `error_code` and optional `claims` fields. Handled by a dedicated exception handler in `app.py` returning 401 responses.
 

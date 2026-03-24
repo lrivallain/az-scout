@@ -43,10 +43,37 @@ class UpdateRequest(BaseModel):
 
 def _actor(request: Request) -> tuple[str, str, str]:
     """Extract actor, client_ip, and user_agent from a request."""
-    actor = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME", "anonymous")
+    # Use OBO session user if available, else EasyAuth header
+    from az_scout.routes.auth import get_session
+
+    session = get_session(request)
+    if session:
+        actor = session.get("user_email", session.get("user_name", "anonymous"))
+    else:
+        actor = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME", "anonymous")
     client_ip = request.client.host if request.client else ""
     user_agent = request.headers.get("User-Agent", "")
     return actor, client_ip, user_agent
+
+
+def _require_admin(request: Request) -> None:
+    """Raise 403 if the current user is not an admin.
+
+    Admin role is only valid from the home tenant — roles from other
+    tenants are ignored. When OBO is not enabled, all users are treated
+    as admin (single-user / managed identity mode).
+    """
+    from az_scout.azure_api._obo import is_obo_enabled
+    from az_scout.routes.auth import get_session
+
+    if not is_obo_enabled():
+        return  # No auth configured — all users are admin
+
+    session = get_session(request)
+    if not session or not session.get("is_admin", False):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="Admin role required")
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +102,9 @@ async def list_plugins() -> JSONResponse:
 
 
 @router.post("/validate", summary="Validate a plugin source")
-async def validate_plugin(body: ValidateRequest) -> JSONResponse:
+async def validate_plugin(body: ValidateRequest, request: Request) -> JSONResponse:
     """Validate a plugin from a GitHub repository or PyPI package."""
+    _require_admin(request)
     if plugin_manager.is_pypi_source(body.repo_url):
         result = await asyncio.to_thread(
             plugin_manager.validate_pypi_plugin, body.repo_url.strip(), body.ref.strip()
@@ -91,6 +119,7 @@ async def validate_plugin(body: ValidateRequest) -> JSONResponse:
 @router.post("/install", summary="Install a plugin")
 async def install_plugin(body: InstallRequest, request: Request) -> JSONResponse:
     """Install a plugin from a GitHub repository or PyPI."""
+    _require_admin(request)
     actor, client_ip, user_agent = _actor(request)
     if plugin_manager.is_pypi_source(body.repo_url):
         ok, warnings, errors = await asyncio.to_thread(
@@ -124,6 +153,7 @@ async def install_plugin(body: InstallRequest, request: Request) -> JSONResponse
 @router.post("/uninstall", summary="Uninstall a plugin")
 async def uninstall_plugin(body: UninstallRequest, request: Request) -> JSONResponse:
     """Uninstall a plugin by its distribution name."""
+    _require_admin(request)
     actor, client_ip, user_agent = _actor(request)
     ok, errors = await asyncio.to_thread(
         plugin_manager.uninstall_plugin,
@@ -153,6 +183,7 @@ async def check_updates(request: Request) -> JSONResponse:
 @router.post("/update", summary="Update a single plugin")
 async def update_plugin(body: UpdateRequest, request: Request) -> JSONResponse:
     """Update a single plugin to the latest GitHub release/tag."""
+    _require_admin(request)
     actor, client_ip, user_agent = _actor(request)
     ok, errors = await asyncio.to_thread(
         plugin_manager.update_plugin,
@@ -181,6 +212,7 @@ async def list_recommended() -> JSONResponse:
 @router.post("/update-all", summary="Update all plugins")
 async def update_all_plugins(request: Request) -> JSONResponse:
     """Update all installed plugins that have available updates."""
+    _require_admin(request)
     actor, client_ip, user_agent = _actor(request)
     updated, failed, details = await asyncio.to_thread(
         plugin_manager.update_all_plugins,

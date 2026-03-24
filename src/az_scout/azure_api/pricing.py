@@ -45,7 +45,15 @@ def _fetch_retail_prices(
     while url:
         resp = None
         for attempt in range(3):
-            resp = requests.get(url, params=params, timeout=30)
+            try:
+                resp = requests.get(url, params=params, timeout=30)
+            except requests.ConnectionError:
+                logger.warning(
+                    "Retail Prices connection error, retrying (attempt %s/3)",
+                    attempt + 1,
+                )
+                time.sleep(2**attempt)
+                continue
             if resp.status_code == 429:
                 try:
                     retry_after = int(resp.headers.get("Retry-After", str(2**attempt)))
@@ -241,7 +249,15 @@ def _fetch_retail_prices_with_filter(
     while url:
         resp = None
         for attempt in range(3):
-            resp = requests.get(url, params=params, timeout=30)
+            try:
+                resp = requests.get(url, params=params, timeout=30)
+            except requests.ConnectionError:
+                logger.warning(
+                    "Retail Prices connection error, retrying (attempt %s/3)",
+                    attempt + 1,
+                )
+                time.sleep(2**attempt)
+                continue
             if resp.status_code == 429:
                 try:
                     retry_after = int(resp.headers.get("Retry-After", str(2**attempt)))
