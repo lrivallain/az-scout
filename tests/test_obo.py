@@ -174,6 +174,7 @@ class TestOboExceptionHandler:
     """Tests for the OboTokenError exception handler in app.py."""
 
     def test_claims_challenge_returns_401_with_claims(self, obo_client: TestClient) -> None:
+        """OBO claims challenge on a subscription call returns 401."""
         mock_app = MagicMock()
         mock_app.acquire_token_on_behalf_of.return_value = {
             "error": "invalid_grant",
@@ -182,7 +183,7 @@ class TestOboExceptionHandler:
         }
         with patch("az_scout.azure_api._obo._get_msal_app", return_value=mock_app):
             resp = obo_client.get(
-                "/api/tenants",
+                "/api/subscriptions",
                 headers={"Authorization": "Bearer fake-token"},
             )
         assert resp.status_code == 401
@@ -191,6 +192,7 @@ class TestOboExceptionHandler:
         assert data["claims"] == '{"test":"claims"}'
 
     def test_mfa_direct_auth_returns_401(self, obo_client: TestClient) -> None:
+        """OBO MFA without claims on a subscription call returns 401."""
         mock_app = MagicMock()
         mock_app.acquire_token_on_behalf_of.return_value = {
             "error": "invalid_grant",
@@ -198,36 +200,11 @@ class TestOboExceptionHandler:
         }
         with patch("az_scout.azure_api._obo._get_msal_app", return_value=mock_app):
             resp = obo_client.get(
-                "/api/tenants",
+                "/api/subscriptions",
                 headers={"Authorization": "Bearer fake-token"},
             )
         assert resp.status_code == 401
         assert resp.json()["error"] == "mfa_direct_auth"
-
-
-# ---------------------------------------------------------------------------
-# Direct ARM token passthrough
-# ---------------------------------------------------------------------------
-
-
-class TestDirectArmPassthrough:
-    """When X-Direct-ARM is set, _get_headers should use the token as-is."""
-
-    @pytest.mark.usefixtures("_obo_enabled")
-    def test_direct_arm_skips_obo_exchange(self) -> None:
-        headers = _get_headers(user_token="direct-arm-token", direct_arm=True)
-        assert headers["Authorization"] == "Bearer direct-arm-token"
-
-    def test_direct_arm_via_http_header(self, obo_client: TestClient) -> None:
-        with patch("az_scout.azure_api.discovery.arm_paginate", return_value=[]):
-            resp = obo_client.get(
-                "/api/tenants",
-                headers={
-                    "Authorization": "Bearer direct-arm-token",
-                    "X-Direct-ARM": "true",
-                },
-            )
-        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -248,5 +225,3 @@ class TestAuthConfig:
         assert resp.status_code == 200
         data = resp.json()
         assert data["enabled"] is True
-        assert data["clientId"] == "test-client-id"
-        assert "scopes" in data

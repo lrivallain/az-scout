@@ -15,15 +15,34 @@ sequenceDiagram
     participant Entra ID
     participant ARM
 
-    Browser->>Entra ID: Sign in (MSAL.js popup)
-    Entra ID-->>Browser: User token (audience: az-scout app)
-    Browser->>az-scout: API request + Bearer token
-    az-scout->>Entra ID: OBO exchange (user token → ARM token)
+    Browser->>az-scout: GET / (unauthenticated)
+    az-scout-->>Browser: Redirect to /auth/login
+    Browser->>az-scout: GET /auth/login/start
+    az-scout-->>Browser: Redirect to Microsoft login
+    Browser->>Entra ID: User signs in (authorization code flow)
+    Entra ID-->>Browser: Redirect to /auth/callback with auth code
+    Browser->>az-scout: GET /auth/callback?code=...
+    az-scout->>Entra ID: Exchange code for tokens
+    Entra ID-->>az-scout: Access token + ID token
+    az-scout->>Entra ID: OBO validation (token → ARM token)
     Entra ID-->>az-scout: ARM-scoped token (user's RBAC)
+    az-scout-->>Browser: Set session cookie + redirect to /
+    Browser->>az-scout: API requests (cookie-authenticated)
+    az-scout->>Entra ID: OBO exchange per request
+    Entra ID-->>az-scout: ARM token
     az-scout->>ARM: API call with user's ARM token
     ARM-->>az-scout: Response (scoped to user's permissions)
     az-scout-->>Browser: JSON response
 ```
+
+## Single-tenant-per-session model
+
+Each login session is scoped to a **single tenant** — the one the user authenticated against. This ensures OBO always succeeds (the token was issued by the same tenant). To access a different tenant, the user signs out and signs in again targeting that tenant.
+
+The login page offers two options:
+
+- **Sign in with your account** — uses `organizations` authority (Microsoft picks the tenant based on the user's account)
+- **Target a specific tenant** — user enters a tenant domain or ID (e.g. `contoso.com`) to sign in directly to that tenant
 
 ## Setup
 
@@ -32,10 +51,8 @@ sequenceDiagram
 Create a multi-tenant App Registration in Entra ID:
 
 ```bash
-# Login to Azure CLI
 az login
 
-# Create the app registration
 az ad app create \
   --display-name "az-scout" \
   --sign-in-audience "AzureADMultipleOrgs" \
@@ -44,23 +61,23 @@ az ad app create \
 
 Note the `appId` — this is your **Client ID**.
 
-### 2. Add a SPA redirect URI
+### 2. Add a Web redirect URI
 
 In the [Azure Portal](https://portal.azure.com) → **App registrations** → your app → **Authentication**:
 
-1. Click **Add a platform** → **Single-page application**
-2. Add redirect URIs for your deployment:
-    - Local dev: `http://localhost:5001`, `http://127.0.0.1:5001`
-    - Production: `https://your-app.azurecontainerapps.io`
+1. Click **Add a platform** → **Web**
+2. Add redirect URIs:
+    - Local dev: `http://localhost:5001/auth/callback`
+    - Production: `https://your-app.azurecontainerapps.io/auth/callback`
 
-!!! warning "Use SPA, not Web"
-    The redirect URI type **must** be "Single-page application", not "Web". MSAL.js uses the SPA auth code flow with PKCE.
+!!! warning "Use Web, not SPA"
+    The redirect URI type **must** be "Web" (not "Single-page application"). az-scout uses a server-side authorization code flow.
 
 ### 3. Expose an API scope
 
 In **Expose an API**:
 
-1. Set the **Application ID URI** to `api://<CLIENT_ID>` (click "Set" next to "Application ID URI")
+1. Set the **Application ID URI** to `api://<CLIENT_ID>`
 2. Click **Add a scope**:
     - Scope name: `access_as_user`
     - Who can consent: **Admins and users**
@@ -73,11 +90,9 @@ In **Expose an API**:
 To allow MCP clients to authenticate via `az account get-access-token`:
 
 ```bash
-# Get the scope ID
 SCOPE_ID=$(az ad app show --id <CLIENT_ID> \
   --query "api.oauth2PermissionScopes[0].id" -o tsv)
 
-# Pre-authorize Azure CLI
 az rest --method PATCH \
   --url "https://graph.microsoft.com/v1.0/applications(appId='<CLIENT_ID>')" \
   --body "{\"api\":{\"preAuthorizedApplications\":[{\"appId\":\"04b07795-8ddb-461a-bbee-02f9e1bf7b46\",\"delegatedPermissionIds\":[\"$SCOPE_ID\"]}]}}"
@@ -99,6 +114,18 @@ In **API permissions**:
 2. Check `user_impersonation`
 3. Click **Grant admin consent** (requires Global Administrator)
 
+### 7. (Optional) Create Admin App Role
+
+To restrict plugin management to specific users:
+
+```bash
+az rest --method PATCH \
+  --url "https://graph.microsoft.com/v1.0/applications(appId='<CLIENT_ID>')" \
+  --body '{"appRoles":[{"allowedMemberTypes":["User"],"displayName":"Admin","description":"Can manage plugins","id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","isEnabled":true,"value":"Admin"}]}'
+```
+
+Then assign the role to users via **Enterprise Applications** → your app → **Users and groups**.
+
 ## Configuration
 
 Set these environment variables on your az-scout instance:
@@ -107,45 +134,40 @@ Set these environment variables on your az-scout instance:
 |----------|-------------|----------|
 | `AZ_SCOUT_CLIENT_ID` | App Registration Client (Application) ID | **Yes** |
 | `AZ_SCOUT_CLIENT_SECRET` | App Registration Client Secret | **Yes** |
-| `AZ_SCOUT_TENANT_ID` | Home tenant ID of the App Registration | Optional (defaults to `organizations`) |
-
-Example:
+| `AZ_SCOUT_TENANT_ID` | Home tenant ID of the App Registration | Optional |
 
 ```bash
-export AZ_SCOUT_CLIENT_ID="c61acc97-6a12-4173-b001-6ce31f6fc525"
-export AZ_SCOUT_CLIENT_SECRET="your-secret-here"
-export AZ_SCOUT_TENANT_ID="4140d426-ef7b-4d54-898e-d617ef5335ec"
+export AZ_SCOUT_CLIENT_ID="your-client-id"
+export AZ_SCOUT_CLIENT_SECRET="your-secret"
+export AZ_SCOUT_TENANT_ID="your-tenant-id"
 
 az-scout web
 ```
 
 When these variables are set, az-scout:
 
-- Shows a **Sign in with Microsoft** screen on load
-- Requires authentication for all API calls
-- Uses the signed-in user's RBAC permissions for ARM calls
+- Redirects to a **login page** when unauthenticated
+- Validates OBO at login — blocks session creation if ARM access fails
+- Uses the signed-in user's RBAC permissions for all ARM calls
 - Falls back to `DefaultAzureCredential` in CLI mode (`az-scout chat`, `az-scout mcp`)
 
-## Multi-tenant access
+## Admin consent
 
-Users from **any Entra ID tenant** can sign in (the app uses `AzureADMultipleOrgs` audience). After signing in, users can switch tenants using the tenant dropdown.
+Each tenant where users will access az-scout needs admin consent **once**. The first user from a new tenant will see the consent prompt on the login page with:
 
-### Admin consent
+- A **"Grant Admin Consent"** button (opens the consent URL)
+- A **"Copy link"** button (for sending to the tenant admin)
 
-When a user first switches to a new tenant, they may see an **"Admin Consent Required"** screen. A tenant administrator must grant consent by visiting the provided URL:
+After consent is granted, users from that tenant can sign in normally.
 
-```
-https://login.microsoftonline.com/<TENANT_ID>/adminconsent?client_id=<CLIENT_ID>
-```
+## Role-based access control
 
-### MFA-required tenants
+The `Admin` App Role controls who can manage plugins:
 
-If a tenant's Conditional Access policy requires MFA for Azure Management access, az-scout handles this automatically:
-
-1. The initial OBO exchange fails with `AADSTS50076`
-2. az-scout shows an "Authenticate with MFA" prompt
-3. The user completes MFA in a popup
-4. If the OBO claims challenge can't be relayed, az-scout falls back to **direct ARM token acquisition** — the user gets an ARM token directly (which triggers MFA natively), and az-scout uses it as-is (without OBO)
+- **Admin role** is only honored from the **home tenant** — other tenants' role assignments are ignored
+- **Plugin management** (install/uninstall/update) requires the Admin role
+- **Non-admins** see a read-only UI with the plugin manager hidden
+- When OBO is not enabled, all users are treated as admin (single-user mode)
 
 ## MCP authentication
 
@@ -188,34 +210,25 @@ az account get-access-token \
     ```
     Then retry the `get-access-token` command.
 
-For a specific tenant:
-
-```bash
-az account get-access-token \
-  --resource api://<CLIENT_ID> \
-  --tenant <TENANT_ID> \
-  --query accessToken -o tsv
-```
-
-!!! warning "Token expiry"
-    Tokens expire after ~1 hour. When they do, restart the MCP server connection in VS Code and paste a fresh token.
-
 ## Security considerations
 
 - **No app-level ARM access**: When OBO is enabled, `DefaultAzureCredential` is **never** used for web requests. All ARM calls require a user token.
+- **OBO validation at login**: OBO is tested before creating a session — failures (consent, MFA, etc.) are shown on the login page, not the main app.
 - **Per-user isolation**: Each user's token is exchanged independently. Users only see resources matching their RBAC permissions.
-- **CLI fallback**: `az-scout chat` and `az-scout mcp --stdio` still use `DefaultAzureCredential` since there's no browser for interactive login.
-- **Token caching**: OBO tokens are cached per-user (keyed by full token hash + tenant) with 2-minute expiry margin. No cross-user cache pollution.
-- **Session storage**: MSAL.js uses `sessionStorage` — tokens are cleared when the browser tab is closed.
+- **Single-tenant sessions**: Each session is scoped to the login tenant — no cross-tenant OBO failures.
+- **CSRF protection**: OAuth state uses cryptographic nonces (10-min expiry, single-use).
+- **Signed cookies**: Session IDs are HMAC-SHA256 signed with the client secret.
+- **HTTP-only cookies**: Session cookies are not accessible from JavaScript.
+- **CLI fallback**: `az-scout chat` and `az-scout mcp --stdio` use `DefaultAzureCredential`.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Sign-in popup blocked | Browser popup blocker | Allow popups for the az-scout URL |
-| `AADSTS65001` (consent required) | Admin consent not granted in target tenant | Ask tenant admin to visit the consent URL |
-| `AADSTS50076` (MFA required) | Tenant CA policy requires MFA | Click "Authenticate with MFA" — az-scout handles this automatically |
-| `AADSTS500131` (audience mismatch) | Frontend requesting wrong scope | Clear session storage and reload |
+| "Admin consent required" on login page | Tenant hasn't consented to the app | Click "Grant Admin Consent" or send the link to a tenant admin |
+| "Account not found in this tenant" | User doesn't exist in the specified tenant | Use "Sign in with your account" instead, or enter the correct tenant |
+| "Multi-factor authentication required" | Tenant CA policy requires MFA | Try signing in again — MFA should be triggered during login |
+| "Session expired" | Token expired | Sign in again |
 | Empty subscription list | User lacks Reader RBAC in this tenant | Assign at least Reader on a subscription |
 | MCP tool returns "Authentication required" | Missing or expired Bearer token | Get a fresh token via `az account get-access-token` |
-| `AADSTS650057` (invalid resource) | Azure CLI not pre-authorized | Run Step 4 above to pre-authorize the CLI client |
+| Plugin manager not visible | User doesn't have the Admin App Role | Assign the Admin role in the home tenant's Enterprise Application |

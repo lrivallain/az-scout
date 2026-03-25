@@ -186,7 +186,6 @@ def arm_get(
     params: dict[str, str] | None = None,
     tenant_id: str | None = None,
     user_token: str | None = None,
-    direct_arm: bool = False,
     timeout: int = DEFAULT_TIMEOUT,
     max_retries: int = DEFAULT_MAX_RETRIES,
 ) -> dict[str, Any]:
@@ -222,7 +221,7 @@ def arm_get(
     ArmRequestError
         On other failures after all retries are exhausted.
     """
-    headers = _get_headers(tenant_id, user_token=user_token, direct_arm=direct_arm)
+    headers = _get_headers(tenant_id, user_token=user_token)
     logger.debug("ARM GET %s (tenant=%s)", url[:120], tenant_id or "default")
     return _arm_request(
         "GET",
@@ -240,7 +239,6 @@ def arm_post(
     json: dict[str, Any],
     tenant_id: str | None = None,
     user_token: str | None = None,
-    direct_arm: bool = False,
     timeout: int = DEFAULT_TIMEOUT,
     max_retries: int = DEFAULT_MAX_RETRIES,
 ) -> dict[str, Any]:
@@ -273,7 +271,7 @@ def arm_post(
     ArmRequestError
         On other failures after all retries are exhausted.
     """
-    headers = _get_headers(tenant_id, user_token=user_token, direct_arm=direct_arm)
+    headers = _get_headers(tenant_id, user_token=user_token)
     logger.debug("ARM POST %s (tenant=%s)", url[:120], tenant_id or "default")
     return _arm_request(
         "POST",
@@ -291,7 +289,6 @@ def arm_paginate(
     params: dict[str, str] | None = None,
     tenant_id: str | None = None,
     user_token: str | None = None,
-    direct_arm: bool = False,
     timeout: int = DEFAULT_TIMEOUT,
     max_retries: int = DEFAULT_MAX_RETRIES,
 ) -> list[dict[str, Any]]:
@@ -319,7 +316,7 @@ def arm_paginate(
     list[dict[str, Any]]
         Merged ``value`` items from all pages.
     """
-    headers = _get_headers(tenant_id, user_token=user_token, direct_arm=direct_arm)
+    headers = _get_headers(tenant_id, user_token=user_token)
     items: list[dict[str, Any]] = []
     page_count = 0
     current_params = params

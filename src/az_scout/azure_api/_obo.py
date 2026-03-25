@@ -55,11 +55,28 @@ _obo_lock = threading.Lock()
 _OBO_REFRESH_MARGIN = 120  # refresh 2 min before expiry
 
 
+def _extract_tid(token: str) -> str | None:
+    """Extract the tenant ID (tid) from a JWT token without full validation."""
+    import base64
+    import json as json_mod
+
+    try:
+        # JWT has 3 parts: header.payload.signature
+        payload = token.split(".")[1]
+        # Add padding
+        payload += "=" * (4 - len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(payload)
+        claims = json_mod.loads(decoded)
+        return claims.get("tid")  # type: ignore[no-any-return]
+    except Exception:
+        return None
+
+
 def _get_msal_app(tenant_id: str | None = None) -> Any:
     """Get or create a per-tenant MSAL ConfidentialClientApplication."""
     import msal as msal_lib
 
-    target = tenant_id or TENANT_ID or "common"
+    target = tenant_id or TENANT_ID or "organizations"
     with _msal_lock:
         if target not in _msal_apps:
             _msal_apps[target] = msal_lib.ConfidentialClientApplication(
@@ -112,10 +129,17 @@ def obo_exchange(
                     "Content-Type": "application/json",
                 }
 
-    target = tenant_id or TENANT_ID or "common"
+    # When no explicit tenant is provided, extract the user's home tenant
+    # from the JWT token so OBO exchanges against the correct tenant.
+    # This avoids AADSTS90072 for users from non-home tenants.
+    effective_tenant = tenant_id
+    if not effective_tenant:
+        effective_tenant = _extract_tid(user_token)
+
+    target = effective_tenant or TENANT_ID or "organizations"
     logger.debug("OBO exchange via MSAL (tenant=%s)", target)
 
-    app = _get_msal_app(tenant_id)
+    app = _get_msal_app(effective_tenant)
     result = app.acquire_token_on_behalf_of(
         user_assertion=user_token,
         scopes=[ARM_SCOPE],
