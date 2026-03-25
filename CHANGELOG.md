@@ -7,6 +7,10 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+### Fixed
+
+- **Plugin uninstall in ACA** – `uv pip uninstall` now appends `--system` when running outside a virtual environment (e.g. in Azure Container Apps), fixing `No virtual environment found` errors (#115).
+
 ### Added
 
 - **On-Behalf-Of (OBO) authentication** – Multi-user mode where each user signs in with their Microsoft account and az-scout accesses Azure ARM APIs with their RBAC permissions instead of the app's managed identity. Enabled via `AZ_SCOUT_CLIENT_ID`, `AZ_SCOUT_CLIENT_SECRET`, and `AZ_SCOUT_TENANT_ID` environment variables.

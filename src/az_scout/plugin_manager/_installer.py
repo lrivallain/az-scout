@@ -18,6 +18,11 @@ def _find_uv() -> str | None:
     return shutil.which("uv")
 
 
+def _in_virtualenv() -> bool:
+    """Return True if running inside a virtual environment."""
+    return sys.prefix != sys.base_prefix
+
+
 def _pip_env() -> dict[str, str]:
     """Return an environment dict for pip/uv subprocess calls."""
     env = os.environ.copy()
@@ -38,6 +43,10 @@ def run_pip(args: list[str]) -> subprocess.CompletedProcess[str]:
 
     if uv:
         cmd: list[str] = [uv, "pip", *sub_args, "--target", str(_storage._PACKAGES_DIR)]
+        # In containerized environments (e.g. ACA) there may be no virtual
+        # environment.  uv requires --system in that case.
+        if not _in_virtualenv():
+            cmd.append("--system")
     else:
         if sub_args and sub_args[0] == "uninstall" and "-y" not in sub_args:
             sub_args.insert(1, "-y")
