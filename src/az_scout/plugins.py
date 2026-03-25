@@ -48,6 +48,18 @@ def _ensure_plugin_packages_on_path() -> None:
         logger.info("Added plugin packages to sys.path: %s", pkg_str)
 
 
+def _satisfies_plugin_protocol(obj: Any) -> bool:
+    """Check if *obj* has the minimum attributes required by the plugin protocol.
+
+    Uses a manual check instead of ``isinstance(obj, AzScoutPlugin)`` because
+    ``runtime_checkable`` Protocols reject objects missing *any* method — even
+    optional ones added in newer versions.  This allows older plugins (that
+    don't implement newly-added optional methods like ``get_navbar_actions``)
+    to still load correctly.
+    """
+    return hasattr(obj, "name") and hasattr(obj, "version") and hasattr(obj, "get_router")
+
+
 def _discover_plugin_packages_entry_points() -> list[importlib.metadata.EntryPoint]:
     """Discover ``az_scout.plugins`` entry points from ``plugin-packages``."""
     if not _PACKAGES_DIR.exists():
@@ -89,7 +101,7 @@ def discover_plugins() -> list[AzScoutPlugin]:
     for ep in all_eps:
         try:
             obj = ep.load()
-            if isinstance(obj, AzScoutPlugin):
+            if _satisfies_plugin_protocol(obj):
                 plugins.append(obj)
                 # Remember the pip distribution name for metadata lookups
                 if ep.dist is not None:

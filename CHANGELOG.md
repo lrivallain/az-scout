@@ -10,6 +10,8 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 ### Fixed
 
 - **Plugin uninstall in ACA** – `uv pip uninstall` now appends `--system` when running outside a virtual environment (e.g. in Azure Container Apps), fixing `No virtual environment found` errors (#115).
+- **Plugin compatibility** – Plugin protocol check now uses a lenient attribute check instead of `isinstance(obj, AzScoutPlugin)`. Plugins missing newer optional methods (e.g. `get_navbar_actions`) load correctly again (#116).
+- **Broken versioning** – Removed non-CalVer tag (`obo-single-tenant-v1`) that caused `hatch-vcs` to produce `2.dev4` instead of `2026.3.x.devN` (#117).
 
 ### Added
 
