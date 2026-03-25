@@ -57,14 +57,8 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
-    // Initialize auth (OBO) — must happen before any API calls
+    // Initialize auth UI (navbar user info)
     if (window.azScoutAuth) await window.azScoutAuth.init();
-
-    // If OBO is enabled but user is not signed in, show sign-in screen
-    if (window.azScoutAuth?.requiresLogin()) {
-        showSignInScreen();
-        return; // Don't load any data — wait for login
-    }
 
     // Restore column visibility preferences
     _restoreColumnPrefs();
@@ -129,19 +123,15 @@ function showSignInScreen() {
                     Sign in with your Microsoft account to explore Azure resources
                     using your own permissions.
                 </p>
-                <button class="btn btn-primary btn-lg" id="obo-signin-btn">
+                <a href="/auth/login" class="btn btn-primary btn-lg">
                     <i class="bi bi-microsoft"></i> Sign in with Microsoft
-                </button>
+                </a>
                 <p class="text-body-secondary small mt-3">
                     Your Azure RBAC permissions determine what you can access.
                 </p>
             </div>`;
         document.querySelector(".container-fluid.mt-3")?.prepend(screen);
     }
-
-    document.getElementById("obo-signin-btn")?.addEventListener("click", () => {
-        if (window.azScoutAuth) window.azScoutAuth.login();
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -154,77 +144,17 @@ function getActiveTabFromHash() {
 
 // ---------------------------------------------------------------------------
 // API helpers
+// Cookies are sent automatically — no client-side token injection needed.
 // ---------------------------------------------------------------------------
-async function _authHeaders() {
-    const headers = {};
-    if (window.azScoutAuth?.isSignedIn()) {
-        const tenantEl = document.getElementById("tenant-select");
-        const selectedTenant = tenantEl?.value || "";
-
-        // If we have a direct ARM token for this tenant (MFA fallback), use it
-        if (selectedTenant && window.azScoutAuth.getDirectArmToken) {
-            const armToken = window.azScoutAuth.getDirectArmToken(selectedTenant);
-            if (armToken) {
-                headers.Authorization = `Bearer ${armToken}`;
-                headers["X-Direct-ARM"] = "true";
-                return headers;
-            }
-        }
-
-        // Normal OBO path: get app-scoped token
-        let token;
-        if (selectedTenant && window.azScoutAuth.getTokenForTenant) {
-            token = await window.azScoutAuth.getTokenForTenant(selectedTenant);
-        }
-        if (!token) {
-            token = await window.azScoutAuth.getToken();
-        }
-        if (token) headers.Authorization = `Bearer ${token}`;
-    }
-    return headers;
-}
-
-class ClaimsChallengeError extends Error {
-    constructor(claims, tenantId) {
-        super("Additional authentication required for this tenant.");
-        this.name = "ClaimsChallengeError";
-        this.claims = claims;
-        this.tenantId = tenantId;
-    }
-}
-
-class MfaDirectAuthError extends Error {
-    constructor(tenantId) {
-        super("MFA required — direct ARM authentication needed.");
-        this.name = "MfaDirectAuthError";
-        this.tenantId = tenantId;
-    }
-}
 
 async function apiFetch(url) {
-    const headers = await _authHeaders();
-    const resp = await fetch(url, { headers });
+    const resp = await fetch(url);
     if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
-        if (resp.status === 401 && body.error === "claims_challenge") {
-            const tenantId = document.getElementById("tenant-select")?.value || "";
-            throw new ClaimsChallengeError(body.claims, tenantId);
-        }
-        if (resp.status === 401 && body.error === "mfa_direct_auth") {
-            const tenantId = document.getElementById("tenant-select")?.value || "";
-            throw new MfaDirectAuthError(tenantId);
-        }
-        // Token expired / login_required — try to silently refresh and retry once
-        if (resp.status === 401 && window.azScoutAuth?.isSignedIn()) {
-            const tenantId = document.getElementById("tenant-select")?.value || "";
-            const freshToken = tenantId
-                ? await window.azScoutAuth.getTokenForTenant(tenantId)
-                : await window.azScoutAuth.getToken();
-            if (freshToken) {
-                const retryHeaders = { Authorization: `Bearer ${freshToken}` };
-                const retryResp = await fetch(url, { headers: retryHeaders });
-                if (retryResp.ok) return retryResp.json();
-            }
+        // Session expired or not authenticated — redirect to login
+        if (resp.status === 401 && body.error === "Authentication required") {
+            window.location.href = "/auth/login";
+            return;
         }
         throw new Error(body.error || body.detail || `HTTP ${resp.status}`);
     }
@@ -232,14 +162,17 @@ async function apiFetch(url) {
 }
 
 async function apiPost(url, body) {
-    const headers = { "Content-Type": "application/json", ...(await _authHeaders()) };
     const resp = await fetch(url, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
     });
     if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
+        if (resp.status === 401 && data.error === "Authentication required") {
+            window.location.href = "/auth/login";
+            return;
+        }
         throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
     }
     return resp.json();
@@ -336,12 +269,22 @@ async function fetchTenants() {
             defaultTenantId: defaultTid,
             tenantId: select.value || "",
         });
-    } catch {
-        document.getElementById("tenant-section").classList.add("d-none");
+    } catch (err) {
+        if (!err) return; // redirect in progress
+        // Show the error overlay with the auth error
+        // Use home tenant from session if available
+        const homeTid = window.azScoutAuth?.getHomeTenantId?.() || "";
+        if (homeTid) {
+            // Populate tenant selector with home tenant so the overlay shows the tenant name
+            tenants = [{ id: homeTid, name: homeTid.slice(0, 8) + "\u2026", authenticated: true }];
+            select.innerHTML = `<option value="${homeTid}">Tenant ${escapeHtml(homeTid.slice(0, 8))}\u2026</option>`;
+            select.value = homeTid;
+        }
+        _showAuthError(homeTid, err.message);
         emitContextEvent("azscout:tenants-loaded", {
-            tenants: [],
-            defaultTenantId: "",
-            tenantId: "",
+            tenants,
+            defaultTenantId: homeTid,
+            tenantId: homeTid,
         });
     }
 }
@@ -413,12 +356,8 @@ async function fetchRegions() {
         inp.disabled = false;
         renderRegionDropdown("");
     } catch (err) {
-        if (err instanceof ClaimsChallengeError || err instanceof MfaDirectAuthError) {
-            // MFA prompt is shown by fetchSubscriptions — regions will retry alongside
-            inp.placeholder = "Authenticate first";
-        } else {
-            inp.placeholder = "Error loading regions";
-        }
+        if (!err) return; // redirect in progress
+        inp.placeholder = "Error loading regions";
     }
 }
 
@@ -530,9 +469,7 @@ function showPanel(prefix, state) {
 async function fetchSubscriptions() {
     try {
         subscriptions = await apiFetch("/api/subscriptions" + tenantQS("?"));
-        // MFA succeeded for this tenant — clear the loop breaker
         const tid = document.getElementById("tenant-select")?.value || "";
-        if (tid) delete _mfaAttempted[tid];
         emitContextEvent("azscout:subscriptions-loaded", {
             subscriptions,
             tenantId: tid,
@@ -540,126 +477,10 @@ async function fetchSubscriptions() {
         if (typeof renderTopoSubList === "function") renderTopoSubList();
         if (typeof renderPlannerSubDropdown === "function") renderPlannerSubDropdown("");
     } catch (err) {
+        if (!err) return; // redirect in progress
         const tenantId = document.getElementById("tenant-select")?.value || "";
-        if (err instanceof ClaimsChallengeError) {
-            _showMfaPrompt(null, err.claims, err.tenantId, async () => {
-                await Promise.all([fetchRegions(), fetchSubscriptions()]);
-            });
-        } else if (err instanceof MfaDirectAuthError) {
-            _showMfaDirectPrompt(null, err.tenantId, async () => {
-                await Promise.all([fetchRegions(), fetchSubscriptions()]);
-            });
-        } else if (err.message === "Authentication required") {
-            showSignInScreen();
-        } else {
-            // Show any other error (consent, token issues) in the overlay
-            _showAuthError(tenantId, err.message);
-        }
+        _showAuthError(tenantId, err.message);
     }
-}
-
-/**
- * Show an MFA authentication prompt with a clickable button.
- * The button click is a user gesture, so the MSAL popup won't be blocked.
- */
-const _mfaAttempted = {};  // track per-tenant to break loops
-
-function _showMfaPrompt(_errorId, claims, tenantId, onSuccess) {
-    if (_mfaAttempted[tenantId]) {
-        // Already tried MFA for this tenant — show hard error in overlay
-        delete _mfaAttempted[tenantId];
-        _showAuthError(
-            tenantId,
-            "MFA authentication succeeded but the tenant still rejects access. "
-            + "The app may need admin consent in this tenant, or the Conditional Access "
-            + "policy may block OBO flows. Contact a tenant administrator."
-        );
-        return;
-    }
-    _showMfaOverlay(tenantId, "claims", claims, onSuccess);
-}
-
-function _showMfaDirectPrompt(_errorId, tenantId, onSuccess) {
-    _showMfaOverlay(tenantId, "direct", null, onSuccess);
-}
-
-/**
- * Show an in-page MFA authentication screen below the header.
- * Keeps the navbar + tenant selector accessible so the user can switch tenants.
- */
-function _showMfaOverlay(tenantId, mode, claims, onSuccess) {
-    // Hide topo-error if visible
-    hideError("topo-error");
-
-    // Hide tabs + tab content (keep selector bar with tenant/region visible)
-    const tabs = document.getElementById("mainTabs");
-    const tabContent = document.getElementById("mainTabContent");
-    if (tabs) tabs.style.display = "none";
-    if (tabContent) tabContent.style.display = "none";
-
-    const tenantName = tenants.find(t => t.id === tenantId)?.name || tenantId;
-
-    let overlay = document.getElementById("mfa-overlay");
-    if (!overlay) {
-        overlay = document.createElement("div");
-        overlay.id = "mfa-overlay";
-        overlay.className = "d-flex flex-column align-items-center justify-content-center";
-        overlay.style.cssText = "min-height: 50vh; text-align: center;";
-        // Insert after selector bar, inside main-content
-        const selectorBar = document.getElementById("selector-bar");
-        if (selectorBar) {
-            selectorBar.after(overlay);
-        } else {
-            document.querySelector(".container-fluid.mt-3")?.append(overlay);
-        }
-    }
-    overlay.innerHTML = `
-        <div style="max-width: 420px;">
-            <i class="bi bi-shield-lock" style="font-size:3rem;opacity:0.75"></i>
-            <h3 class="mb-2 mt-3">Additional Authentication Required</h3>
-            <p class="text-body-secondary mb-1">
-                The tenant <strong>${escapeHtml(tenantName)}</strong> requires
-                multi-factor authentication to access Azure resources.
-            </p>
-            <p class="text-body-secondary mb-4 small">
-                Click below to complete authentication, or select a different tenant above.
-            </p>
-            <button class="btn btn-primary btn-lg" id="mfa-overlay-btn">
-                <i class="bi bi-shield-lock me-1"></i> Authenticate with MFA
-            </button>
-            <p class="text-body-secondary small mt-3" id="mfa-overlay-status"></p>
-        </div>`;
-    overlay.style.display = "flex";
-
-    document.getElementById("mfa-overlay-btn").addEventListener("click", async (e) => {
-        const btn = e.currentTarget;
-        const status = document.getElementById("mfa-overlay-status");
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Authenticating\u2026';
-        status.textContent = "";
-
-        let ok = false;
-        if (mode === "direct") {
-            ok = await window.azScoutAuth?.acquireDirectArmToken(tenantId);
-        } else {
-            _mfaAttempted[tenantId] = true;
-            const token = await window.azScoutAuth?.reacquireWithClaims(tenantId, claims);
-            ok = !!token;
-        }
-
-        if (ok) {
-            overlay.remove();
-            if (tabs) tabs.style.display = "";
-            if (tabContent) tabContent.style.display = "";
-            await onSuccess();
-        } else {
-            if (mode !== "direct") delete _mfaAttempted[tenantId];
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-shield-lock me-1"></i> Authenticate with MFA';
-            status.textContent = "Authentication failed. Please try again.";
-            status.classList.add("text-danger");
-        }
-    });
 }
 
 /**
@@ -733,6 +554,10 @@ function _showAuthError(tenantId, message) {
                 Tenant: <strong>${escapeHtml(tenantName)}</strong>
             </p>
             ${bodyHtml}
+            <hr class="my-3 w-100">
+            <a href="/auth/login" class="btn btn-sm btn-outline-secondary mb-4">
+                <i class="bi bi-person-lines-fill me-1"></i> Sign in with a different account
+            </a>
         </div>`;
     overlay.style.display = "flex";
 }

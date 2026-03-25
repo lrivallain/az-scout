@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In — Azure Scout</title>
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        body { min-height: 100vh; display: flex; flex-direction: column; }
+        .login-container { flex: 1; display: flex; align-items: center; justify-content: center; }
+        .login-card { max-width: 640px; width: 100%; text-align: center; }
+        footer { font-size: 0.8rem; }
+    </style>
+    <script>
+        // Match theme to user preference
+        const theme = localStorage.getItem("theme")
+            || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.setAttribute("data-bs-theme", theme);
+    </script>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-dark bg-body-tertiary border-bottom px-3">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+            <img src="/static/img/favicon.svg" width="24" height="24" alt="">
+            <span>Azure Scout</span>
+        </a>
+        {% if home_tenant %}
+        <a href="/auth/login/admin" class="btn btn-outline-secondary btn-sm" title="Sign in as Admin">
+            <i class="bi bi-shield-lock me-1"></i> Admin
+        </a>
+        {% endif %}
+    </nav>
+
+    <!-- Login card -->
+    <div class="login-container">
+        <div class="login-card px-3">
+            <img src="/static/img/favicon.svg" width="72" height="72" alt="" class="mb-3 opacity-75">
+            <h2 class="mb-2">Welcome to Azure Scout</h2>
+            <p class="text-body-secondary mb-4">
+                Sign in with your Microsoft account to explore Azure resources
+                using your own permissions.
+            </p>
+
+            {% if error %}
+            {% if error == "consent_required" %}
+            <div class="alert alert-warning mb-4" role="alert">
+                <i class="bi bi-shield-exclamation me-1"></i>
+                <strong>Admin consent required</strong><br>
+                Your tenant needs an administrator to grant access to az-scout before you can use it.
+                {% if tenant %}
+                <div class="mt-2">
+                    <a href="https://login.microsoftonline.com/{{ tenant }}/adminconsent?client_id={{ client_id }}"
+                       target="_blank" rel="noopener" class="btn btn-warning btn-sm me-1">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Grant Admin Consent
+                    </a>
+                    <button class="btn btn-outline-secondary btn-sm"
+                            onclick="navigator.clipboard.writeText('https://login.microsoftonline.com/{{ tenant }}/adminconsent?client_id={{ client_id }}').then(()=>{this.innerHTML='Copied!';setTimeout(()=>{this.innerHTML='Copy link'},2000)})">
+                        <i class="bi bi-clipboard me-1"></i> Copy link
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            {% elif error == "mfa_required" %}
+            <div class="alert alert-warning mb-4" role="alert">
+                <i class="bi bi-shield-lock me-1"></i>
+                <strong>Multi-factor authentication required</strong><br>
+                Your tenant requires MFA to access Azure resources. Please try signing in again — MFA should be triggered during login.
+            </div>
+            {% elif error == "user_not_in_tenant" %}
+            <div class="alert alert-danger mb-4" role="alert">
+                <i class="bi bi-person-x me-1"></i>
+                <strong>Account not found in this tenant</strong><br>
+                Your account does not exist in the selected tenant. Use the correct tenant for your account, or sign in with your default account.
+            </div>
+            {% elif error == "token_expired" %}
+            <div class="alert alert-warning mb-4" role="alert">
+                <i class="bi bi-clock-history me-1"></i>
+                <strong>Session expired</strong><br>
+                Your authentication token has expired. Please sign in again.
+            </div>
+            {% elif error == "obo_failed" %}
+            <div class="alert alert-danger mb-4" role="alert">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                <strong>Azure resource access failed</strong><br>
+                Sign-in succeeded but az-scout could not access Azure resources on your behalf. Please try again or contact an administrator.
+            </div>
+            {% elif error == "token_exchange_failed" %}
+            <div class="alert alert-danger mb-4" role="alert">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Sign-in failed: could not complete the authentication. Please try again.
+            </div>
+            {% elif error == "invalid_state" %}
+            <div class="alert alert-warning mb-4" role="alert">
+                <i class="bi bi-clock-history me-1"></i>
+                Sign-in session expired. Please try again.
+            </div>
+            {% elif error == "auth_failed" %}
+            <div class="alert alert-danger mb-4" role="alert">
+                <i class="bi bi-x-circle me-1"></i>
+                Authentication was denied or cancelled. Please try again.
+            </div>
+            {% else %}
+            <div class="alert alert-danger mb-4" role="alert">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                An error occurred during sign-in. Please try again.
+            </div>
+            {% endif %}
+            {% endif %}
+
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-body-secondary small mb-2">
+                            Sign in with your default Microsoft account. Azure will use your home tenant automatically.
+                        </div>
+                        <a href="/auth/login/start" class="btn btn-primary btn-sm w-100">
+                            <i class="bi bi-person-fill me-1"></i> Sign in with your account
+                        </a>
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-body-secondary small mb-2">
+                            Sign in to a specific tenant by entering its domain or ID. Use this to access a different organization.
+                        </div>
+                        <form action="/auth/login/start" method="get">
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control" name="tenant"
+                                       placeholder="contoso.com or tenant ID"
+                                       aria-label="Tenant ID or domain"
+                                       value="{{ tenant }}">
+                                <button class="btn btn-outline-primary" type="submit">
+                                    <i class="bi bi-box-arrow-in-right me-1"></i> Sign in
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-body-secondary small">
+                Your Azure RBAC permissions determine what you can access.
+            </p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center text-body-secondary py-3 border-top">
+        Azure Scout · MIT License · Independent Azure analysis tool — not affiliated with Microsoft.
+    </footer>
+</body>
+</html>

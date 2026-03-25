@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from az_scout import azure_api
-from az_scout.auth import get_user_token, is_direct_arm
+from az_scout.auth import get_user_token
 from az_scout.models.responses import (
     ErrorResponse,
     RegionInfo,
@@ -28,10 +28,7 @@ logger = logging.getLogger(__name__)
 async def list_tenants(request: Request) -> JSONResponse:
     """Return Azure AD tenants accessible by the current user or credential."""
     token = get_user_token(request)
-    direct = is_direct_arm(request)
-    return JSONResponse(
-        await asyncio.to_thread(azure_api.list_tenants, user_token=token, direct_arm=direct)
-    )
+    return JSONResponse(await asyncio.to_thread(azure_api.list_tenants, user_token=token))
 
 
 @router.get(
@@ -48,11 +45,8 @@ async def list_subscriptions(
 ) -> JSONResponse:
     """Return all enabled Azure subscriptions, sorted alphabetically."""
     token = get_user_token(request)
-    direct = is_direct_arm(request)
     return JSONResponse(
-        await asyncio.to_thread(
-            azure_api.list_subscriptions, tenantId, user_token=token, direct_arm=direct
-        )
+        await asyncio.to_thread(azure_api.list_subscriptions, tenantId, user_token=token)
     )
 
 
@@ -77,7 +71,6 @@ async def list_regions(
 ) -> JSONResponse:
     """Return Azure regions that support Availability Zones."""
     token = get_user_token(request)
-    direct = is_direct_arm(request)
     try:
         return JSONResponse(
             await asyncio.to_thread(
@@ -85,7 +78,6 @@ async def list_regions(
                 subscriptionId,
                 tenantId,
                 user_token=token,
-                direct_arm=direct,
             )
         )
     except LookupError as exc:
@@ -127,7 +119,6 @@ async def list_locations(
 ) -> JSONResponse:
     """Return all Azure ARM locations, including those without Availability Zones."""
     token = get_user_token(request)
-    direct = is_direct_arm(request)
     try:
         return JSONResponse(
             await asyncio.to_thread(
@@ -135,7 +126,6 @@ async def list_locations(
                 subscriptionId,
                 tenantId,
                 user_token=token,
-                direct_arm=direct,
             )
         )
     except LookupError as exc:

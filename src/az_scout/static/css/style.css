@@ -2,6 +2,15 @@
    Azure Scout – Custom styles (Bootstrap 5.3 overrides)
    =================================================================== */
 
+/* Role-based visibility: admin-only elements are hidden by default,
+   shown only when the body has the is-admin class. */
+.admin-only {
+    display: none !important;
+}
+body.is-admin .admin-only {
+    display: revert !important;
+}
+
 /* Hide dropdown arrow on single-value selects */
 select.no-arrow {
     -webkit-appearance: none;
