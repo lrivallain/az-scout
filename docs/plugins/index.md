@@ -195,6 +195,8 @@ Plugin scripts run after `app.js` and can use these globals:
 | `apiFetch(url)` | `function` | GET helper with JSON parsing + error handling |
 | `apiPost(url, body)` | `function` | POST helper |
 | `aiComplete(prompt, options?)` | `function` | Non-streaming AI completion — returns `{content, tool_calls}` |
+| `aiEnabled` | `boolean` | `true` if AI chat/completion is configured (Azure OpenAI env vars set) |
+| `renderMarkdown(md)` | `function` | Render Markdown to HTML via marked.js (for AI output display) |
 | `tenantQS(prefix)` | `function` | Returns `?tenantId=…` or `""` for the selected tenant |
 | `subscriptions` | `Array` | `[{id, name}]` — subscriptions for the current tenant |
 | `regions` | `Array` | `[{name, displayName}]` — AZ-enabled regions |

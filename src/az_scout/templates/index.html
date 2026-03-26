@@ -313,6 +313,7 @@
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/json.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 <script src="{{ url_for('static', path='js/auth.js') }}"></script>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
 <script src="{{ url_for('static', path='js/chat.js') }}"></script>
@@ -326,6 +327,8 @@
 {% endfor %}
 {% endfor %}
 <script>
+// Expose AI availability to plugin scripts
+const aiEnabled = {{ chat_enabled | tojson }};
 // Register plugin chat modes with the frontend
 (function() {
     const pluginModes = {{ plugins | tojson }};

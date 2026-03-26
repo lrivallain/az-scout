@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,6 +36,53 @@ _MAX_TOOL_ROUNDS = 10
 _MAX_RETRIES = 3
 _DEFAULT_RETRY_WAIT = 10
 
+# In-memory TTL cache for completion results
+_CACHE_TTL = 300  # 5 minutes
+_CACHE_MAX_SIZE = 128
+_cache: dict[str, tuple[float, CompletionResult]] = {}
+
+
+def _cache_key(
+    prompt: str,
+    system_prompt: str | None,
+    tenant_id: str | None,
+    region: str | None,
+    subscription_id: str | None,
+    tools: bool,
+) -> str:
+    """Build a deterministic cache key from all input parameters."""
+    raw = json.dumps(
+        [prompt, system_prompt, tenant_id, region, subscription_id, tools],
+        sort_keys=True,
+    )
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str, ttl: int = _CACHE_TTL) -> CompletionResult | None:
+    """Return a cached result if it exists and hasn't expired."""
+    entry = _cache.get(key)
+    if entry is None:
+        return None
+    ts, result = entry
+    if time.monotonic() - ts > ttl:
+        del _cache[key]
+        return None
+    return result
+
+
+def _cache_put(key: str, result: CompletionResult) -> None:
+    """Store a result in the cache, evicting oldest entries if over max size."""
+    # Evict expired entries first
+    now = time.monotonic()
+    expired = [k for k, (ts, _) in _cache.items() if now - ts > _CACHE_TTL]
+    for k in expired:
+        del _cache[k]
+    # Evict oldest if still over limit
+    while len(_cache) >= _CACHE_MAX_SIZE:
+        oldest_key = min(_cache, key=lambda k: _cache[k][0])
+        del _cache[oldest_key]
+    _cache[key] = (now, result)
+
 
 @dataclass
 class CompletionResult:
@@ -51,6 +100,7 @@ async def ai_complete(
     region: str | None = None,
     subscription_id: str | None = None,
     tools: bool = True,
+    cache_ttl: int = _CACHE_TTL,
 ) -> CompletionResult:
     """Run a single-shot AI completion with optional tool calling.
 
@@ -65,6 +115,9 @@ async def ai_complete(
         Azure context — auto-injected into tool call arguments.
     tools:
         Whether to enable tool calling.  Set *False* for pure text completion.
+    cache_ttl:
+        Cache time-to-live in seconds.  Defaults to 300 (5 min).
+        Set to ``0`` to disable caching for this call.
 
     Returns
     -------
@@ -72,6 +125,13 @@ async def ai_complete(
         The final assistant text and a list of tool calls that were executed.
     """
     import httpx
+
+    key = _cache_key(prompt, system_prompt, tenant_id, region, subscription_id, tools)
+    if cache_ttl > 0:
+        cached = _cache_get(key, ttl=cache_ttl)
+        if cached is not None:
+            logger.debug("ai_complete cache hit for key %s…", key[:12])
+            return cached
 
     messages: list[dict[str, Any]] = []
     if system_prompt:
@@ -135,10 +195,13 @@ async def ai_complete(
 
             # If no tool calls, return the final content
             if finish_reason != "tool_calls" or not message.get("tool_calls"):
-                return CompletionResult(
+                result = CompletionResult(
                     content=message.get("content", ""),
                     tool_calls=tool_log,
                 )
+                if result.content and cache_ttl > 0:
+                    _cache_put(key, result)
+                return result
 
             # Execute tool calls
             messages.append(message)
@@ -162,14 +225,14 @@ async def ai_complete(
                     if "subscription_ids" in _get_tool_params(tool_name):
                         args.setdefault("subscription_ids", [subscription_id])
 
-                result = _execute_tool(tool_name, args)
-                tool_content = _truncate_tool_result(result)
+                tool_result = _execute_tool(tool_name, args)
+                tool_content = _truncate_tool_result(tool_result)
 
                 tool_log.append(
                     {
                         "name": tool_name,
                         "arguments": args,
-                        "result_length": len(result),
+                        "result_length": len(tool_result),
                     }
                 )
 
@@ -182,4 +245,5 @@ async def ai_complete(
                 )
 
     # Exhausted rounds
-    return CompletionResult(content="", tool_calls=tool_log)
+    result = CompletionResult(content="", tool_calls=tool_log)
+    return result

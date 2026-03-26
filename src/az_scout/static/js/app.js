@@ -196,6 +196,7 @@ async function aiComplete(prompt, options = {}) {
         region: reg || null,
         subscription_id: sub || null,
         tools: options.tools !== false,
+        cache_ttl: options.cacheTtl ?? 300,
     });
 }
 
@@ -222,6 +223,20 @@ function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+}
+
+/**
+ * Render Markdown to sanitized HTML using the marked library.
+ * Available as a global for plugins rendering AI completion output.
+ * @param {string} md - Markdown source text.
+ * @returns {string} Rendered HTML string.
+ */
+function renderMarkdown(md) {
+    if (typeof marked !== "undefined" && marked.parse) {
+        return marked.parse(md, { breaks: true });
+    }
+    // Fallback: escape HTML and convert newlines
+    return escapeHtml(md).replace(/\n/g, "<br>");
 }
 
 function truncate(str, max) {

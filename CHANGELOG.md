@@ -35,6 +35,10 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 - **Retail Prices retry** – Connection errors on the Azure Retail Prices API are now retried with exponential backoff.
 - **Biome JS lint** – Added to pre-commit hooks and ship-code-change prompt.
 - **Non-streaming AI completion endpoint** – `POST /api/ai/complete` runs the full tool-calling loop server-side and returns a single JSON response. Plugins can use `plugin_ai_complete()` (Python) or `aiComplete()` (JS) for inline AI recommendations outside the chat panel.
+- **AI completion caching** – Results are cached in-memory with a configurable TTL (default 5 min, max 128 entries). Plugins can set `cache_ttl=0` to bypass the cache.
+- **`is_ai_enabled()` / `aiEnabled`** – Plugin helpers (Python and JS) to check if AI capabilities are configured.
+- **`renderMarkdown()` global** – Shared `marked.js` v15 renderer available to all plugins for rendering AI output as HTML.
+- **Chat markdown via marked.js** – Chat `_renderMarkdown()` now uses marked.js with custom extensions for `[[…]]` clickable chips, compact chip lists, and styled tables/headings. Replaces the old regex-based parser.
 
 ### Changed
 

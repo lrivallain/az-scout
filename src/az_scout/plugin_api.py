@@ -102,6 +102,13 @@ class AzScoutPromptContributor(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def is_ai_enabled() -> bool:
+    """Return True if AI chat/completion is configured and available."""
+    from az_scout.services.ai_chat._config import is_chat_enabled
+
+    return is_chat_enabled()
+
+
 async def plugin_ai_complete(
     prompt: str,
     *,
@@ -110,6 +117,7 @@ async def plugin_ai_complete(
     region: str | None = None,
     subscription_id: str | None = None,
     tools: bool = True,
+    cache_ttl: int = 300,
 ) -> dict[str, Any]:
     """Run a non-streaming AI completion with optional tool calling.
 
@@ -140,6 +148,7 @@ async def plugin_ai_complete(
         region=region,
         subscription_id=subscription_id,
         tools=tools,
+        cache_ttl=cache_ttl,
     )
     return {"content": r.content, "tool_calls": r.tool_calls}
 

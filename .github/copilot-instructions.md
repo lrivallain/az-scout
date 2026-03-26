@@ -213,6 +213,8 @@ Plugin JS runs after `app.js` and can use these globals:
 | `apiFetch(url)` | GET with JSON parsing + error handling |
 | `apiPost(url, body)` | POST helper |
 | `aiComplete(prompt, options?)` | Non-streaming AI completion (returns `{content, tool_calls}`) |
+| `aiEnabled` | `true` if AI chat/completion is configured |
+| `renderMarkdown(md)` | Render Markdown to HTML via marked.js (for AI output display) |
 | `tenantQS(prefix)` | Returns `?tenantId=…` or `""` |
 | `subscriptions` | `[{id, name}]` array |
 | `regions` | `[{name, displayName}]` array |

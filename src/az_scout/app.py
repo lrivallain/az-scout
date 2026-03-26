@@ -432,6 +432,7 @@ class CompleteRequest(BaseModel):
     region: str | None = None
     subscription_id: str | None = None
     tools: bool = True
+    cache_ttl: int = 300
 
 
 @app.post(
@@ -462,6 +463,7 @@ async def ai_complete_endpoint(body: CompleteRequest) -> JSONResponse:
         region=body.region,
         subscription_id=body.subscription_id,
         tools=body.tools,
+        cache_ttl=body.cache_ttl,
     )
     return JSONResponse(
         {

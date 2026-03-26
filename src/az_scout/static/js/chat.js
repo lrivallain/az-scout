@@ -682,49 +682,75 @@ document.addEventListener("input", (e) => {
     if (e.target.id === "chat-input") _autoResizeChatInput();
 });
 
-/** Minimal Markdown → HTML renderer for chat bubbles. */
+/** Minimal Markdown → HTML renderer for chat bubbles (powered by marked.js). */
 function _renderMarkdown(md) {
-    let html = escapeHtml(md);
+    if (typeof marked === "undefined" || !marked.parse) {
+        // Fallback if marked isn't loaded
+        return escapeHtml(md).replace(/\n/g, "<br>");
+    }
 
-    // Code blocks: ```lang\n...\n```
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) =>
-        `<pre><code>${code}</code></pre>`
-    );
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-    // Clickable choice chips: [[choice text]]
-    html = html.replace(/\[\[(.+?)\]\]/g,
-        '<button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">$1</button>'
-    );
-    // Bold
-    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    // Italic
-    html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
-    // Headers (## and ###)
-    html = html.replace(/^### (.+)$/gm, '<h6 class="mt-2 mb-1">$1</h6>');
-    html = html.replace(/^## (.+)$/gm, '<h5 class="mt-2 mb-1">$1</h5>');
-    html = html.replace(/^# (.+)$/gm, '<h4 class="mt-2 mb-1">$1</h4>');
-    // Horizontal rule
-    html = html.replace(/^---$/gm, "<hr>");
+    // Pre-process: convert [[choice text]] to placeholder tokens before marked parses
+    // (marked would escape the brackets otherwise)
+    const chipPlaceholders = [];
+    const preprocessed = md.replace(/\[\[(.+?)\]\]/g, (_m, text) => {
+        const idx = chipPlaceholders.length;
+        chipPlaceholders.push(text);
+        return `%%CHIP_${idx}%%`;
+    });
 
-    // Tables: detect lines with |
-    html = _renderMarkdownTables(html);
+    // Configure marked with custom renderer
+    const renderer = new marked.Renderer();
 
-    // Unordered lists
-    html = html.replace(/^[-*] (.+)$/gm, "<li>$1</li>");
-    html = html.replace(/(<li>[\s\S]*?<\/li>)/g, "<ul>$1</ul>");
-    // Collapse nested <ul>
-    html = html.replace(/<\/ul>\s*<ul>/g, "");
+    // Tables: add chat-table classes
+    renderer.table = function(header, body) {
+        // marked v15 passes a token object, not separate header/body
+        if (header && typeof header === "object" && header.header && header.rows) {
+            const token = header;
+            const hdr = "<tr>" + token.header.map(
+                cell => `<th>${this.parser.parseInline(cell.tokens)}</th>`
+            ).join("") + "</tr>";
+            const rows = token.rows.map(
+                row => "<tr>" + row.map(
+                    cell => `<td>${this.parser.parseInline(cell.tokens)}</td>`
+                ).join("") + "</tr>"
+            ).join("");
+            return `<table class="table table-sm table-bordered chat-table"><thead>${hdr}</thead><tbody>${rows}</tbody></table>`;
+        }
+        return `<table class="table table-sm table-bordered chat-table"><thead>${header}</thead><tbody>${body}</tbody></table>`;
+    };
+
+    // Headers: compact margins for chat
+    renderer.heading = (token) => {
+        const text = typeof token === "object" && token.text ? token.text : String(token);
+        const depth = typeof token === "object" && token.depth ? token.depth : 3;
+        const tag = depth <= 2 ? "h4" : depth === 3 ? "h5" : "h6";
+        return `<${tag} class="mt-2 mb-1">${text}</${tag}>`;
+    };
+
+    const html = marked.parse(preprocessed, {
+        renderer,
+        breaks: true,
+        gfm: true,
+    });
+
+    // Post-process: restore chip placeholders as clickable buttons
+    let result = html.replace(/%%CHIP_(\d+)%%/g, (_m, idx) => {
+        const text = chipPlaceholders[Number(idx)] || "";
+        return `<button class="chat-choice-chip" onclick="_onChatChoiceClick(this)">${escapeHtml(text)}</button>`;
+    });
+
     // Convert lists whose items are ALL choice chips into compact chip groups
-    html = html.replace(/<ul>([\s\S]*?)<\/ul>/g, (_m, inner) => {
+    result = result.replace(/<ul>([\s\S]*?)<\/ul>/g, (_m, inner) => {
         const items = inner.match(/<li>([\s\S]*?)<\/li>/g);
         if (!items) return `<ul>${inner}</ul>`;
         const allChips = items.every(li => {
-            const content = li.replace(/<\/?li>/g, "").trim();
+            const content = li.replace(/<\/?li>/g, "").replace(/<\/?p>/g, "").trim();
             return _containsOnlyChoiceChips(content);
         });
         if (allChips) {
-            const chips = items.map(li => li.replace(/<\/?li>/g, "").trim()).join("");
+            const chips = items.map(
+                li => li.replace(/<\/?li>/g, "").replace(/<\/?p>/g, "").trim()
+            ).join("");
             if (items.length > 10) {
                 return `<div class="chat-suggestions">${chips}</div>`;
             }
@@ -733,13 +759,7 @@ function _renderMarkdown(md) {
         return `<ul>${inner}</ul>`;
     });
 
-    // Line breaks (but not inside pre/code)
-    html = html.replace(/\n/g, "<br>");
-    // Clean up excessive <br> around block elements
-    html = html.replace(/<br>\s*(<h[56]|<pre|<ul|<hr|<table)/g, "$1");
-    html = html.replace(/(<\/h[56]>|<\/pre>|<\/ul>|<hr>|<\/table>)\s*<br>/g, "$1");
-
-    return html;
+    return result;
 }
 
 function _containsOnlyChoiceChips(content) {
@@ -768,44 +788,6 @@ function _containsOnlyChoiceChips(content) {
     }
 
     return true;
-}
-
-function _renderMarkdownTables(html) {
-    const lines = html.split("\n");
-    const result = [];
-    let inTable = false;
-    let tableRows = [];
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-            // Skip separator rows (|---|---|, |:---:|, | --- | --- |, etc.)
-            const inner = trimmed.slice(1, -1);
-            if (inner.split("|").every(c => /^[\s\-:]+$/.test(c))) {
-                if (!inTable) inTable = true; // still mark table as started
-                continue;
-            }
-            const cells = trimmed.slice(1, -1).split("|").map(c => c.trim());
-            if (!inTable) {
-                inTable = true;
-                tableRows = [];
-                tableRows.push(`<tr>${cells.map(c => `<th>${c}</th>`).join("")}</tr>`);
-            } else {
-                tableRows.push(`<tr>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`);
-            }
-        } else {
-            if (inTable) {
-                result.push(`<table class="table table-sm table-bordered chat-table"><thead>${tableRows[0]}</thead><tbody>${tableRows.slice(1).join("")}</tbody></table>`);
-                inTable = false;
-                tableRows = [];
-            }
-            result.push(line);
-        }
-    }
-    if (inTable) {
-        result.push(`<table class="table table-sm table-bordered chat-table"><thead>${tableRows[0]}</thead><tbody>${tableRows.slice(1).join("")}</tbody></table>`);
-    }
-    return result.join("\n");
 }
 
 // ---------------------------------------------------------------------------
