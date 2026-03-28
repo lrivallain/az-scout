@@ -43,18 +43,20 @@
 </style>
 
 <div id="catalog-container">
-  <div class="mb-2">
-    <input type="search" class="form-control form-control-sm" id="catalog-filter"
-           placeholder="Filter plugins…" autocomplete="off">
-  </div>
-  <div class="alert alert-secondary small py-2 mb-3" role="alert">
+  <div class="alert alert-secondary small py-2 mb-2" role="alert">
     <strong>Disclaimer:</strong> Plugins listed in this catalog are reviewed before inclusion but are not
     audited for security or correctness. Installation and usage of plugins is at your own risk and
     is not the responsibility of az-scout maintainers. This catalog is a convenience listing of
     declared and commonly used community plugins — plugins can also exist outside of this catalog
     and be installed manually by users.
   </div>
-  <div class="text-body-secondary small py-2" id="catalog-count"></div>
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <span class="text-body-secondary small" id="catalog-count"></span>
+    <div style="max-width:250px;">
+      <input type="search" class="form-control form-control-sm" id="catalog-filter"
+             placeholder="Filter plugins…" autocomplete="off">
+    </div>
+  </div>
   <div class="text-center text-body-secondary py-4" id="catalog-loading">
     <div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading catalog…
   </div>

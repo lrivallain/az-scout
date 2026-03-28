@@ -28,3 +28,4 @@ data/
 # MkDocs build output
 site/
 docs/_changelog.md
+.DS_Store

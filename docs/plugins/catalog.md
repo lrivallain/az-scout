@@ -1,13 +1,8 @@
 # Plugin Catalog
 
-The following plugins are available for az-scout and fetched automatically by the Plugin Manager.
+The following plugins are available for az-scout. Plugins can be installed directly from the Plugin Manager in your az-scout instance, or manually using pip/uv.
 
-[:material-store-search: Browse the full Plugin Catalog](https://plugin-catalog.az-scout.com){ .md-button .md-button--primary target="_blank" }
+<iframe id="catalog-frame" src="/catalog.html" style="width:100%;min-height:800px;border:none;" loading="lazy"></iframe>
 
---8<--
-docs/_includes/known-plugins.md
---8<--
-
-### Submit your plugin
-
-To add your plugin to the catalog, submit a PR to the [az-scout/plugin-catalog](https://github.com/az-scout/plugin-catalog) repository.
+!!! info "Local preview"
+    The embedded catalog requires a built site (`mkdocs build`). Use `python -m http.server -d site` to preview locally.

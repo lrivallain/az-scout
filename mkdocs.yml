@@ -41,7 +41,7 @@ plugins:
   - search
 
 hooks:
-  - tools/docs_hooks/copy_changelog.py
+  - tools/docs_hooks/pre_post_build.py
 
 watch:
   - docs
