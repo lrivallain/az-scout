@@ -9,6 +9,7 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ### Added
 
+- **Docs catalog page** – The plugin catalog documentation page now embeds the shared `catalog.html` fragment directly, rendering the same interactive card-based catalog UI with filter, install modal, and plugin details. A docs hook copies the fragment at build time.
 - **File instructions** – Split `copilot-instructions.md` (390→93 lines) into 5 domain-specific file instructions that load automatically when editing relevant files: `azure-api`, `obo-auth`, `frontend`, `plugin-dev`, `plugin-scaffold`.
 - **`create-plugin` skill** – Interactive skill (`/create-plugin`) that guides plugin scaffold generation, conventions, and quality checks.
 - **Auth guard on API routes** – `require_auth` FastAPI dependency enforces OBO authentication on discovery, chat, AI completion, and all plugin API routes. Unauthenticated requests return 401 when OBO is enabled; in non-OBO mode the guard is a no-op.

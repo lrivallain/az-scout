@@ -24,3 +24,11 @@ def on_pre_build(config: dict, **kwargs: object) -> None:  # type: ignore[type-a
             changelog_content = changelog_content.replace(source, target)
         changelog_dst.write_text(changelog_content, encoding="utf-8")
         log.info("Copied %s → %s", changelog_src, changelog_dst)
+
+    # Copy the shared catalog fragment for the plugins/catalog page
+    catalog_src = root / "src" / "az_scout" / "static" / "html" / "catalog.html"
+    catalog_dst = docs_dir / "_includes" / "catalog.html"
+    if catalog_src.exists():
+        catalog_dst.parent.mkdir(parents=True, exist_ok=True)
+        catalog_dst.write_text(catalog_src.read_text(encoding="utf-8"), encoding="utf-8")
+        log.info("Copied %s → %s", catalog_src, catalog_dst)
