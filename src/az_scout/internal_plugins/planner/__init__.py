@@ -22,8 +22,12 @@ class PlannerPlugin:
     """Internal plugin: Deployment Planner tab."""
 
     name = "planner"
+    display_name = "Deployment Planner"
     version = __version__
     internal = True
+    description = (
+        "Plan VM deployments with SKU availability, pricing, spot scores, and capacity confidence."
+    )
 
     def get_router(self) -> APIRouter | None:
         from az_scout.internal_plugins.planner.routes import router

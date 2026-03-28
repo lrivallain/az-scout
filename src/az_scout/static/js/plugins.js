@@ -2,19 +2,13 @@
 /* global apiFetch, apiPost, bootstrap */
 
 (() => {
-
-
     const container = document.getElementById("plugin-manager-body");
     if (!container) return;
 
     let lastValidation = null;
     let initialized = false;
-    let updateInfo = {};  // distribution_name → update status from /api/plugins/updates
-
-    /** Return true when the source string looks like a PyPI package name (not a URL). */
-    function isPypiSource(source) {
-        return source && !source.startsWith("http");
-    }
+    let updateInfo = {};      // distribution_name → update status from /api/plugins/updates
+    let catalogPlugins = [];  // cached catalog data
 
     const modalEl = document.getElementById("pluginModal");
     if (!modalEl) return;
@@ -45,206 +39,313 @@
             '<div class="text-center py-4 text-muted">' +
             '<div class="spinner-border spinner-border-sm me-2" role="status"></div>' +
             "Loading…</div>";
+
+        // Set up the callback BEFORE injecting catalog.html so the inline script can call it
+        window.onCatalogRendered = function(plugins) {
+            catalogPlugins = plugins;
+            // Now that cards are rendered, fetch instance data and enhance
+            loadPlugins();
+            checkUpdatesQuiet();
+        };
+
         fetch("/static/html/plugins.html")
             .then(r => r.text())
             .then(html => {
                 container.innerHTML = html;
-                initPanelCollapses();
-                initCatalogFilter();
-                loadPlugins();
-                loadRecommended();
-                checkUpdatesQuiet();
+                // Inject catalog.html into the host container
+                const host = document.getElementById("pm-catalog-host");
+                if (host) {
+                    fetch("/static/html/catalog.html")
+                        .then(r => r.text())
+                        .then(catalogHtml => {
+                            host.innerHTML = catalogHtml;
+                            // Execute inline scripts in the injected HTML
+                            for (const script of host.querySelectorAll("script")) {
+                                const newScript = document.createElement("script");
+                                newScript.textContent = script.textContent;
+                                script.replaceWith(newScript);
+                            }
+                        });
+                }
             });
-    }
-
-    function initPanelCollapses() {
-        if (!bootstrap || !bootstrap.Collapse) return;
-        const toggles = container.querySelectorAll("[data-pm-collapse-target]");
-        for (const toggle of toggles) {
-            const targetSelector = toggle.getAttribute("data-pm-collapse-target");
-            if (!targetSelector) continue;
-            const panel = container.querySelector(targetSelector);
-            if (!panel) continue;
-
-            const collapse = bootstrap.Collapse.getOrCreateInstance(panel, { toggle: false });
-
-            panel.addEventListener("shown.bs.collapse", () => {
-                toggle.setAttribute("aria-expanded", "true");
-                toggle.classList.remove("collapsed");
-            });
-            panel.addEventListener("hidden.bs.collapse", () => {
-                toggle.setAttribute("aria-expanded", "false");
-                toggle.classList.add("collapsed");
-            });
-
-            toggle.classList.add("collapsed");
-            toggle.addEventListener("click", () => {
-                collapse.toggle();
-            });
-        }
     }
 
     // ---- Data loading ----
 
     function loadPlugins() {
         apiFetch("/api/plugins").then(data => {
-            renderInstalledMerged(data.installed || [], data.loaded || []);
+            enhanceCatalogCards(data.installed || [], data.loaded || []);
         }).catch(() => {});
     }
 
-    /**
-     * Build a merged list of all plugins (built-in + external) with UI
-     * management controls only for UI-installed ones.
-     */
-    function renderInstalledMerged(installed, loaded) {
-        const empty = document.getElementById("pm-installed-empty");
-        const wrap = document.getElementById("pm-installed-table-wrap");
-        const tbody = document.getElementById("pm-installed-tbody");
-        if (!empty || !wrap || !tbody) return;
+    // ---- Card enhancement (progressive enhancement of catalog.html) ----
 
-        // Build a lookup: distribution_name → installed record
+    function escHtml(s) {
+        const d = document.createElement("div");
+        d.textContent = String(s || "");
+        return d.innerHTML;
+    }
+
+    function escAttr(s) {
+        return String(s || "")
+            .replace(/\\/g, "\\\\")
+            .replace(/'/g, "\\'")
+            .replace(/\r/g, "\\r")
+            .replace(/\n/g, "\\n")
+            .replace(/\u2028/g, "\\u2028")
+            .replace(/\u2029/g, "\\u2029")
+            .replace(/"/g, "&quot;");
+    }
+
+    /** Inject an installed version label below the authors in a catalog card. */
+    function injectVersion(col, ver) {
+        if (!ver) return;
+        const authorsEl = col.querySelector('.catalog-authors');
+        if (!authorsEl) return;
+        const old = authorsEl.parentElement.querySelector('.catalog-version-info');
+        if (old) old.remove();
+        authorsEl.insertAdjacentHTML('afterend',
+            '<div class="catalog-version-info text-body-secondary" style="font-size:0.75rem">Installed: ' + ver + '</div>');
+    }
+
+    /**
+     * Enhance catalog cards with PM features and append cards for
+     * non-catalog plugins (built-in, external, UI-installed-not-in-catalog).
+     */
+    function enhanceCatalogCards(installed, loaded) {
+        const grid = document.getElementById("catalog-grid");
+        if (!grid) return;
+
+        // Remove dynamically added cards from previous runs
+        for (const el of grid.querySelectorAll(".pm-dynamic-card")) {
+            el.remove();
+        }
+
+        // Build lookups
         const installedByDist = {};
         for (const r of installed) {
             installedByDist[r.distribution_name] = r;
         }
-
-        // Build merged rows: start from loaded plugins (authoritative runtime list),
-        // then append any installed records that aren't loaded (failed to load, etc.)
-        const rows = [];
-        const seenDists = new Set();
-
+        const loadedByDist = {};
         for (const p of loaded) {
-            const distName = p.distribution_name || "";
-            const record = distName ? installedByDist[distName] : null;
-            if (distName) seenDists.add(distName);
-            rows.push({
-                name: p.name,
-                version: p.version,
-                internal: p.internal,
-                uiManaged: !!record,
-                record: record,
-                distName: distName,
-                loaded: true,
-            });
+            if (p.distribution_name) loadedByDist[p.distribution_name] = p;
         }
 
-        // Append installed-but-not-loaded plugins
-        for (const r of installed) {
-            if (!seenDists.has(r.distribution_name)) {
-                rows.push({
-                    name: r.distribution_name,
-                    version: r.ref || "",
-                    internal: false,
-                    uiManaged: true,
-                    record: r,
-                    distName: r.distribution_name,
-                    loaded: false,
-                });
-            }
-        }
-
-        if (rows.length === 0) {
-            empty.classList.remove("d-none");
-            wrap.classList.add("d-none");
-            return;
-        }
-        empty.classList.add("d-none");
-        wrap.classList.remove("d-none");
-        tbody.innerHTML = "";
+        const catalogNames = new Set(catalogPlugins.map(p => p.name));
+        const seenDists = new Set();
         let anyUpdate = false;
 
-        for (const row of rows) {
-            const tr = document.createElement("tr");
-            const r = row.record;
+        // 1. Enhance existing catalog cards
+        for (const col of grid.querySelectorAll(".catalog-card-col")) {
+            const name = col.dataset.catalogName;
+            const source = col.dataset.catalogSource;
+            const actionsEl = col.querySelector(".catalog-actions");
+            if (!actionsEl) continue;
 
-            // Name column
-            let nameHtml = "<code>" + escHtml(row.name) + "</code>";
-            if (row.internal) {
-                nameHtml += ' <span class="badge text-bg-secondary">built-in</span>';
-            } else if (!row.uiManaged && row.loaded) {
-                nameHtml += ' <span class="badge text-bg-light border" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Installed outside the plugin manager (e.g. pip, Dockerfile). Not manageable from this UI.">external</span>';
-            }
-            if (!row.loaded) {
-                nameHtml += ' <span class="badge text-bg-warning">not loaded</span>';
-            }
+            // Clear previously injected version info
+            const oldVer = col.querySelector(".catalog-version-info");
+            if (oldVer) oldVer.remove();
 
-            // Version column
-            const versionHtml = escHtml(row.version);
+            seenDists.add(name);
 
-            // Source column
-            let sourceHtml = "";
-            if (row.internal) {
-                sourceHtml = '<span class="text-body-secondary">built-in</span>';
-            } else if (r) {
-                const pypi = r.source === "pypi";
-                if (pypi) {
-                    const pypiUrl = "https://pypi.org/project/" + encodeURIComponent(r.distribution_name) + "/";
-                    sourceHtml = '<a href="' + escHtml(pypiUrl) + '" target="_blank" rel="noopener"><i class="bi bi-box-seam me-1"></i>PyPI</a>';
-                } else if (r.repo_url) {
-                    sourceHtml = '<a href="' + escHtml(r.repo_url) + '" target="_blank" rel="noopener"><i class="bi bi-github me-1"></i>GitHub</a>';
-                }
-            } else if (!row.uiManaged && row.loaded) {
-                sourceHtml = '<span class="text-body-secondary">pip / system</span>';
-            }
+            const record = installedByDist[name];
+            const loadedPlugin = loadedByDist[name];
+            const isInstalled = !!record || !!loadedPlugin;
 
-            // Status + actions — only for UI-managed plugins
-            let statusHtml = "";
-            let actionsHtml = "";
+            if (isInstalled && record) {
+                // UI-managed: show version + actions
+                const info = updateInfo[name];
+                const ver = escHtml(record.ref || '');
+                let btnsHtml = '';
 
-            if (row.uiManaged && r) {
-                const info = updateInfo[r.distribution_name];
-                let statusBadge = '<span class="badge bg-secondary">Unknown</span>';
-                let updateBtn = "";
-
-                if (info) {
-                    if (info.error) {
-                        statusBadge = '<span class="badge bg-warning text-dark">Unknown</span>';
-                    } else if (info.update_available) {
-                        statusBadge = '<span class="badge bg-info text-dark">Update available</span>';
-                        updateBtn = ' <button class="btn btn-outline-info btn-sm py-0 px-1" title="Update" onclick="pmUpdate(\'' + escAttr(r.distribution_name) + '\')"><i class="bi bi-cloud-download"></i></button>';
-                        anyUpdate = true;
-                    } else if (info.latest_ref) {
-                        statusBadge = '<span class="badge bg-success">Up to date</span>';
-                    }
-                } else if (r.update_available === true) {
-                    statusBadge = '<span class="badge bg-info text-dark">Update available</span>';
-                    updateBtn = ' <button class="btn btn-outline-info btn-sm py-0 px-1" title="Update" onclick="pmUpdate(\'' + escAttr(r.distribution_name) + '\')"><i class="bi bi-cloud-download"></i></button>';
+                if ((info && info.update_available) || record.update_available === true) {
+                    const latest = escHtml((info && info.latest_ref) || record.latest_ref || '');
+                    const label = latest ? ver + ' \u2192 ' + latest : 'Update';
+                    btnsHtml += '<button class="btn btn-outline-info btn-sm" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Update plugin to latest version" onclick="pmUpdate(\'' + escAttr(name) + '\')"><i class="bi bi-cloud-download me-1"></i>' + label + '</button>';
                     anyUpdate = true;
-                } else if (r.update_available === false) {
-                    statusBadge = '<span class="badge bg-success">Up to date</span>';
                 }
+                btnsHtml += '<button class="btn btn-outline-danger btn-sm" onclick="pmUninstall(\'' + escAttr(name) + '\')"><i class="bi bi-trash me-1"></i>Uninstall</button>';
 
-                statusHtml = statusBadge;
-                actionsHtml = updateBtn +
-                    ' <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Uninstall" onclick="pmUninstall(\'' + escAttr(r.distribution_name) + '\')">' +
-                    '<i class="bi bi-trash"></i></button>';
+                actionsEl.innerHTML = btnsHtml;
+                injectVersion(col, ver);
+            } else if (isInstalled && loadedPlugin && loadedPlugin.in_packages_dir) {
+                // Installed as a dependency via PM — manageable
+                actionsEl.innerHTML =
+                    '<button class="btn btn-outline-danger btn-sm" onclick="pmUninstall(\'' + escAttr(name) + '\')"><i class="bi bi-trash me-1"></i>Uninstall</button>';
+                injectVersion(col, escHtml(loadedPlugin.version || ''));
+            } else if (isInstalled) {
+                // Loaded but truly external (system pip, Dockerfile)
+                actionsEl.innerHTML = '<span class="badge bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Installed outside the plugin manager (e.g. pip, Dockerfile). Not manageable from this UI.">external</span>';
+                if (loadedPlugin) injectVersion(col, escHtml(loadedPlugin.version || ''));
             } else {
-                statusHtml = '<span class="badge bg-success">Active</span>';
+                // Not installed: show install button
+                actionsEl.innerHTML =
+                    '<button class="btn btn-sm btn-outline-primary" onclick="pmQuickInstall(\'' + escAttr(source) + '\', \'\')"><i class="bi bi-download me-1"></i>Install</button>';
+            }
+        }
+
+        // 2. Collect built-in plugins and append non-catalog external plugins
+        const builtins = [];
+        for (const p of loaded) {
+            const distName = p.distribution_name || p.name;
+            if (catalogNames.has(distName) || seenDists.has(distName)) continue;
+            seenDists.add(distName);
+
+            if (p.internal) {
+                builtins.push(p);
+                continue;
             }
 
-            tr.innerHTML =
-                "<td>" + nameHtml + "</td>" +
-                "<td>" + versionHtml + "</td>" +
-                "<td>" + sourceHtml + "</td>" +
-                "<td>" + statusHtml + "</td>" +
-                '<td class="text-nowrap">' + actionsHtml + "</td>";
-            tbody.appendChild(tr);
+            const record = installedByDist[distName];
+            grid.insertAdjacentHTML("beforeend", buildExtraCard(p, record));
+
+            if (record && ((updateInfo[distName] || {}).update_available || record.update_available === true)) {
+                anyUpdate = true;
+            }
+        }
+
+        // 2b. Single card for all built-in plugins
+        if (builtins.length > 0) {
+            const items = builtins.map(function(p) {
+                const label = p.display_name || p.name;
+                return '<li><strong>' + escHtml(label) + '</strong>' +
+                    (p.description ? ' — ' + escHtml(p.description) : '') + '</li>';
+            }).join("");
+            grid.insertAdjacentHTML("beforeend",
+                '<div class="col catalog-card-col pm-dynamic-card" data-catalog-name="built-in" data-catalog-tags="" data-catalog-desc="built-in">' +
+                    '<div class="card h-100">' +
+                        '<div class="card-body d-flex flex-column gap-1" style="font-size:0.85rem;">' +
+                            '<div class="d-flex align-items-baseline justify-content-between gap-2">' +
+                                '<span class="fw-semibold">Built-in plugins</span>' +
+                            '</div>' +
+                            '<ul class="text-body-secondary small mb-0 ps-3">' + items + '</ul>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>'
+            );
+        }
+
+        // 3. Append installed-but-not-loaded plugins
+        for (const r of installed) {
+            if (seenDists.has(r.distribution_name)) continue;
+            seenDists.add(r.distribution_name);
+            grid.insertAdjacentHTML("beforeend", buildNotLoadedCard(r));
+            if ((updateInfo[r.distribution_name] || {}).update_available || r.update_available === true) {
+                anyUpdate = true;
+            }
         }
 
         // Show/hide "Update all" button
         const updateAllBtn = document.getElementById("pm-update-all-btn");
         if (updateAllBtn) {
-            if (anyUpdate) {
-                updateAllBtn.classList.remove("d-none");
-            } else {
-                updateAllBtn.classList.add("d-none");
-            }
+            updateAllBtn.classList.toggle("d-none", !anyUpdate);
         }
 
-        // Initialize Bootstrap tooltips on newly rendered badges
-        for (const el of tbody.querySelectorAll('[data-bs-toggle="tooltip"]')) {
+        // Initialize Bootstrap tooltips
+        for (const el of grid.querySelectorAll('[data-bs-toggle="tooltip"]')) {
             new bootstrap.Tooltip(el);
         }
+
+        // 4. Append manual install card from template (if not already present)
+        if (!grid.querySelector('[data-catalog-name="manual-install"]')) {
+            const tpl = document.getElementById("pm-manual-install-template");
+            if (tpl) {
+                grid.appendChild(tpl.content.cloneNode(true));
+            }
+        }
+    }
+
+    /** Build a card for a loaded plugin that's NOT in the catalog. */
+    function buildExtraCard(p, record) {
+        const isInternal = p.internal;
+        let badges = "";
+        if (!isInternal && !record && !p.in_packages_dir) {
+            badges = '<span class="badge text-bg-light border" data-bs-toggle="tooltip" data-bs-placement="top" ' +
+                'data-bs-title="Installed outside the plugin manager (e.g. pip, Dockerfile). Not manageable from this UI.">external</span>';
+        }
+
+        let sourceHtml = "";
+        if (isInternal) {
+            sourceHtml = '<span class="text-body-secondary" style="font-size:0.75rem">built-in</span>';
+        } else if (record) {
+            sourceHtml = record.source === "pypi"
+                ? '<span class="badge text-bg-success text-uppercase" style="font-size:0.65rem">pypi</span>'
+                : '<span class="badge text-bg-secondary text-uppercase" style="font-size:0.65rem">github</span>';
+        } else {
+            sourceHtml = '<span class="text-body-secondary" style="font-size:0.75rem">pip / system</span>';
+        }
+
+        let actionsHtml = "";
+        let extraVersionHtml = isInternal ? "" : escHtml(p.version);
+        if (record) {
+            const info = updateInfo[record.distribution_name];
+            const ver = escHtml(record.ref || '');
+            let btnsHtml = '';
+            if ((info && info.update_available) || record.update_available === true) {
+                const latest = escHtml((info && info.latest_ref) || record.latest_ref || '');
+                const label = latest ? ver + ' \u2192 ' + latest : 'Update';
+                btnsHtml += '<button class="btn btn-outline-info btn-sm" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Update plugin to latest version" onclick="pmUpdate(\'' + escAttr(record.distribution_name) + '\')"><i class="bi bi-cloud-download me-1"></i>' + label + '</button>';
+            }
+            btnsHtml += '<button class="btn btn-outline-danger btn-sm" onclick="pmUninstall(\'' + escAttr(record.distribution_name) + '\')"><i class="bi bi-trash me-1"></i>Uninstall</button>';
+            actionsHtml = btnsHtml;
+            extraVersionHtml = ver;
+        } else if (p.in_packages_dir) {
+            // Installed as a dependency via PM — manageable
+            actionsHtml = '<button class="btn btn-outline-danger btn-sm" onclick="pmUninstall(\'' + escAttr(p.distribution_name || p.name) + '\')"><i class="bi bi-trash me-1"></i>Uninstall</button>';
+        } else if (isInternal) {
+            actionsHtml = '<span class="badge text-bg-secondary">built-in</span>';
+        } else {
+            actionsHtml = '<span class="badge bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Installed outside the plugin manager (e.g. pip, Dockerfile). Not manageable from this UI.">external</span>';
+        }
+
+        return '<div class="col catalog-card-col pm-dynamic-card" data-catalog-name="' + escHtml(p.name) + '" data-catalog-tags="" data-catalog-desc="' + escHtml(p.description || '') + '">' +
+            '<div class="card catalog-card-plugin h-100">' +
+                '<div class="card-body d-flex flex-column gap-1" style="font-size:0.85rem;">' +
+                    '<div class="d-flex align-items-baseline justify-content-between gap-2">' +
+                        '<span class="fw-semibold">' + escHtml(p.name) + '</span> ' +
+                        sourceHtml +
+                    '</div>' +
+                    (p.description ? '<p class="text-body-secondary small mb-0">' + escHtml(p.description) + '</p>' : '') +
+                    '<div class="d-flex flex-wrap gap-1">' + badges + '</div>' +
+                    '<div class="d-flex align-items-center justify-content-between mt-auto pt-1">' +
+                        '<span class="small text-body-secondary">' + extraVersionHtml + '</span>' +
+                        '<span class="d-flex align-items-center gap-2 catalog-actions">' + actionsHtml + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }
+
+    /** Build a card for a plugin in installed.json but not loaded. */
+    function buildNotLoadedCard(r) {
+        let btnsLine = "";
+        if ((updateInfo[r.distribution_name] || {}).update_available || r.update_available === true) {
+            const latest = escHtml((updateInfo[r.distribution_name] || {}).latest_ref || r.latest_ref || '');
+            const ver = escHtml(r.ref || '');
+            const label = latest ? ver + ' \u2192 ' + latest : 'Update';
+            btnsLine += '<button class="btn btn-outline-info btn-sm" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Update plugin to latest version" onclick="pmUpdate(\'' + escAttr(r.distribution_name) + '\')"><i class="bi bi-cloud-download me-1"></i>' + label + '</button> ';
+        }
+        btnsLine += '<button class="btn btn-outline-danger btn-sm" onclick="pmUninstall(\'' + escAttr(r.distribution_name) + '\')"><i class="bi bi-trash me-1"></i>Uninstall</button>';
+
+        const sourceBadge = r.source === "pypi"
+            ? '<span class="badge text-bg-success text-uppercase" style="font-size:0.65rem">pypi</span>'
+            : '<span class="badge text-bg-secondary text-uppercase" style="font-size:0.65rem">github</span>';
+
+        return '<div class="col catalog-card-col pm-dynamic-card" data-catalog-name="' + escHtml(r.distribution_name) + '" data-catalog-tags="" data-catalog-desc="">' +
+            '<div class="card catalog-card-plugin h-100 border-warning">' +
+                '<div class="card-body d-flex flex-column gap-1" style="font-size:0.85rem;">' +
+                    '<div class="d-flex align-items-baseline justify-content-between gap-2">' +
+                        '<span class="fw-semibold">' + escHtml(r.distribution_name) + '</span> ' +
+                        sourceBadge +
+                    '</div>' +
+                    '<div class="d-flex flex-wrap gap-1"><span class="badge text-bg-warning">not loaded</span></div>' +
+                    '<div class="d-flex align-items-center justify-content-between mt-auto pt-1">' +
+                        '<span class="small text-body-secondary">' + escHtml(r.ref || '') + '</span>' +
+                        '<span class="d-flex align-items-center gap-2 catalog-actions">' + btnsLine + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
     }
 
     // ---- Validate ----
@@ -285,11 +386,8 @@
         try {
             const data = await apiPost("/api/plugins/install", { repo_url: repoUrl, ref: ref });
             if (data.ok) {
-                if (data.restart_required) {
-                    showRestartBanner();
-                }
-                loadPlugins();
-                loadRecommended();
+                if (data.restart_required) showRestartBanner();
+                refreshAll();
                 hideResult();
             } else {
                 showResultError((data.errors || []).join("; "));
@@ -306,14 +404,11 @@
 
     window.pmUninstall = async (distName) => {
         if (!confirm("Uninstall plugin \"" + distName + "\"?")) return;
-
         showGlobalStatus("Uninstalling " + distName + "…");
-
         try {
             const data = await apiPost("/api/plugins/uninstall", { distribution_name: distName });
             if (data.ok) {
-                loadPlugins();
-                loadRecommended();
+                refreshAll();
             } else {
                 alert("Uninstall failed: " + (data.errors || []).join("; "));
             }
@@ -326,7 +421,6 @@
 
     // ---- Check updates ----
 
-    /** Fetch update info and refresh the installed table. */
     async function fetchUpdates() {
         const data = await apiFetch("/api/plugins/updates");
         updateInfo = {};
@@ -336,20 +430,17 @@
         loadPlugins();
     }
 
-    /** Silent check on init — no spinners or error alerts. */
     function checkUpdatesQuiet() {
         fetchUpdates().catch(() => {});
     }
 
     window.pmCheckUpdates = async () => {
-        showSpinner("Checking for updates\u2026");
-        showGlobalStatus("Checking for updates\u2026");
+        showGlobalStatus("Checking for updates…");
         try {
             await fetchUpdates();
         } catch (e) {
             alert("Check updates error: " + e.message);
         } finally {
-            hideSpinner();
             hideGlobalStatus();
         }
     };
@@ -357,24 +448,19 @@
     // ---- Update single ----
 
     window.pmUpdate = async (distName) => {
-        showSpinner("Updating " + distName + "…");
         showGlobalStatus("Updating " + distName + "…");
         try {
             const data = await apiPost("/api/plugins/update", { distribution_name: distName });
             if (data.ok) {
-                if (data.restart_required) {
-                    showRestartBanner();
-                }
+                if (data.restart_required) showRestartBanner();
                 updateInfo = {};
-                loadPlugins();
-                loadRecommended();
+                refreshAll();
             } else {
                 alert("Update failed: " + (data.errors || []).join("; "));
             }
         } catch (e) {
             alert("Update error: " + e.message);
         } finally {
-            hideSpinner();
             hideGlobalStatus();
         }
     };
@@ -383,126 +469,44 @@
 
     window.pmUpdateAll = async () => {
         if (!confirm("Update all plugins with available updates?")) return;
-
-        showSpinner("Updating all plugins…");
         showGlobalStatus("Updating all plugins…");
         try {
             const data = await apiPost("/api/plugins/update-all", {});
-            if (data.updated > 0) {
-                if (data.restart_required) {
-                    showRestartBanner();
-                }
-            }
+            if (data.updated > 0 && data.restart_required) showRestartBanner();
             updateInfo = {};
-            loadPlugins();
-            loadRecommended();
-            if (data.failed > 0) {
-                alert("Some plugins failed to update: " + data.failed);
-            }
+            refreshAll();
+            if (data.failed > 0) alert("Some plugins failed to update: " + data.failed);
         } catch (e) {
             alert("Update all error: " + e.message);
         } finally {
-            hideSpinner();
             hideGlobalStatus();
         }
     };
 
-    // ---- Plugin catalog ----
-
-    let catalogData = [];  // cached catalog data for filtering
-
-    function initCatalogFilter() {
-        const filterInput = document.getElementById("pm-catalog-filter");
-        if (!filterInput) return;
-        filterInput.addEventListener("input", () => {
-            renderRecommended(catalogData, filterInput.value.trim().toLowerCase());
-        });
-    }
-
-    function loadRecommended() {
-        apiFetch("/api/plugins/recommended").then(data => {
-            catalogData = data.plugins || [];
-            renderRecommended(catalogData, "");
-        }).catch(() => {});
-    }
-
-    function renderRecommended(list, filterText) {
-        const empty = document.getElementById("pm-recommended-empty");
-        const wrap = document.getElementById("pm-recommended-table-wrap");
-        const tbody = document.getElementById("pm-recommended-tbody");
-        if (!empty || !wrap || !tbody) return;
-
-        const filtered = filterText
-            ? list.filter(p => p.name.toLowerCase().includes(filterText) ||
-                               (p.description || "").toLowerCase().includes(filterText))
-            : list;
-
-        if (filtered.length === 0) {
-            empty.textContent = filterText ? "No plugins match the filter" : "No plugins in catalog";
-            empty.classList.remove("d-none");
-            wrap.classList.add("d-none");
-            return;
-        }
-        empty.classList.add("d-none");
-        wrap.classList.remove("d-none");
-        tbody.innerHTML = "";
-
-        for (const p of filtered) {
-            const tr = document.createElement("tr");
-            const pypi = p.source === "pypi";
-            let sourceLink;
-            if (pypi) {
-                const pypiUrl = `https://pypi.org/project/${encodeURIComponent(p.name)}/`;
-                sourceLink = `<a href="${escHtml(pypiUrl)}" target="_blank" rel="noopener"><i class="bi bi-box-seam me-1"></i>PyPI</a>`;
-            } else {
-                sourceLink = p.url
-                    ? `<a href="${escHtml(p.url)}" target="_blank" rel="noopener"><i class="bi bi-github me-1"></i>GitHub</a>`
-                    : escHtml(p.source);
-            }
-
-            let actionCell;
-            if (p.installed) {
-                actionCell = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Installed</span>';
-            } else {
-                const installSource = pypi ? escAttr(p.name) : escAttr(p.url);
-                const installVersion = escAttr(p.version || "");
-                actionCell = `<button class="btn btn-outline-success btn-sm py-0 px-2"
-                                      title="Quick install"
-                                      onclick="pmQuickInstall('${installSource}', '${installVersion}')">
-                                  <i class="bi bi-download me-1"></i>Install
-                              </button>`;
-            }
-
-            tr.innerHTML = `
-                <td><code>${escHtml(p.name)}</code></td>
-                <td>${escHtml(p.description)}</td>
-                <td>${sourceLink}</td>
-                <td class="text-nowrap">${actionCell}</td>`;
-            tbody.appendChild(tr);
-        }
-    }
+    // ---- Quick install (from catalog card) ----
 
     window.pmQuickInstall = async (source, version) => {
-        showSpinner("Installing…");
         showGlobalStatus("Installing plugin…");
         try {
             const data = await apiPost("/api/plugins/install", { repo_url: source, ref: version });
             if (data.ok) {
-                if (data.restart_required) {
-                    showRestartBanner();
-                }
-                loadPlugins();
-                loadRecommended();
+                if (data.restart_required) showRestartBanner();
+                refreshAll();
             } else {
-                showResultError((data.errors || []).join("; "));
+                alert("Install failed: " + (data.errors || []).join("; "));
             }
         } catch (e) {
-            showResultError(e.message);
+            alert("Install error: " + e.message);
         } finally {
-            hideSpinner();
             hideGlobalStatus();
         }
     };
+
+    // ---- Refresh ----
+
+    function refreshAll() {
+        loadPlugins();
+    }
 
     // ---- UI helpers ----
 
@@ -516,12 +520,10 @@
         const el = document.getElementById("pm-spinner");
         if (el) el.classList.add("d-none");
     }
-
     function showRestartBanner() {
         const el = document.getElementById("pm-restart-banner");
         if (el) el.classList.remove("d-none");
     }
-
     function showGlobalStatus(text) {
         const el = document.getElementById("pm-global-status");
         const txt = document.getElementById("pm-global-status-text");
@@ -532,7 +534,6 @@
         const el = document.getElementById("pm-global-status");
         if (el) el.classList.add("d-none");
     }
-
     function hideResult() {
         const el = document.getElementById("pm-validation-result");
         if (el) el.classList.add("d-none");
@@ -547,12 +548,9 @@
         if (!wrap || !status || !meta || !errEl || !warnEl) return;
 
         wrap.classList.remove("d-none");
-
-        if (data.ok) {
-            status.innerHTML = '<span class="badge bg-success">Valid</span>';
-        } else {
-            status.innerHTML = '<span class="badge bg-danger">Invalid</span>';
-        }
+        status.innerHTML = data.ok
+            ? '<span class="badge bg-success">Valid</span>'
+            : '<span class="badge bg-danger">Invalid</span>';
 
         const lines = [];
         if (data.distribution_name) lines.push("<strong>Distribution:</strong> " + escHtml(data.distribution_name));
@@ -564,7 +562,6 @@
                 Object.entries(data.entry_points).map(([k, v]) => escHtml(k) + " → " + escHtml(v)).join(", "));
         }
         meta.innerHTML = lines.join("<br>");
-
         renderList(errEl, data.errors, "danger");
         renderList(warnEl, data.warnings, "warning");
     }
@@ -588,10 +585,7 @@
 
     function renderList(el, items, variant) {
         if (!el) return;
-        if (!items || items.length === 0) {
-            el.classList.add("d-none");
-            return;
-        }
+        if (!items || items.length === 0) { el.classList.add("d-none"); return; }
         el.classList.remove("d-none");
         el.innerHTML = items.map(i =>
             '<div class="alert alert-' + variant + ' alert-sm py-1 px-2 mb-1" style="font-size:0.82rem;">' +
@@ -607,22 +601,5 @@
     function disableInstall() {
         const btn = document.getElementById("pm-install-btn");
         if (btn) btn.disabled = true;
-    }
-
-    function escHtml(s) {
-        const d = document.createElement("div");
-        d.textContent = String(s || "");
-        return d.innerHTML;
-    }
-
-    function escAttr(s) {
-        return String(s || "")
-            .replace(/\\/g, "\\\\")
-            .replace(/'/g, "\\'")
-            .replace(/\r/g, "\\r")
-            .replace(/\n/g, "\\n")
-            .replace(/\u2028/g, "\\u2028")
-            .replace(/\u2029/g, "\\u2029")
-            .replace(/"/g, "&quot;");
     }
 })();

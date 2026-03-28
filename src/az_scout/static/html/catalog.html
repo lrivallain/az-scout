@@ -1,0 +1,268 @@
+<!-- Plugin Catalog — shared fragment
+     Used by: docs site (standalone), plugin manager (enhanced with PM features).
+     Expects Bootstrap 5 CSS + JS to be loaded by the host page.
+     Fetches catalog.json from the remote catalog URL and renders plugin cards.
+     Host pages can set window.CATALOG_JSON_URL before this script runs.
+     After rendering, calls window.onCatalogRendered(plugins) if defined.
+-->
+<style>
+  .catalog-card-plugin { transition: border-color 0.15s; min-height: 180px; }
+  .catalog-card-plugin:hover { border-color: var(--bs-primary) !important; }
+  .catalog-card-plugin.wip {
+    border-color: var(--bs-warning) !important;
+    border-style: dashed !important;
+    opacity: 0.75;
+  }
+  .catalog-card-plugin.wip:hover { opacity: 1; }
+  .catalog-tag-wip {
+    --bs-badge-color: var(--bs-warning) !important;
+    background-color: rgba(var(--bs-warning-rgb), 0.15) !important;
+    border: 1px solid var(--bs-warning) !important;
+  }
+  .catalog-authors img { width: 20px; height: 20px; border-radius: 50%; vertical-align: middle; }
+  .catalog-long-desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .catalog-long-desc.expanded {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+  .catalog-expand-btn {
+    cursor: pointer;
+    font-size: 0.7rem;
+    color: var(--bs-primary);
+    border: none;
+    background: none;
+    padding: 0;
+  }
+  .catalog-expand-btn:hover { text-decoration: underline; }
+  .catalog-pypi-badge img { height: 18px; vertical-align: middle; }
+</style>
+
+<div id="catalog-container">
+  <div class="mb-2">
+    <input type="search" class="form-control form-control-sm" id="catalog-filter"
+           placeholder="Filter plugins…" autocomplete="off">
+  </div>
+  <div class="alert alert-secondary small py-2 mb-3" role="alert">
+    <strong>Disclaimer:</strong> Plugins listed in this catalog are reviewed before inclusion but are not
+    audited for security or correctness. Installation and usage of plugins is at your own risk and
+    is not the responsibility of az-scout maintainers. This catalog is a convenience listing of
+    declared and commonly used community plugins — plugins can also exist outside of this catalog
+    and be installed manually by users.
+  </div>
+  <div class="text-body-secondary small py-2" id="catalog-count"></div>
+  <div class="text-center text-body-secondary py-4" id="catalog-loading">
+    <div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading catalog…
+  </div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3" id="catalog-grid"></div>
+  <div class="text-center text-body-secondary py-3 d-none" id="catalog-empty">No plugins match the filter.</div>
+</div>
+
+<script>
+(function() {
+  const catalogUrl = window.CATALOG_JSON_URL || "https://plugin-catalog.az-scout.com/catalog.json";
+  const grid = document.getElementById("catalog-grid");
+  const loading = document.getElementById("catalog-loading");
+  const emptyEl = document.getElementById("catalog-empty");
+  const filterInput = document.getElementById("catalog-filter");
+  let plugins = [];
+
+  function esc(s) {
+    if (!s) return "";
+    const d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML.replace(/'/g, "&#39;");
+  }
+
+  function renderCard(p) {
+    const isWip = (p.tags || []).some(function(t) { return t.toLowerCase() === "wip"; });
+
+    const authors = (p.authors || []).map(function(a) {
+      return '<a href="https://github.com/' + esc(a) + '" class="text-body-secondary text-decoration-none" title="' + esc(a) + '">' +
+        '<img class="catalog-authors" src="https://github.com/' + esc(a) + '.png?size=40" alt="' + esc(a) + '"> ' + esc(a) + '</a>';
+    }).join(", ");
+
+    const tags = (p.tags || []).map(function(t) {
+      if (t.toLowerCase() === "wip") {
+        return '<span class="badge catalog-tag-wip" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This plugin is under development and may experience instability or major changes.">🚧 ' + esc(t) + '</span>';
+      }
+      return '<span class="badge text-bg-info bg-opacity-10 border border-info-subtle text-info-emphasis">' + esc(t) + '</span>';
+    }).join(" ");
+
+    const sourceBadge = p.source === "pypi"
+      ? '<a href="https://pypi.org/project/' + esc(p.name) + '/" target="_blank" rel="noopener" class="catalog-pypi-badge"><img src="https://img.shields.io/pypi/v/' + esc(p.name) + '?label=pypi" alt="PyPI"></a>'
+      : '<span class="badge text-bg-secondary text-uppercase" style="font-size:0.65rem">github</span>';
+
+    const installSource = p.source === "pypi" ? p.name : p.repository;
+
+    return '<div class="col catalog-card-col" data-catalog-name="' + esc(p.name) + '" data-catalog-source="' + esc(installSource) + '" data-catalog-tags="' + esc((p.tags||[]).join(" ")) + '" data-catalog-desc="' + esc(p.description) + '">' +
+      '<div class="card catalog-card-plugin h-100' + (isWip ? ' wip' : '') + '">' +
+        '<div class="card-body d-flex flex-column gap-1" style="font-size:0.85rem;">' +
+          '<div class="d-flex align-items-baseline justify-content-between gap-2">' +
+            '<span class="d-flex align-items-center gap-1">' +
+              '<a href="' + esc(p.repository) + '" class="fw-semibold text-primary text-decoration-none" target="_blank" rel="noopener">' + esc(p.name) + '</a>' +
+              '<button class="btn btn-sm p-0 border-0 text-body-secondary" onclick="event.stopPropagation(); catalogCopyText(null, this, \'' + esc(p.name) + '\')" title="Copy name" style="font-size:0.7rem">\ud83d\udccb</button>' +
+            '</span> ' +
+            sourceBadge +
+          '</div>' +
+          '<p class="text-body-secondary small mb-0">' + esc(p.description) + '</p>' +
+          (p.long_description ? '<p class="catalog-long-desc text-body-tertiary mb-0" style="font-size:0.75rem">' + esc(p.long_description) + '</p>' +
+            '<button class="catalog-expand-btn" onclick="this.previousElementSibling.classList.toggle(&#39;expanded&#39;); this.textContent = this.previousElementSibling.classList.contains(&#39;expanded&#39;) ? &#39;Show less&#39; : &#39;Show more&#39;">Show more</button>' : '') +
+          '<div class="d-flex flex-wrap gap-1">' + tags + '</div>' +
+          '<div class="d-flex align-items-center justify-content-between mt-auto pt-1">' +
+            '<span class="small text-body-secondary catalog-authors">' + authors + '</span>' +
+            '<span class="d-flex align-items-center gap-2 catalog-actions">' +
+              '<button class="btn btn-sm btn-outline-primary" onclick="catalogShowInstall(\'' + esc(p.name) + '\', \'' + esc(installSource) + '\')"><i class="bi bi-download me-1"></i>Install</button>' +
+            '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function filterCards() {
+    const q = (filterInput.value || "").toLowerCase().trim();
+    const cards = grid.querySelectorAll(".catalog-card-col");
+    let visible = 0;
+    cards.forEach(function(col) {
+      var text = [col.dataset.catalogName, col.dataset.catalogTags, col.dataset.catalogDesc].join(" ").toLowerCase();
+      var show = !q || text.indexOf(q) !== -1;
+      col.style.display = show ? "" : "none";
+      if (show) visible++;
+    });
+    emptyEl.classList.toggle("d-none", visible > 0);    var countEl = document.getElementById("catalog-count");
+    if (countEl) {
+      countEl.textContent = q
+        ? visible + " of " + plugins.length + " plugin(s) matching \"" + filterInput.value + "\""
+        : plugins.length + " plugin(s)";
+    }  }
+
+  fetch(catalogUrl)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      plugins = data;
+      if (loading) loading.remove();
+      grid.innerHTML = plugins.map(renderCard).join("");
+      var countEl = document.getElementById("catalog-count");
+      if (countEl) countEl.textContent = plugins.length + " plugin(s)";
+      // Initialize Bootstrap tooltips
+      if (typeof bootstrap !== "undefined") {
+        grid.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) { new bootstrap.Tooltip(el); });
+      }
+      if (typeof window.onCatalogRendered === "function") {
+        window.onCatalogRendered(plugins);
+      }
+    })
+    .catch(function() {
+      if (loading) loading.textContent = "Failed to load plugin catalog.";
+    });
+
+  if (filterInput) {
+    filterInput.addEventListener("input", filterCards);
+  }
+
+  // Install modal (used in standalone/docs context, overridden by PM)
+  window.catalogShowInstall = function(name, source) {
+    var title = document.getElementById("catalog-install-title");
+    var srcPm = document.getElementById("catalog-src-pm");
+    var srcUv = document.getElementById("catalog-src-uv");
+    var srcPip = document.getElementById("catalog-src-pip");
+    if (title) title.textContent = "Install " + name;
+    if (srcPm) srcPm.textContent = source;
+    if (srcUv) srcUv.textContent = "uv pip install " + source;
+    if (srcPip) srcPip.textContent = "pip install " + source;
+    // Reset to first tab
+    var firstTab = document.getElementById("catalog-tab-pm");
+    if (firstTab && typeof bootstrap !== "undefined") {
+      bootstrap.Tab.getOrCreateInstance(firstTab).show();
+    }
+    var modalEl = document.getElementById("catalog-install-modal");
+    if (modalEl && typeof bootstrap !== "undefined") {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+  };
+
+  window.catalogCopyText = function(id, btn, text) {
+    var copyText = text || document.getElementById(id).textContent;
+    navigator.clipboard.writeText(copyText).then(function() {
+      if (typeof bootstrap !== "undefined") {
+        var tooltip = bootstrap.Tooltip.getOrCreateInstance(btn, {
+          title: "Copied!", trigger: "manual", placement: "top"
+        });
+        tooltip.show();
+        setTimeout(function() { tooltip.hide(); tooltip.dispose(); }, 1500);
+      }
+    });
+  };
+})();
+</script>
+
+<!-- Install modal (standalone/docs context) -->
+<div class="modal fade" id="catalog-install-modal" tabindex="-1" aria-labelledby="catalog-install-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="catalog-install-title"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-tabs nav-fill mb-3" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="catalog-tab-pm" data-bs-toggle="tab" data-bs-target="#catalog-pane-pm" type="button" role="tab">Plugin Manager</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="catalog-tab-uv" data-bs-toggle="tab" data-bs-target="#catalog-pane-uv" type="button" role="tab">uv</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="catalog-tab-pip" data-bs-toggle="tab" data-bs-target="#catalog-pane-pip" type="button" role="tab">pip</button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="catalog-pane-pm" role="tabpanel">
+            <p class="small text-body-secondary">Copy the identifier below and paste it in the az-scout Plugin Manager install field.</p>
+            <div class="input-group mb-2">
+              <code class="form-control text-center bg-body-tertiary font-monospace" id="catalog-src-pm" readonly style="font-size:0.8rem"></code>
+              <button class="btn btn-outline-secondary" onclick="catalogCopyText('catalog-src-pm', this)" title="Copy">📋</button>
+            </div>
+            <h6 class="text-body-secondary">Steps</h6>
+            <ol class="small text-body-secondary">
+              <li>Open your az-scout instance</li>
+              <li>Click the <strong>🧩 Plugin Manager</strong> button in the top navigation bar</li>
+              <li>Open <strong>Manual install</strong> and paste the identifier in the source field</li>
+              <li>Click <strong>Install</strong> and wait for confirmation</li>
+            </ol>
+            <div class="small text-body-secondary border-start border-3 ps-3 mt-2">
+              ℹ️ On managed instances, the Plugin Manager is accessible only to instance administrators.
+            </div>
+          </div>
+          <div class="tab-pane fade" id="catalog-pane-uv" role="tabpanel">
+            <p class="small text-body-secondary">Install using <strong>uv</strong> in the az-scout environment:</p>
+            <div class="input-group mb-2">
+              <code class="form-control text-center bg-body-tertiary font-monospace" id="catalog-src-uv" readonly style="font-size:0.8rem"></code>
+              <button class="btn btn-outline-secondary" onclick="catalogCopyText('catalog-src-uv', this)" title="Copy">📋</button>
+            </div>
+            <div class="small text-body-secondary border-start border-3 ps-3">Restart az-scout after installation.</div>
+          </div>
+          <div class="tab-pane fade" id="catalog-pane-pip" role="tabpanel">
+            <p class="small text-body-secondary">Install using <strong>pip</strong> in the az-scout environment:</p>
+            <div class="input-group mb-2">
+              <code class="form-control text-center bg-body-tertiary font-monospace" id="catalog-src-pip" readonly style="font-size:0.8rem"></code>
+              <button class="btn btn-outline-secondary" onclick="catalogCopyText('catalog-src-pip', this)" title="Copy">📋</button>
+            </div>
+            <div class="small text-body-secondary border-start border-3 ps-3">Restart az-scout after installation.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="border-top text-center text-body-secondary small py-3 mt-3">
+  <a href="https://github.com/az-scout/plugin-catalog" target="_blank" rel="noopener">Plugin catalog repository</a> ·
+  <a href="https://github.com/az-scout/plugin-catalog/edit/main/catalog.json" target="_blank" rel="noopener">Submit your plugin</a>
+</div>

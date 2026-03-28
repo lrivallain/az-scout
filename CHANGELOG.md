@@ -13,17 +13,25 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 - **`create-plugin` skill** – Interactive skill (`/create-plugin`) that guides plugin scaffold generation, conventions, and quality checks.
 - **Auth guard on API routes** – `require_auth` FastAPI dependency enforces OBO authentication on discovery, chat, AI completion, and all plugin API routes. Unauthenticated requests return 401 when OBO is enabled; in non-OBO mode the guard is a no-op.
 - **Native extension detection** – Plugin install/update routes detect newly installed compiled extensions (`.so`, `.pyd`, `.dylib`) and return `restart_required: true` in the API response, prompting users to restart the instance.
-- **Plugin Manager UI redesign** – Merged "Installed (UI)" and "Loaded (runtime)" into a single "Installed plugins" table showing all plugins with source, status, and management actions. Catalog section moved to the top with a filter input. Manual install moved to a collapsible section at the bottom.
+- **Shared catalog UI** – New `catalog.html` fragment renders plugin cards from `catalog.json` with filter, tags, authors, PyPI badges, long description truncation, and a 3-tab install modal (Plugin Manager / uv / pip). Used by both the Plugin Manager and future docs/standalone catalog pages.
+- **Plugin Manager redesign** – Switched from offcanvas to a responsive modal. Catalog cards rendered from shared `catalog.html` are progressively enhanced with install/update/uninstall buttons. Built-in, external, and dependency plugins are detected and displayed with appropriate badges and actions.
+- **Built-in plugin metadata** – Internal plugins (topology, planner) now have `display_name` and `description` attributes exposed in the plugin API.
+- **Dependency plugin management** – Plugins installed as dependencies into the packages directory (e.g. via another plugin) are now detected and manageable (uninstall) from the UI instead of being labeled "external".
 - **Restart banner** – Plugin Manager shows a warning banner when a plugin with native extensions is installed, indicating a container restart is required.
 - **Global status bar** – Plugin Manager shows an inline status bar with spinner during install/uninstall/update operations.
+- **Auto update check** – Plugin Manager silently checks for updates when opened, showing results immediately.
+- **CSP: shields.io** – Added `img.shields.io` to the Content-Security-Policy `img-src` directive for PyPI version badges.
 
 ### Changed
 
-- **Plugin catalog docs** – Catalog page now features a prominent button linking to the full [plugin-catalog.az-scout.com](https://plugin-catalog.az-scout.com) experience while keeping the simplified table listing inline.
+- **Plugin Manager layout** – Replaced table-based views with a card grid layout matching the catalog style. All plugins (catalog, installed, built-in, external) shown in a unified card grid with a filter, action bar, and manual install card.
+- **Modal sizing** – Plugin Manager modal uses `modal-xl` with `max-width: min(95vw, 1400px)` for responsive width.
+- **Plugin list API** – `/api/plugins` response now includes `display_name`, `description`, `in_packages_dir` fields for loaded plugins to support the enhanced UI.
 
 ### Removed
 
 - **Duplicate prompts** – Removed `add-plugin-to-catalog.prompt.md` and `review-plugin.prompt.md` from the core repo. These now live canonically in the [plugin-catalog](https://github.com/az-scout/plugin-catalog) repo.
+- **Separate catalog table** – Removed the old table-based catalog/installed views in the Plugin Manager in favour of the shared card-based catalog UI.
 
 ## [2026.3.7] - 2026-03-26
 

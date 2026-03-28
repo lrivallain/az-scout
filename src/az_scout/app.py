@@ -155,7 +155,7 @@ _CSP_POLICY = "; ".join(
         "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net d3js.org",
         "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net",
         "font-src 'self' cdn.jsdelivr.net",
-        "img-src 'self' data: https://github.com https://*.githubusercontent.com",
+        "img-src 'self' data: https://github.com https://*.githubusercontent.com https://img.shields.io",
         "connect-src 'self' cdn.jsdelivr.net https://plugin-catalog.az-scout.com",
         "frame-ancestors 'none'",
     ]

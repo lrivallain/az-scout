@@ -237,6 +237,16 @@ def get_loaded_plugins() -> list[AzScoutPlugin]:
     return list(_loaded_plugins)
 
 
+def is_in_packages_dir(dist_name: str) -> bool:
+    """Return True if *dist_name* is installed in the plugin packages directory."""
+    if not dist_name or not _PACKAGES_DIR.exists():
+        return False
+    for dist in importlib.metadata.distributions(path=[str(_PACKAGES_DIR)]):
+        if dist.name == dist_name:
+            return True
+    return False
+
+
 def get_plugin_chat_modes() -> dict[str, ChatMode]:
     """Return all chat modes contributed by plugins, keyed by mode ID."""
     return dict(_plugin_chat_modes)

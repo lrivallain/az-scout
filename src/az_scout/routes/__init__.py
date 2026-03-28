@@ -9,7 +9,12 @@ from pydantic import BaseModel
 
 from az_scout import plugin_manager
 from az_scout.plugin_manager._installer import has_new_native_extensions, snapshot_native_files
-from az_scout.plugins import _plugin_dist_names, get_loaded_plugins, reload_plugins
+from az_scout.plugins import (
+    _plugin_dist_names,
+    get_loaded_plugins,
+    is_in_packages_dir,
+    reload_plugins,
+)
 
 _RESTART_WARNING = (
     "This plugin installed native compiled extensions (e.g. numpy). "
@@ -98,9 +103,12 @@ async def list_plugins() -> JSONResponse:
             "loaded": [
                 {
                     "name": p.name,
+                    "display_name": getattr(p, "display_name", ""),
                     "version": p.version,
                     "internal": bool(getattr(p, "internal", False)),
                     "distribution_name": _plugin_dist_names.get(p.name, ""),
+                    "description": getattr(p, "description", ""),
+                    "in_packages_dir": is_in_packages_dir(_plugin_dist_names.get(p.name, "")),
                 }
                 for p in loaded
             ],

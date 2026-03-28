@@ -15,137 +15,69 @@
         <span id="pm-global-status-text">Working…</span>
     </div>
 
-    <!-- Plugin catalog -->
-    <div>
-        <div class="card">
-            <div class="card-header">
-                <a href="https://plugin-catalog.az-scout.com" target="_blank" rel="noopener"
-                   class="text-decoration-none text-primary fw-semibold">
-                    Explore plugin catalog
-                    <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.8em;"></i>
-                </a>
-            </div>
-            <div class="card-body p-0">
-                <div class="p-2">
-                    <input type="text" class="form-control form-control-sm" id="pm-catalog-filter"
-                           placeholder="Filter by name…" autocomplete="off">
-                </div>
-                <div id="pm-recommended-empty" class="text-center text-body-secondary py-3">
-                    No plugins in catalog
-                </div>
-                <div id="pm-recommended-table-wrap" class="d-none">
-                    <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
-                        <thead>
-                            <tr>
-                                <th>Plugin</th>
-                                <th>Description</th>
-                                <th>Source</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="pm-recommended-tbody"></tbody>
-                    </table>
+    <!-- Action bar -->
+    <div class="d-flex align-items-center justify-content-end gap-1">
+        <button class="btn btn-outline-info btn-sm py-0 px-2" id="pm-check-updates-btn"
+                onclick="pmCheckUpdates()" title="Check for updates">
+            <i class="bi bi-arrow-repeat me-1"></i>Check updates
+        </button>
+        <button class="btn btn-primary btn-sm py-0 px-2 d-none" id="pm-update-all-btn"
+                onclick="pmUpdateAll()" title="Update all plugins">
+            <i class="bi bi-cloud-download me-1"></i>Update all
+        </button>
+    </div>
+
+    <!-- Plugin catalog (loaded from catalog.html, enhanced with PM features) -->
+    <div id="pm-catalog-host">
+        <!-- catalog.html is injected here by plugins.js -->
+    </div>
+
+    <!-- Manual plugin install card (appended to the catalog grid by plugins.js) -->
+    <template id="pm-manual-install-template">
+        <div class="col catalog-card-col pm-dynamic-card" data-catalog-name="manual-install" data-catalog-tags="" data-catalog-desc="manual install">
+            <div class="card catalog-card-plugin h-100 border-info">
+                <div class="card-body d-flex flex-column gap-2" style="font-size:0.85rem;">
+                    <div class="d-flex align-items-baseline justify-content-between gap-2">
+                        <span class="fw-semibold text-info"><i class="bi bi-plus-circle me-1"></i>Manual install</span>
+                    </div>
+                    <p class="text-body-secondary small mb-0">Install a plugin from a PyPI package name or a public GitHub repository URL.</p>
+                    <div class="mt-2">
+                        <div class="mb-2">
+                            <input type="text" class="form-control form-control-sm" id="pm-repo-url"
+                                   placeholder="PyPI package name or https://github.com/owner/repo" autocomplete="off">
+                        </div>
+                        <div class="mb-2">
+                            <input type="text" class="form-control form-control-sm" id="pm-ref"
+                                   placeholder="Version / ref (optional)" autocomplete="off">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-primary btn-sm" id="pm-validate-btn" onclick="pmValidate()">
+                                <i class="bi bi-check-circle me-1"></i>Validate
+                            </button>
+                            <button class="btn btn-primary btn-sm" id="pm-install-btn" onclick="pmInstall()" disabled>
+                                <i class="bi bi-download me-1"></i>Install
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Validation result -->
+                    <div id="pm-validation-result" class="d-none mt-2">
+                        <hr class="my-2">
+                        <div id="pm-val-status" class="mb-1"></div>
+                        <div id="pm-val-meta" class="mb-1" style="font-size:0.82rem;"></div>
+                        <div id="pm-val-errors" class="d-none"></div>
+                        <div id="pm-val-warnings" class="d-none"></div>
+                    </div>
+
+                    <!-- Spinner -->
+                    <div id="pm-spinner" class="d-none mt-2 text-center">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading…</span>
+                        </div>
+                        <span class="ms-2 text-body-secondary" id="pm-spinner-text">Validating…</span>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Installed plugins (all: built-in + UI-installed) -->
-    <div>
-        <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <span><i class="bi bi-box-seam me-1"></i>Installed plugins</span>
-                <div class="d-flex gap-1">
-                    <button class="btn btn-outline-info btn-sm py-0 px-2" id="pm-check-updates-btn"
-                            onclick="pmCheckUpdates()" title="Check for updates">
-                        <i class="bi bi-arrow-repeat me-1"></i>Check updates
-                    </button>
-                    <button class="btn btn-primary btn-sm py-0 px-2 d-none" id="pm-update-all-btn"
-                            onclick="pmUpdateAll()" title="Update all plugins">
-                        <i class="bi bi-cloud-download me-1"></i>Update all
-                    </button>
-                </div>
-            </div>
-            <div class="card-body p-0">
-                <div id="pm-installed-empty" class="text-center text-body-secondary py-3">
-                    No plugins installed
-                </div>
-                <div id="pm-installed-table-wrap" class="d-none">
-                    <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
-                        <thead>
-                            <tr>
-                                <th>Plugin</th>
-                                <th>Version</th>
-                                <th>Source</th>
-                                <th>Status</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="pm-installed-tbody"></tbody>
-                    </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Manual plugin install (collapsible) -->
-    <div>
-        <div class="card border-info">
-            <div class="card-header p-0">
-                <button class="btn w-100 text-start text-white text-decoration-none border-0 rounded-0 py-2 px-3"
-                        id="pm-add-toggle"
-                        type="button"
-                        data-pm-collapse-target="#pm-add-collapse"
-                        aria-expanded="false"
-                        aria-controls="pm-add-collapse">
-                    <i class="bi bi-plus-circle me-1"></i>Manual plugin install
-                    <i class="bi bi-chevron-down float-end"></i>
-                </button>
-            </div>
-            <div id="pm-add-collapse" class="collapse">
-            <div class="card-body">
-                <div class="mb-2">
-                    <label for="pm-repo-url" class="form-label form-label-sm">Plugin source</label>
-                    <input type="text" class="form-control form-control-sm" id="pm-repo-url"
-                           placeholder="PyPI package name or https://github.com/owner/repo">
-                    <div class="form-text">PyPI package name (e.g. <code>az-scout-example</code>) or public GitHub URL</div>
-                </div>
-                <div class="mb-3">
-                    <label for="pm-ref" class="form-label form-label-sm">Version / Ref <span class="text-body-secondary">(optional – defaults to latest)</span></label>
-                    <input type="text" class="form-control form-control-sm" id="pm-ref"
-                           placeholder="latest">
-                </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-primary btn-sm" id="pm-validate-btn" onclick="pmValidate()">
-                        <i class="bi bi-check-circle me-1"></i>Validate
-                    </button>
-                    <button class="btn btn-primary btn-sm" id="pm-install-btn" onclick="pmInstall()" disabled>
-                        <i class="bi bi-download me-1"></i>Install
-                    </button>
-                </div>
-
-                <!-- Validation result -->
-                <div id="pm-validation-result" class="d-none mt-3">
-                    <hr>
-                    <div id="pm-val-status" class="mb-2"></div>
-                    <div id="pm-val-meta" class="mb-2" style="font-size:0.82rem;"></div>
-                    <div id="pm-val-errors" class="d-none"></div>
-                    <div id="pm-val-warnings" class="d-none"></div>
-                </div>
-
-                <!-- Spinner -->
-                <div id="pm-spinner" class="d-none mt-3 text-center">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="visually-hidden">Loading…</span>
-                    </div>
-                    <span class="ms-2 text-body-secondary" id="pm-spinner-text">Validating…</span>
-                </div>
-            </div>
-            </div>
-        </div>
-    </div>
+    </template>
 </div>

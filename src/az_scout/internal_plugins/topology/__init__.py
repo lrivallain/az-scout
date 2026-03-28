@@ -22,8 +22,10 @@ class TopologyPlugin:
     """Internal plugin: AZ Topology tab."""
 
     name = "topology"
+    display_name = "AZ Topology"
     version = __version__
     internal = True  # Flag for registration logic
+    description = "Visualize logical-to-physical availability zone mappings across subscriptions."
 
     def get_router(self) -> APIRouter | None:
         from az_scout.internal_plugins.topology.routes import router
