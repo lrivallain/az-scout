@@ -18,7 +18,7 @@ from az_scout.scoring.deployment_confidence import (
     signals_from_sku,
 )
 
-router = APIRouter(tags=["SKU"], dependencies=[Depends(require_auth)])
+router = APIRouter(tags=["Plugin: planner"], dependencies=[Depends(require_auth)])
 
 
 @router.get(
