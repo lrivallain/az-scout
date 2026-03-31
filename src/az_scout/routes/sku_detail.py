@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse
 
 from az_scout import azure_api
 from az_scout.auth import require_auth
+from az_scout.models.responses import ErrorResponse, SkuDetailResponse
 from az_scout.scoring.deployment_confidence import (
     compute_deployment_confidence,
     signals_from_sku,
@@ -23,8 +24,9 @@ router = APIRouter(tags=["Plugin: planner"], dependencies=[Depends(require_auth)
 
 @router.get(
     "/sku-detail",
-    tags=["SKU"],
     summary="Get full detail for a single SKU",
+    response_model=SkuDetailResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 async def get_sku_detail(
     region: str = Query(..., description="Azure region name."),

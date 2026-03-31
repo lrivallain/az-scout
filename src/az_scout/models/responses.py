@@ -173,3 +173,50 @@ class ErrorResponse(BaseModel):
     """Generic error envelope used by all endpoints on failure."""
 
     error: str
+
+
+# ---------------------------------------------------------------------------
+# GET /api/sku-detail
+# ---------------------------------------------------------------------------
+
+
+class SkuDetailPricing(BaseModel):
+    """Pricing tiers returned by ``GET /api/sku-detail``."""
+
+    sku: str | None = None
+    currency: str | None = None
+    paygo: float | None = None
+    spot: float | None = None
+    ri_1y: float | None = None
+    ri_3y: float | None = None
+    sp_1y: float | None = None
+    sp_3y: float | None = None
+
+
+class SkuDetailConfidence(BaseModel):
+    """Deployment confidence score with full breakdown."""
+
+    score: int | None = None
+    label: str | None = None
+    scoreType: str | None = None
+    knockoutReasons: list[str] = Field(default_factory=list)
+    breakdown: dict[str, Any] | None = None
+    missingSignals: list[str] = Field(default_factory=list)
+
+
+class SkuDetailResponse(SkuDetailPricing):
+    """Response for ``GET /api/sku-detail``.
+
+    Always includes pricing fields. When ``subscriptionId`` is provided,
+    also includes ``profile`` (full VM capabilities) and ``confidence``
+    (deployment confidence score with breakdown).
+    """
+
+    profile: dict[str, Any] | None = Field(
+        default=None,
+        description="Full VM profile with all ARM capabilities, zones, and restrictions.",
+    )
+    confidence: SkuDetailConfidence | None = Field(
+        default=None,
+        description="Deployment confidence score with signal breakdown.",
+    )
