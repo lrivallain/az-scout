@@ -7,6 +7,8 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+## [2026.4.0] - 2026-04-01
+
 ### Added
 
 - **`SkuDict` TypedDict** – Formal data contract (`SkuDict`, `SkuCapabilities`, `SkuQuota`, `SkuPricing`, `SkuConfidence`) in `plugin_api.py` documenting the canonical SKU dict shape expected by enrichment functions.
