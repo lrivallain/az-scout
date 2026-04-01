@@ -10,6 +10,7 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 ### Fixed
 
 - **XSS: `escapeHtml()` attribute-context escape** – Replaced the `div.textContent/innerHTML` approach with OWASP Rule #1 character replacement (`& < > " '`), fixing unescaped `"` and `'` in attribute contexts (e.g. `title="..."`, `data-*="..."`). Removed duplicate escape helpers from `plugins.js` and `catalog.html` in favour of the shared global.
+- **Plugin Manager reload** – Restored full page reload after plugin install/uninstall/update so new or removed tabs, routes, and JS are picked up.
 
 ### Removed
 

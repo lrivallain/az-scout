@@ -502,8 +502,9 @@
 
     // ---- Refresh ----
 
+    /** Reload the page to pick up new/removed plugin tabs, routes, and JS. */
     function refreshAll() {
-        loadPlugins();
+        window.location.reload();
     }
 
     // ---- UI helpers ----
