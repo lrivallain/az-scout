@@ -1,7 +1,5 @@
-ARG TARGETPLATFORM=linux/amd64
-
 # ---------- build stage ----------
-FROM --platform=${TARGETPLATFORM} python:3.13-slim AS builder
+FROM python:3.13-slim AS builder
 
 # Install build tools (git needed for hatch-vcs version)
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
@@ -18,7 +16,7 @@ RUN pip install --no-cache-dir build hatchling hatch-vcs && \
     python -m build --wheel --outdir /build/dist
 
 # ---------- runtime stage ----------
-FROM --platform=${TARGETPLATFORM} python:3.13-slim
+FROM python:3.13-slim
 
 LABEL org.opencontainers.image.source="https://github.com/az-scout/az-scout"
 LABEL org.opencontainers.image.description="Azure Scout — explore availability zones, capacity, pricing, and plan VM deployments"
