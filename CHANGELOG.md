@@ -7,11 +7,15 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+## [2026.4.1] - 2026-04-02
+
 ### Added
 
 - **`showSkuDetailModal()`** – New shared JS component in `sku-detail-modal.js` that provides a full-flow SKU detail modal for all plugins. Shows loading state, fetches from `/api/sku-detail`, renders confidence breakdown (with signal tooltips, knockout reasons, disclaimers), VM profile, zone availability, quota, pricing (with currency selector), and supports plugin-specific extra sections (`extraSections`, `prependSections`) and recalculate callbacks. Modal DOM is created lazily — no `index.html` changes needed.
 - **`parse_sku_series()`** – New utility in `azure_api.skus` that extracts the VM series prefix from ARM SKU names (e.g. `Standard_D2s_v5` → `D`, `Standard_NC24ads_A100_v4` → `NC`). Exported in `azure_api` public API.
 - **Expanded SKU capabilities** – `get_skus()` now extracts 15 capabilities (up from 4): added `AcceleratedNetworkingEnabled`, `EphemeralOSDiskSupported`, `HyperVGenerations`, `GPUs`, `CachedDiskBytes`, `MaxResourceVolumeMB`, `LowPriorityCapable`, `TrustedLaunchDisabled`, `EncryptionAtHostSupported`, `CpuArchitectureType`, `UltraSSDAvailable`. Enables workload eligibility filtering by plugins.
+- **MSDO security scanning** – Added Microsoft Security DevOps (MSDO) CI workflow for automated code security analysis on PRs and main.
+- **Dockerfile healthcheck** – Added `HEALTHCHECK` instruction to the container image.
 
 ### Changed
 
@@ -22,7 +26,11 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 ### Fixed
 
 - **XSS: `escapeHtml()` attribute-context escape** – Replaced the `div.textContent/innerHTML` approach with OWASP Rule #1 character replacement (`& < > " '`), fixing unescaped `"` and `'` in attribute contexts (e.g. `title="..."`, `data-*="..."`). Removed duplicate escape helpers from `plugins.js` and `catalog.html` in favour of the shared global.
+- **XSS: `injectVersion`** – Moved `escHtml(ver)` into `injectVersion` itself to enforce safety regardless of call site.
 - **Plugin Manager reload** – Restored full page reload after plugin install/uninstall/update so new or removed tabs, routes, and JS are picked up.
+- **Control-char sanitization** – `pmUninstall` strips control characters from `distName` before `confirm()` / `showGlobalStatus()`.
+- **Biome lint cleanup** – Converted `function` expressions to arrow functions, `||` guards to optional chaining, `var` to `const/let` across shared components.
+- **pymdownx fix** – Replaced pygments pin with `pymdownx>=10.21.2` (proper fix for `filename=None` crash).
 
 ### Removed
 
