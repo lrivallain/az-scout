@@ -403,7 +403,7 @@
     // ---- Uninstall ----
 
     window.pmUninstall = async (distName) => {
-        const safeDistName = String(distName).replace(/[\x00-\x1F\x7F]/g, "");
+        const safeDistName = String(distName).replace(/[\\u0000-\\u001F\\u007F]/g, "");
         if (!confirm("Uninstall plugin \"" + safeDistName + "\"?")) return;
         showGlobalStatus("Uninstalling " + safeDistName + "…");
         try {
