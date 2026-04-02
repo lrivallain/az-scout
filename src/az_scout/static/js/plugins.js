@@ -6,6 +6,8 @@
     const container = document.getElementById("plugin-manager-body");
     if (!container) return;
 
+    const ARROW_CHAR = "→";
+
     let lastValidation = null;
     let initialized = false;
     let updateInfo = {};      // distribution_name → update status from /api/plugins/updates
@@ -103,7 +105,7 @@
         const old = authorsEl.parentElement.querySelector('.catalog-version-info');
         if (old) old.remove();
         authorsEl.insertAdjacentHTML('afterend',
-            '<div class="catalog-version-info text-body-secondary" style="font-size:0.75rem">Installed: ' + ver + '</div>');
+            '<div class="catalog-version-info text-body-secondary" style="font-size:0.75rem">Installed: ' + escHtml(ver) + '</div>');
     }
 
     /**
@@ -156,7 +158,7 @@
                 const ver = escHtml(record.ref || '');
                 let btnsHtml = '';
 
-                if ((info?.update_available) || record.update_available === true) {
+                if ((info?.update_available) || record.update_available) {
                     const latest = escHtml((info?.latest_ref) || record.latest_ref || '');
                     const label = latest ? ver + ' \u2192 ' + latest : 'Update';
                     btnsHtml += '<button class="btn btn-outline-info btn-sm" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Update plugin to latest version" onclick="pmUpdate(\'' + escAttr(name) + '\')"><i class="bi bi-cloud-download me-1"></i>' + label + '</button>';
@@ -197,7 +199,7 @@
             const record = installedByDist[distName];
             grid.insertAdjacentHTML("beforeend", buildExtraCard(p, record));
 
-            if (record && (updateInfo[distName]?.update_available || record.update_available === true)) {
+            if (record && (updateInfo[distName]?.update_available || record.update_available)) {
                 anyUpdate = true;
             }
         }
@@ -228,7 +230,7 @@
             if (seenDists.has(r.distribution_name)) continue;
             seenDists.add(r.distribution_name);
             grid.insertAdjacentHTML("beforeend", buildNotLoadedCard(r));
-            if (updateInfo[r.distribution_name]?.update_available || r.update_available === true) {
+            if (updateInfo[r.distribution_name]?.update_available || r.update_available) {
                 anyUpdate = true;
             }
         }
@@ -279,7 +281,7 @@
             const info = updateInfo[record.distribution_name];
             const ver = escHtml(record.ref || '');
             let btnsHtml = '';
-            if ((info?.update_available) || record.update_available === true) {
+            if ((info?.update_available) || record.update_available) {
                 const latest = escHtml((info?.latest_ref) || record.latest_ref || '');
                 const label = latest ? ver + ' \u2192 ' + latest : 'Update';
                 btnsHtml += '<button class="btn btn-outline-info btn-sm" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Update plugin to latest version" onclick="pmUpdate(\'' + escAttr(record.distribution_name) + '\')"><i class="bi bi-cloud-download me-1"></i>' + label + '</button>';
@@ -317,7 +319,7 @@
     /** Build a card for a plugin in installed.json but not loaded. */
     function buildNotLoadedCard(r) {
         let btnsLine = "";
-        if (updateInfo[r.distribution_name]?.update_available || r.update_available === true) {
+        if (updateInfo[r.distribution_name]?.update_available || r.update_available) {
             const latest = escHtml(updateInfo[r.distribution_name]?.latest_ref || r.latest_ref || '');
             const ver = escHtml(r.ref || '');
             const label = latest ? ver + ' \u2192 ' + latest : 'Update';
@@ -401,8 +403,9 @@
     // ---- Uninstall ----
 
     window.pmUninstall = async (distName) => {
-        if (!confirm("Uninstall plugin \"" + distName + "\"?")) return;
-        showGlobalStatus("Uninstalling " + distName + "…");
+        const safeDistName = String(distName).replace(/[\\u0000-\\u001F\\u007F]/g, "");
+        if (!confirm("Uninstall plugin \"" + safeDistName + "\"?")) return;
+        showGlobalStatus("Uninstalling " + safeDistName + "…");
         try {
             const data = await apiPost("/api/plugins/uninstall", { distribution_name: distName });
             if (data.ok) {
@@ -558,7 +561,7 @@
         if (data.source) lines.push("<strong>Source:</strong> " + escHtml(data.source === "pypi" ? "PyPI" : "GitHub"));
         if (data.entry_points && Object.keys(data.entry_points).length) {
             lines.push("<strong>Entry points:</strong> " +
-                Object.entries(data.entry_points).map(([k, v]) => escHtml(k) + " → " + escHtml(v)).join(", "));
+                Object.entries(data.entry_points).map(([k, v]) => escHtml(k) + " " + ARROW_CHAR + " " + escHtml(v)).join(", "));
         }
         meta.innerHTML = lines.join("<br>");
         renderList(errEl, data.errors, "danger");
