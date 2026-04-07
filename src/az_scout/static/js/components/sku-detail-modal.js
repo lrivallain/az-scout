@@ -289,7 +289,7 @@ window.azScout.components = window.azScout.components || {};
         }
 
         if (conf.disclaimers?.length) {
-            html += '<p class="confidence-disclaimer text-body-secondary small fst-italic mt-1 mb-0">' + escapeHtml(conf.disclaimers[0]) + ' <a href="https://github.com/az-scout/az-scout/blob/main/docs/SCORING.md" target="_blank" rel="noopener" class="text-body-secondary">Learn more</a> about scoring methodology.</p>';
+            html += '<p class="confidence-disclaimer text-body-secondary small fst-italic mt-1 mb-0">' + escapeHtml(conf.disclaimers[0]) + ' <a href="https://docs.az-scout.com/scoring/" target="_blank" rel="noopener" class="text-body-secondary">Learn more</a> about scoring methodology.</p>';
         }
 
         html += '</div>';
