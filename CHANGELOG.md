@@ -7,6 +7,20 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+### Added
+
+- **AGENTS.md** – Top-level pointer for non-Copilot AI agents (Claude, Codex, Aider, Cursor) summarising where the rules live, the quality gate, branch protection, and hard constraints.
+- **CODEOWNERS** – Per-area review routing under `.github/CODEOWNERS` (azure_api, plugin contract, scoring, auth, frontend, internal plugins, docs, CI).
+- **Copilot review checklist** – `.github/copilot-review-instructions.md` with Blocking / Should fix / Nice to have rules consumed by Copilot Code Review on PRs.
+- **Chat modes** – Three persona-scoped tool sets in `.github/chatmodes/`: `backend-engineer`, `frontend-engineer`, `plugin-reviewer`.
+- **New slash prompts** – `.github/prompts/`: `/review-dependabot-pr` (risk-tiered dependency smoke test), `/add-mcp-tool`, `/add-route`, `/bump-plugin-api` (with consumer audit).
+- **New scoped instruction files** – `.github/instructions/`: `tests`, `scoring`, `mcp-tools`, `cli`, `docs`, `commit` — each with `applyTo` patterns so they auto-load only when relevant.
+
+### Changed
+
+- **Renamed plugin instruction files** – `plugin-dev.instructions.md` → `plugin-api.instructions.md` (core-side contract) and `plugin-scaffold.instructions.md` → `plugin-author.instructions.md` (plugin authoring). The author file's `applyTo` now also covers `internal_plugins/**`.
+- **Root copilot-instructions.md** – Refreshed the "Contextual instructions" table to list every scoped file, added a "Workflows" section enumerating slash prompts and chat modes, and pointed to the new review-instructions and AGENTS.md.
+
 ## [2026.4.1] - 2026-04-02
 
 ### Added

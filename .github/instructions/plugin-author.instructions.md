@@ -1,11 +1,12 @@
 ---
-description: "az-scout plugin conventions and API contract. Activates when working on plugin code using the az_scout_ module naming convention."
-applyTo: "**/az_scout_*/**/*.py"
+description: "az-scout plugin authoring conventions for sibling repos and internal_plugins. USE WHEN editing any az_scout_* package, internal_plugins/, or scaffold docs."
+applyTo: "**/az_scout_*/**/*.py,**/internal_plugins/**/*.py,docs/plugin-scaffold/**"
 ---
 
-# az-scout Plugin Conventions
+# Plugin author conventions
 
-You are working on an az-scout plugin. Follow these conventions.
+Audience: **plugin authors** implementing the protocol.
+For changes to the protocol itself, see `plugin-api.instructions.md`.
 
 ## Plugin protocol
 

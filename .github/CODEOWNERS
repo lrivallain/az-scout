@@ -1,0 +1,40 @@
+# CODEOWNERS — review routing for az-scout
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+#
+# Last-match-wins. Most specific patterns go LAST.
+
+# Default owner for everything
+*                                       @lrivallain
+
+# Core Azure ARM layer
+/src/az_scout/azure_api/                @lrivallain
+
+# Plugin contract & manager
+/src/az_scout/plugin_api.py             @lrivallain
+/src/az_scout/plugins.py                @lrivallain
+/src/az_scout/plugin_manager/           @lrivallain
+
+# Scoring (Deployment Confidence)
+/src/az_scout/scoring/                  @lrivallain
+
+# Auth (OBO, sessions, admin RBAC)
+/src/az_scout/auth.py                   @lrivallain
+/src/az_scout/routes/auth.py            @lrivallain
+/src/az_scout/azure_api/_obo.py         @lrivallain
+
+# Frontend
+/src/az_scout/static/                   @lrivallain
+/src/az_scout/templates/                @lrivallain
+
+# Internal plugins
+/src/az_scout/internal_plugins/         @lrivallain
+
+# Docs & site
+/docs/                                  @lrivallain
+/mkdocs.yml                             @lrivallain
+
+# CI / release plumbing
+/.github/                               @lrivallain
+/Dockerfile                             @lrivallain
+/deploy/                                @lrivallain
+/pyproject.toml                         @lrivallain

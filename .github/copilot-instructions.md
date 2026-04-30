@@ -85,9 +85,35 @@ Pre-commit hooks run these automatically on `git commit`.
 
 ## Contextual instructions
 
-Domain-specific guidance is loaded automatically via file instructions:
+Domain-specific guidance is auto-loaded via `applyTo` patterns in `.github/instructions/`:
 
-- **`azure-api.instructions.md`** — ARM patterns, auth, pagination (when editing `azure_api/`)
-- **`obo-auth.instructions.md`** — OBO flow, sessions, admin roles (when editing auth files)
-- **`frontend.instructions.md`** — JS/CSS/template conventions (when editing `static/` or `templates/`)
-- **`plugin-dev.instructions.md`** — Plugin protocol, conventions, testing (when editing plugin code)
+| File | Activates when editing |
+|---|---|
+| `azure-api.instructions.md` | `src/az_scout/azure_api/**` |
+| `frontend.instructions.md` | `src/az_scout/static/**`, `src/az_scout/templates/**` |
+| `obo-auth.instructions.md` | auth routes, OBO module, login template |
+| `plugin-api.instructions.md` | core plugin contract (`plugin_api.py`, `plugins.py`, `plugin_manager/`) |
+| `plugin-author.instructions.md` | any `az_scout_*/` package, `internal_plugins/`, scaffold docs |
+| `mcp-tools.instructions.md` | `mcp_server.py`, any `tools.py` |
+| `scoring.instructions.md` | `src/az_scout/scoring/**` |
+| `cli.instructions.md` | `cli.py`, `__main__.py` |
+| `tests.instructions.md` | `tests/**` |
+| `docs.instructions.md` | `docs/**`, `mkdocs.yml` |
+| `commit.instructions.md` | commit messages (`COMMIT_EDITMSG`) |
+
+## Workflows
+
+Reusable runbooks live in `.github/prompts/` (run with `/<name>`):
+
+- `/ship-code-change` — quality gate → changelog → commit → PR
+- `/tag-release` — CalVer release on `main`
+- `/triage-issue` — investigate + post structured triage comment
+- `/add-mcp-tool`, `/add-route` — scaffold new server-side surface
+- `/bump-plugin-api` — version bump + guard + migration notes
+- `/review-dependabot-pr` — dependency-aware smoke test + review
+
+Personas with curated tool sets live in `.github/chatmodes/`:
+`backend-engineer`, `frontend-engineer`, `plugin-reviewer`.
+
+PR auto-review rules live in `.github/copilot-review-instructions.md`.
+Cross-agent guidance lives in [`AGENTS.md`](../AGENTS.md).

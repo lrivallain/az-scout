@@ -1,9 +1,19 @@
 ---
-description: "Plugin development for az-scout: protocol, conventions, routes, MCP tools, tabs, chat modes, AI completion, testing. USE WHEN editing plugin_api.py, plugins.py, plugin_manager/, or developing a new plugin."
+description: "az-scout plugin protocol, discovery, manager. USE WHEN editing the core plugin contract — plugin_api.py, plugins.py, plugin_manager/, or related docs."
 applyTo: "src/az_scout/plugin_api.py,src/az_scout/plugins.py,src/az_scout/plugin_manager/**,docs/plugin-scaffold/**"
 ---
 
-# Plugin development
+# Plugin API (core side)
+
+Audience: **core maintainers** changing the plugin contract.
+For plugin authors implementing a plugin, see `plugin-author.instructions.md`.
+
+## Compatibility
+
+- `PLUGIN_API_VERSION` lives in `plugin_api.py`. **Bump it** for any breaking change to the protocol, dataclasses, or shared helpers.
+- The plugin manager guard refuses to load plugins declaring an incompatible major version — keep the guard in sync.
+- Document every bump in `CHANGELOG.md` under `### Changed` with a migration note.
+
 
 ## Plugin protocol
 
