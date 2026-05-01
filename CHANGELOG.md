@@ -7,6 +7,15 @@ This project uses [Calendar Versioning](https://calver.org/) (`YYYY.MM.MICRO`).
 
 ## Unreleased
 
+### Fixed
+
+- **Container image version (#159)** – the GHCR container image now reports the correct version in the UI footer, MCP banner, and `_version.py`. The Dockerfile previously copied a partial worktree alongside the full `.git/` directory, which made `git describe` return `v<tag>-dirty` and caused `hatch-vcs` to emit the next-dev version (e.g. tag `v2026.4.1` was reported as `2026.4.2.dev0` inside the container). The version is now computed on the CI host and injected into the build via the `AZ_SCOUT_VERSION` build-arg / `SETUPTOOLS_SCM_PRETEND_VERSION`, making container builds deterministic and removing `.git/` from the build context.
+
+### Changed
+
+- **Dockerfile** – removed `git` from the builder stage's apt install (no longer needed) and dropped `COPY .git/`. The build context is now smaller and the wheel build is bit-for-bit reproducible from the same source + version arg.
+- **`container.yml`** – both `dev-image` and `release-image` jobs now run `hatch version` on the host (after `astral-sh/setup-uv@v5`) and pass the result as `AZ_SCOUT_VERSION` to `docker/build-push-action`.
+
 ## [2026.5.0] - 2026-05-01
 
 ### Added

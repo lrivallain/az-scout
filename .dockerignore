@@ -17,7 +17,9 @@ venv/
 .vscode/
 .idea/
 
-# Git (we need .git for hatch-vcs, but exclude heavy objects selectively)
+# Git — version is injected via SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AZ_SCOUT
+# at build time, so the build context does not need git history (see #159).
+.git/
 .github/
 
 # Docs & config not needed at runtime
