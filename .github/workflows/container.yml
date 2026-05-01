@@ -48,6 +48,19 @@ jobs:
             type=sha,prefix=dev-
             type=ref,event=branch,prefix=dev-
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      # Compute the version on the host (full git history available) so the
+      # Dockerfile doesn't need .git/ inside the build context (see #159).
+      - name: Compute version
+        id: version
+        run: |
+          uv tool install --quiet hatch
+          version=$(hatch version)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Building with version: ${version}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -59,6 +72,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            AZ_SCOUT_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -93,6 +108,19 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      # Compute the version on the host (full git history available) so the
+      # Dockerfile doesn't need .git/ inside the build context (see #159).
+      - name: Compute version
+        id: version
+        run: |
+          uv tool install --quiet hatch
+          version=$(hatch version)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Building with version: ${version}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -104,5 +132,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            AZ_SCOUT_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

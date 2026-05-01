@@ -1,17 +1,24 @@
 # ---------- build stage ----------
 FROM python:3.13-slim AS builder
 
-# Install build tools (git needed for hatch-vcs version)
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /build
+
+# Version is injected by CI (computed from the git tag / branch SHA on the
+# host) instead of being derived from `.git/` inside the container.  Doing the
+# latter caused issue #159: the selective `COPY` below makes git see most of
+# the worktree as deleted ("dirty"), which made setuptools-scm fall back to
+# the next-dev version (e.g. tag v2026.4.1 was reported as 2026.4.2.dev0 in
+# the running container).  Pretending the version makes the build bit-for-bit
+# deterministic, drops the `git` apt dependency from the builder stage, and
+# avoids shipping `.git/` into the build context.
+ARG AZ_SCOUT_VERSION
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${AZ_SCOUT_VERSION}
 
 # Copy source and build metadata
 COPY pyproject.toml README.md ./
 COPY src/ src/
-COPY .git/ .git/
 
-# Build the wheel (hatch-vcs reads git tags for the version)
+# Build the wheel
 RUN pip install --no-cache-dir build hatchling hatch-vcs && \
     python -m build --wheel --outdir /build/dist
 
